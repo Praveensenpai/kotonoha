@@ -16,3 +16,7 @@ wheels/
 
 # JPDB cache
 .jpdb_cache/
+
+# Agent logs and downloads
+.agents/
+downloads/

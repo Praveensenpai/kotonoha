@@ -1610,9 +1610,32 @@ class CliApp:
             )
             print()
 
-            choice = await asyncio.to_thread(
-                input, "Mine this card? (y/n/i to ignore/q to quit): "
-            )
+            # Automatically play audio snippet in background during card review
+            audio_proc = None
+            preview_audio = self._extract_preview_audio(cand)
+            if preview_audio and preview_audio.exists():
+                try:
+                    import subprocess
+                    audio_proc = subprocess.Popen(
+                        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(preview_audio)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    audio_proc = None
+
+            try:
+                choice = await asyncio.to_thread(
+                    input, "Mine this card? (y/n/i to ignore/q to quit): "
+                )
+            finally:
+                if audio_proc and audio_proc.poll() is None:
+                    try:
+                        audio_proc.terminate()
+                        audio_proc.wait(timeout=0.2)
+                    except Exception:
+                        pass
+
             choice = choice.strip().lower()
             if choice == "y":
                 added_count = self._mine_candidate(knowledge, cand, kana, definition)
@@ -1629,6 +1652,60 @@ class CliApp:
             elif choice == "q":
                 print("[bold yellow]Exiting app.[/bold yellow]")
                 break
+
+    def _extract_preview_audio(self, candidate: CandidateSentence) -> Optional[pathlib.Path]:
+        """Extracts (or retrieves cached) preview audio snippet for candidate card."""
+        media_dir = (
+            pathlib.Path(config.media_dir).expanduser()
+            if config.media_dir
+            else self.subtitle_path.parent / "media"
+        )
+        media_dir.mkdir(parents=True, exist_ok=True)
+
+        audio_filename = f"{candidate.unknown_word}_{candidate.sentence.index}.mp3"
+        audio_path = media_dir / audio_filename
+        if audio_path.exists():
+            return audio_path
+
+        episode_stem = clean_tag_from_path(self.subtitle_path)
+        pkg_dir = media_dir / episode_stem
+        pre_audio_files = list(pkg_dir.glob("audio.*")) if pkg_dir.exists() else []
+        audio_src = pre_audio_files[0] if pre_audio_files else (self.video_path if (self.video_path and self.video_path.exists()) else None)
+
+        ts = candidate.sentence.timestamp
+        if ts and "-->" in ts and audio_src:
+            import ffmpeg
+            start_ts, end_ts = [t.strip().replace(",", ".") for t in ts.split("-->")]
+
+            def _ts_to_sec(ts_str: str) -> float:
+                parts = ts_str.strip().replace(",", ".").split(":")
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+
+            next_start_sec = None
+            if hasattr(self, "subtitle_path") and self.subtitle_path and self.subtitle_path.exists():
+                try:
+                    sub_txt = self.subtitle_path.read_text(encoding="utf-8", errors="ignore")
+                    m_next = re.search(rf"{candidate.sentence.index + 1}\s*\n(\d{{2}}:\d{{2}}:\d{{2}}[,\.]\d{{3}})", sub_txt)
+                    if m_next:
+                        next_start_sec = _ts_to_sec(m_next.group(1))
+                except Exception:
+                    pass
+
+            start_sec = max(0.0, _ts_to_sec(start_ts) - 0.75)
+            end_sec = _ts_to_sec(end_ts)
+            dur_sec = max(0.2, end_sec - start_sec)
+
+            try:
+                (
+                    ffmpeg.input(str(audio_src), ss=f"{start_sec:.3f}")
+                    .output(str(audio_path), t=f"{dur_sec:.3f}", acodec="libmp3lame", q=4)
+                    .overwrite_output()
+                    .run(quiet=True)
+                )
+                return audio_path
+            except Exception:
+                return None
+        return None
 
     def _mine_candidate(
         self,
@@ -1666,6 +1743,24 @@ class CliApp:
                 t.strip().replace(",", ".") for t in ts.split("-->")
             ]
 
+            def _ts_to_sec(ts_str: str) -> float:
+                parts = ts_str.strip().replace(",", ".").split(":")
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+
+            next_start_sec = None
+            if hasattr(self, "subtitle_path") and self.subtitle_path and self.subtitle_path.exists():
+                try:
+                    sub_txt = self.subtitle_path.read_text(encoding="utf-8", errors="ignore")
+                    m_next = re.search(rf"{candidate.sentence.index + 1}\s*\n(\d{{2}}:\d{{2}}:\d{{2}}[,\.]\d{{3}})", sub_txt)
+                    if m_next:
+                        next_start_sec = _ts_to_sec(m_next.group(1))
+                except Exception:
+                    pass
+
+            start_sec = max(0.0, _ts_to_sec(start_ts) - 0.75)
+            end_sec = _ts_to_sec(end_ts)
+            dur_sec = max(0.2, end_sec - start_sec)
+
             # Extract audio snippet
             audio_filename = (
                 f"{candidate.unknown_word}_{candidate.sentence.index}.mp3"
@@ -1677,8 +1772,8 @@ class CliApp:
                 )
                 try:
                     (
-                        ffmpeg.input(str(audio_src), ss=start_ts, to=end_ts)
-                        .output(audio_path, acodec="libmp3lame", q=4)
+                        ffmpeg.input(str(audio_src), ss=f"{start_sec:.3f}")
+                        .output(audio_path, t=f"{dur_sec:.3f}", acodec="libmp3lame", q=4)
                         .overwrite_output()
                         .run(quiet=True)
                     )
@@ -2571,7 +2666,7 @@ def run_app(
                         pkg_sub_path = str(candidate_subs[0])
                         break
 
-        if not sub_exists and pkg_sub_path:
+        if pkg_sub_path:
             sub = pkg_sub_path
             sub_exists = True
 

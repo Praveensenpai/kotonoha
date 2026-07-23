@@ -9,6 +9,7 @@ dependencies = [
     "httpx>=0.28.1",
     "jamdict>=0.1a11.post2",
     "jamdict-data>=1.5",
+    "openai-whisper>=20250625",
     "pyqt5>=5.15.11",
     "questionary>=2.0.0",
     "rapidfuzz>=3.9.0",

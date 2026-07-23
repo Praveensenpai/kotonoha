@@ -120,7 +120,7 @@ class AnkiClient:
         reading_suffix = f" ({reading})" if reading and reading != target_word else ""
 
         try:
-            furigana = furigana_sentence(sentence)
+            furigana = furigana_sentence(sentence, target_word=target_word)
         except Exception:
             furigana = sentence
 

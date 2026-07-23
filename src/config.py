@@ -63,9 +63,69 @@ LOCAL_CONFIG = pathlib.Path("config.toml")
 CONFIG_FILE = LOCAL_CONFIG if LOCAL_CONFIG.exists() else CONFIG_DIR / "config.toml"
 
 DEFAULT_FRONT_TEMPLATE = (
-    "<div><b>{word}</b>{reading_suffix}</div><br><div>{sentence}</div>{audio}"
+    "<style>\n"
+    ".card {{\n"
+    '  font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;\n'
+    "  font-size: 32px;\n"
+    "  text-align: center;\n"
+    "  color: #ffffff;\n"
+    "  background-color: #1c1b18;\n"
+    "  padding: 30px 20px;\n"
+    "}}\n"
+    "ruby rt {{\n"
+    "  font-size: 0.45em;\n"
+    "  color: #d0d0d0;\n"
+    "  font-weight: normal;\n"
+    "}}\n"
+    ".target-word, .target-word rt {{\n"
+    "  color: #888888;\n"
+    "  opacity: 0.65;\n"
+    "  font-weight: bold;\n"
+    "}}\n"
+    "</style>\n"
+    '<div class="sentence">{furigana_sentence}</div>{audio}'
 )
-DEFAULT_BACK_TEMPLATE = "<div>{definition}</div>{image}{stats}"
+DEFAULT_BACK_TEMPLATE = (
+    "<style>\n"
+    ".card {{\n"
+    '  font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;\n'
+    "  font-size: 28px;\n"
+    "  text-align: center;\n"
+    "  color: #ffffff;\n"
+    "  background-color: #1c1b18;\n"
+    "  padding: 20px;\n"
+    "}}\n"
+    "ruby rt {{\n"
+    "  font-size: 0.45em;\n"
+    "  color: #d0d0d0;\n"
+    "  font-weight: normal;\n"
+    "}}\n"
+    ".target-word, .target-word rt {{\n"
+    "  color: #888888;\n"
+    "  opacity: 0.65;\n"
+    "  font-weight: bold;\n"
+    "}}\n"
+    ".word-header {{\n"
+    "  font-size: 32px;\n"
+    "  margin-bottom: 15px;\n"
+    "  color: #ffffff;\n"
+    "}}\n"
+    ".definition {{\n"
+    '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;\n'
+    "  font-size: 18px;\n"
+    "  text-align: left;\n"
+    "  margin-top: 15px;\n"
+    "  line-height: 1.5;\n"
+    "  color: #e0e0e0;\n"
+    "}}\n"
+    "</style>\n"
+    '<div class="word-header"><b>{word}</b>{reading_suffix}</div>\n'
+    '<div class="sentence">{furigana_sentence}</div>\n'
+    '<hr style="border: 0; border-top: 1px solid #444; margin: 15px 0;">\n'
+    '<div class="definition">{definition}</div>\n'
+    "{image}\n"
+    "{stats}"
+)
 
 
 class CardConfig:
@@ -99,6 +159,23 @@ class CardConfig:
 
             media_cfg = data.get("media", {})
             self.media_dir = media_cfg.get("media_dir", self.media_dir)
+
+            try:
+                # Validate template formatting
+                self.front_template.format(
+                    word="", reading="", reading_suffix="", sentence="",
+                    furigana_sentence="", definition="", audio="", image="",
+                    known_words="", unknown_words="", base_score="", adjusted_score="", stats=""
+                )
+            except Exception:
+                self.front_template = DEFAULT_FRONT_TEMPLATE
+                self.back_template = DEFAULT_BACK_TEMPLATE
+                self.save_defaults()
+
+            if "target-word" not in self.front_template:
+                self.front_template = DEFAULT_FRONT_TEMPLATE
+                self.back_template = DEFAULT_BACK_TEMPLATE
+                self.save_defaults()
         except Exception as e:
             print(
                 f"[bold yellow]Warning:[/bold yellow] Failed to load configuration from {CONFIG_FILE}: {e}. Using defaults."

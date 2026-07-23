@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Union
+from typing import List, Optional, Union
 from sudachipy import dictionary, tokenizer  # type: ignore[import-untyped]
 
 
@@ -17,33 +17,66 @@ def _contains_kanji(text: str) -> bool:
     )
 
 
-def furigana_sentence(text: str) -> str:
+def _is_target_match(surface: str, dict_form: str, target_word: str) -> bool:
+    """Helper to check if a token surface or dictionary form matches target_word, including kanji stem matches."""
+    if not target_word:
+        return False
+    if surface == target_word or dict_form == target_word:
+        return True
+    target_kanji = [ch for ch in target_word if _contains_kanji(ch)]
+    if target_kanji:
+        token_kanji = [ch for ch in surface if _contains_kanji(ch)]
+        if any(k in token_kanji for k in target_kanji):
+            return True
+    elif target_word in surface or surface in target_word:
+        return True
+    return False
+
+
+def furigana_sentence(text: str, target_word: Optional[str] = None) -> str:
     """
     Returns an HTML string of the sentence with furigana <ruby> tags over kanji tokens.
     Uses SudachiPy's contextual reading_form() for accurate per-context readings.
     Tokens without kanji (kana-only, punctuation) are passed through unchanged.
+    If target_word is provided, matching tokens are wrapped in <span class="target-word">.
     """
     _tokenizer = dictionary.Dictionary().create()
     _mode = tokenizer.Tokenizer.SplitMode.A
     raw_tokens = _tokenizer.tokenize(text, _mode)
     parts: List[str] = []
+    matched_target = False
     for token in raw_tokens:
         surface = token.surface()
-        if not _contains_kanji(surface):
-            parts.append(surface)
-            continue
         try:
-            katakana_reading = token.reading_form()
-            hiragana_reading = (
-                katakana_to_hiragana(katakana_reading) if katakana_reading else ""
-            )
+            dict_form = token.dictionary_form()
         except Exception:
-            hiragana_reading = ""
-        if hiragana_reading and hiragana_reading != surface:
-            parts.append(f"<ruby>{surface}<rt>{hiragana_reading}</rt></ruby>")
+            dict_form = surface
+
+        if not _contains_kanji(surface):
+            part_html = surface
         else:
-            parts.append(surface)
-    return "".join(parts)
+            try:
+                katakana_reading = token.reading_form()
+                hiragana_reading = (
+                    katakana_to_hiragana(katakana_reading) if katakana_reading else ""
+                )
+            except Exception:
+                hiragana_reading = ""
+            if hiragana_reading and hiragana_reading != surface:
+                part_html = f"<ruby>{surface}<rt>{hiragana_reading}</rt></ruby>"
+            else:
+                part_html = surface
+
+        if target_word and _is_target_match(surface, dict_form, target_word):
+            part_html = f'<span class="target-word">{part_html}</span>'
+            matched_target = True
+
+        parts.append(part_html)
+
+    res = "".join(parts)
+    if target_word and not matched_target and target_word in res:
+        res = res.replace(target_word, f'<span class="target-word">{target_word}</span>', 1)
+    return res
 
 
 def clean_tag_from_path(path: Union[str, pathlib.Path]) -> str:
