@@ -1618,6 +1618,7 @@ class CliApp:
                     import subprocess
                     audio_proc = subprocess.Popen(
                         ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(preview_audio)],
+                        stdin=subprocess.DEVNULL,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
