@@ -9,7 +9,6 @@ dependencies = [
     "httpx>=0.28.1",
     "jamdict>=0.1a11.post2",
     "jamdict-data>=1.5",
-    "openai-whisper>=20250625",
     "pyqt5>=5.15.11",
     "questionary>=2.0.0",
     "rapidfuzz>=3.9.0",
@@ -19,4 +18,10 @@ dependencies = [
     "sudachidict-core>=20260428",
     "sudachipy>=0.6.11",
     "typer>=0.26.8",
+]
+
+[dependency-groups]
+dev = [
+    "openai-whisper>=20250625",
+    "whisper-timestamped>=1.15.9",
 ]
