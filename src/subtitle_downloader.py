@@ -16,7 +16,7 @@ from rich.table import Table
 try:
     from src.config import CONFIG_DIR
 except ImportError:
-    CONFIG_DIR = pathlib.Path.home() / ".anime-miner"
+    CONFIG_DIR = pathlib.Path.home() / ".nihongo-miner"
 
 BASE_URL = "https://subtitles.ajatt.top/"
 
@@ -457,8 +457,8 @@ class SubtitleDownloader:
                 self.console.print("[red]Invalid selection or out of range.[/red]")
                 continue
 
-            dest_dir_input = Prompt.ask("Enter destination folder", default="./downloads")
-            dest_dir = pathlib.Path(dest_dir_input)
+            dest_dir_input = Prompt.ask("Enter destination folder", default=str(CONFIG_DIR / "subtitles"))
+            dest_dir = pathlib.Path(dest_dir_input).expanduser()
 
             downloaded_count = 0
             first_downloaded_path = None
