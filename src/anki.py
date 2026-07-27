@@ -223,16 +223,27 @@ class AnkiClient:
                     front_field = fields.get("Front") or fields.get("front")
                     if front_field:
                         val = front_field.get("value", "").strip()
-                        match = re.search(r"<b[^>]*>(.*?)</b>", val) or re.search(
-                            r"<strong[^>]*>(.*?)</strong>", val
+                        cleaned_val = re.sub(
+                            r"<(style|script)[^>]*>.*?</\1>",
+                            "",
+                            val,
+                            flags=re.DOTALL | re.IGNORECASE,
+                        )
+                        match = (
+                            re.search(r"<b[^>]*>(.*?)</b>", cleaned_val)
+                            or re.search(r"<strong[^>]*>(.*?)</strong>", cleaned_val)
+                            or re.search(
+                                r'class="[^"]*target-word[^"]*"[^>]*>(.*?)</span>',
+                                cleaned_val,
+                            )
                         )
                         if match:
                             word = match.group(1).strip()
                             word = re.sub(r"<[^>]+>", "", word).strip()
                         else:
-                            word = re.sub(r"<[^>]+>", "", val).strip()
+                            word = re.sub(r"<[^>]+>", "", cleaned_val).strip()
 
-                if word:
+                if word and "{" not in word and "\n" not in word:
                     words.append(word)
             return words
         except Exception as e:
