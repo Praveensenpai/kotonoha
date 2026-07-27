@@ -32,10 +32,10 @@ def _parse_jpdb_page(html: str) -> List[Dict[str, Any]]:
 
         tags = [t.text(strip=True) for t in entry.css("div.tag.tooltip")]
 
-        spelling_div = entry.css_first("div.vocabulary-spelling")
+        desc_div = entry.css_first("div.description, div.glosses")
         definition = ""
-        if spelling_div and spelling_div.next:
-            definition = spelling_div.next.text(strip=True)
+        if desc_div:
+            definition = desc_div.text(strip=True)
 
         rank_in_deck: int | None = None
         for div in entry.css("div[style]"):

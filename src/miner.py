@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.prompt import IntPrompt
+from rich.prompt import IntPrompt, Prompt
 import dataclasses
 import json
 import pathlib
@@ -975,13 +975,17 @@ class DictLookup:
             if not entry.senses:
                 return "No senses found.", kana
 
-            glosses = [g.text for g in entry.senses[0].gloss]
+            sense_list = []
+            for sense in entry.senses[:3]:
+                sense_glosses = [g.text for g in sense.gloss]
+                if sense_glosses:
+                    sense_list.append("; ".join(sense_glosses))
 
             pitch = get_pitch_accent(word, kana)
             if pitch:
                 kana = f"{kana} [Pitch: {pitch}]"
 
-            return "; ".join(glosses), kana
+            return " | ".join(sense_list), kana
         except Exception as e:
             return f"Error looking up definition: {e}", ""
 
@@ -1473,13 +1477,19 @@ class CliApp:
         print(f"Found [bold cyan]{len(candidates)}[/bold cyan] candidate sentences.")
         print("-" * 50)
 
+        import questionary
+
         try:
-            target_mined = IntPrompt.ask(
+            ans = questionary.select(
                 "How many cards would you like to mine?",
                 choices=["10", "15", "20", "25"],
-                default=10,
-            )
-        except KeyboardInterrupt, SystemExit:
+                default="10",
+            ).ask()
+            if ans is None:
+                print("\n[bold red]Operation cancelled.[/bold red]")
+                return
+            target_mined = int(ans)
+        except (KeyboardInterrupt, SystemExit):
             print("\n[bold red]Operation cancelled.[/bold red]")
             return
 
@@ -1541,19 +1551,13 @@ class CliApp:
             if next_targets:
                 asyncio.create_task(prefetch_pitch_accents(next_targets))
 
-            if self.jpdb_vocab and cand.unknown_word in self.jpdb_vocab:
-                definition = self.jpdb_vocab[cand.unknown_word]["definition"]
-                _, kana = lookup.get_definition(
-                    cand.unknown_word, getattr(cand, "unknown_word_reading", None)
-                )
-                if not definition:
-                    definition, _ = lookup.get_definition(
-                        cand.unknown_word, getattr(cand, "unknown_word_reading", None)
-                    )
-            else:
-                definition, kana = lookup.get_definition(
-                    cand.unknown_word, getattr(cand, "unknown_word_reading", None)
-                )
+            definition, kana = lookup.get_definition(
+                cand.unknown_word, getattr(cand, "unknown_word_reading", None)
+            )
+            if (not definition or definition == "No definition found.") and self.jpdb_vocab and cand.unknown_word in self.jpdb_vocab:
+                jpdb_def = self.jpdb_vocab[cand.unknown_word].get("definition")
+                if jpdb_def:
+                    definition = jpdb_def
 
             display_word = (
                 f"{cand.unknown_word} ({kana})"
@@ -1627,7 +1631,10 @@ class CliApp:
 
             try:
                 choice = await asyncio.to_thread(
-                    input, "Mine this card? (y/n/i to ignore/q to quit): "
+                    Prompt.ask,
+                    "Mine this card? (y/n/i to ignore/q to quit)",
+                    choices=["y", "n", "i", "q"],
+                    default="n",
                 )
             finally:
                 if audio_proc and audio_proc.poll() is None:
@@ -2297,6 +2304,13 @@ def run_app(
         knowledge = KnowledgeModel()
         console = Console()
 
+        invalid_words = [
+            w for w in knowledge.known_words
+            if "{" in w or "}" in w or "\n" in w or "<style" in w
+        ]
+        if invalid_words:
+            knowledge.remove_known_words(invalid_words)
+
         if not knowledge.known_words:
             console.print(
                 "\n[bold yellow]Your known words database is empty.[/bold yellow]\n"
@@ -2754,18 +2768,21 @@ def run_app(
             return
 
     if not loaded_session:
-        console = Console()
-        console.print("\n[bold yellow]Subtitle Source Selection[/bold yellow]")
-        console.print("1. Select a [cyan]local[/cyan] subtitle file")
-        console.print("2. Search and download from [cyan]online[/cyan] (subtitles.ajatt.top)")
-        console.print()
+        import questionary
 
         try:
-            source_choice = IntPrompt.ask(
-                "Select option",
-                choices=["1", "2"],
-                default=1,
-            )
+            choice_text = questionary.select(
+                "Subtitle Source Selection:",
+                choices=[
+                    "1. Select a local subtitle file",
+                    "2. Search and download from online (subtitles.ajatt.top)",
+                ],
+                default="1. Select a local subtitle file",
+            ).ask()
+            if choice_text is None:
+                print("\n[bold red]Operation cancelled.[/bold red]")
+                return
+            source_choice = 1 if choice_text.startswith("1") else 2
         except (KeyboardInterrupt, SystemExit):
             print("\n[bold red]Operation cancelled.[/bold red]")
             return
