@@ -187,8 +187,16 @@ def extract_media_package(
         if matches and len(list(screenshots_dir.glob("*.jpg"))) < len(matches):
             import concurrent.futures
             import os
+            from rich.progress import (
+                BarColumn,
+                MofNCompleteColumn,
+                Progress,
+                SpinnerColumn,
+                TaskProgressColumn,
+                TextColumn,
+                TimeRemainingColumn,
+            )
 
-            print(f"  [bold cyan]->[/bold cyan] Pre-extracting {len(matches)} subtitle screenshots (parallel)...")
             start_img = time.time()
             
             tasks = []
@@ -217,8 +225,21 @@ def extract_media_package(
                 subprocess.run(img_cmd, capture_output=True, text=True)
 
             max_workers = min(16, (os.cpu_count() or 4) * 2)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                list(executor.map(_extract_one, tasks))
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("  [bold cyan]->[/bold cyan] Pre-extracting screenshots"),
+                BarColumn(bar_width=30),
+                MofNCompleteColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+                transient=True,
+            ) as progress:
+                task_id = progress.add_task("extracting", total=len(tasks))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [executor.submit(_extract_one, task) for task in tasks]
+                    for future in concurrent.futures.as_completed(futures):
+                        future.result()
+                        progress.advance(task_id)
 
             img_elapsed = time.time() - start_img
             print(f"  [bold green]✓[/bold green] {len(matches)} screenshots extracted in [bold yellow]{img_elapsed:.2f}s[/bold yellow]")
