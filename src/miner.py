@@ -1543,9 +1543,8 @@ class CliApp:
             ):
                 continue
 
-            # Prefetch pitch accents and preview audio for the next 3 unknown words
+            # Prefetch pitch accents for the next 3 unknown words
             next_targets: List[Tuple[str, str]] = []
-            upcoming_cands: List[CandidateSentence] = []
             for next_cand in candidates[idx:]:
                 if len(next_targets) >= 3:
                     break
@@ -1553,7 +1552,6 @@ class CliApp:
                     knowledge.is_known(next_cand.unknown_word)
                     or knowledge.is_ignored(next_cand.unknown_word)
                 ):
-                    upcoming_cands.append(next_cand)
                     _, kana = lookup._get_best_entry_and_kana(
                         next_cand.unknown_word,
                         getattr(next_cand, "unknown_word_reading", None),
@@ -1562,14 +1560,6 @@ class CliApp:
                         next_targets.append((next_cand.unknown_word, kana))
             if next_targets:
                 asyncio.create_task(prefetch_pitch_accents(next_targets))
-            if upcoming_cands:
-                def _prefetch_audio_batch(cands: List[CandidateSentence]) -> None:
-                    for c in cands:
-                        try:
-                            self._extract_preview_audio(c)
-                        except Exception:
-                            pass
-                asyncio.create_task(asyncio.to_thread(_prefetch_audio_batch, upcoming_cands))
 
             print("  [bold cyan]->[/bold cyan] [1/3] Fetching dictionary & pitch accent...")
             t_dict_start = time.time()
@@ -1640,26 +1630,21 @@ class CliApp:
             print()
             t_render_elapsed = time.time() - t_render_start
 
-            print("  [bold cyan]->[/bold cyan] [3/3] Preparing preview audio...")
+            print("  [bold cyan]->[/bold cyan] [3/3] Playing preview audio...")
             t_audio_start = time.time()
             audio_proc = None
-
-            def _play_card_audio(candidate: CandidateSentence) -> None:
-                nonlocal audio_proc
-                audio_path = self._extract_preview_audio(candidate)
-                if audio_path and audio_path.exists():
-                    try:
-                        import subprocess
-                        audio_proc = subprocess.Popen(
-                            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(audio_path)],
-                            stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                        )
-                    except Exception:
-                        pass
-
-            asyncio.create_task(asyncio.to_thread(_play_card_audio, cand))
+            preview_audio = self._extract_preview_audio(cand)
+            if preview_audio and preview_audio.exists():
+                try:
+                    import subprocess
+                    audio_proc = subprocess.Popen(
+                        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(preview_audio)],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    audio_proc = None
             t_audio_elapsed = time.time() - t_audio_start
 
             print(f"  [dim]⏱ [Timing] Dict: {t_dict_elapsed:.3f}s │ Render: {t_render_elapsed:.3f}s │ Audio Play: {t_audio_elapsed:.3f}s[/dim]")
