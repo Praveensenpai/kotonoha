@@ -1507,6 +1507,14 @@ class CliApp:
         ignored_count = 0
         reviewed_count = 0
 
+        # Check Anki connection ONCE at session startup
+        self.anki_online = self.anki.is_running()
+        if self.anki_online:
+            print("  [bold green]✓ Connected to Anki Desktop.[/bold green]")
+        else:
+            print("  [bold yellow]ℹ Anki is offline. Cards will be saved locally for later sync.[/bold yellow]")
+        print()
+
         # Prefetch pitch accents for the first 3 unknown words
         first_targets: List[Tuple[str, str]] = []
         for cand in candidates:
@@ -1657,6 +1665,7 @@ class CliApp:
                         pass
 
             choice = choice.strip().lower()
+            t_action_start = time.time()
             if choice == "y":
                 added_count = self._mine_candidate(knowledge, cand, kana, definition)
                 mined_count += 1
@@ -1679,7 +1688,9 @@ class CliApp:
                 print("[bold yellow]Exiting app.[/bold yellow]")
                 break
 
-            # Print live session stats after card action
+            t_action_elapsed = time.time() - t_action_start
+
+            # Print live session stats & timing telemetry after card action
             print(
                 f"  [bold cyan]📊 Session Stats:[/bold cyan] "
                 f"[bold green]Mined: {mined_count}/{target_mined}[/bold green] │ "
@@ -1687,6 +1698,7 @@ class CliApp:
                 f"[bold yellow]Ignored: {ignored_count}[/bold yellow] │ "
                 f"[bold blue]Total Swiped: {reviewed_count}[/bold blue]"
             )
+            print(f"  [dim]⏱ [Timing] Action & Save: {t_action_elapsed:.3f}s[/dim]")
             print()
 
     def _extract_preview_audio(self, candidate: CandidateSentence) -> Optional[pathlib.Path]:
@@ -1915,7 +1927,7 @@ class CliApp:
     ) -> None:
         anki_note_id = None
         tags = [self.source_tag] if self.source_tag else None
-        if self.anki.is_running():
+        if getattr(self, "anki_online", False):
             anki_note_id = self.anki.add_card(
                 sentence,
                 word,
