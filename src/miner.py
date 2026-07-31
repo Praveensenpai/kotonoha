@@ -2036,8 +2036,100 @@ def run_app(
     clear_sessions: bool = typer.Option(
         False, "--clear-sessions", help="Interactively select and remove past sessions."
     ),
+    anime_stats: bool = typer.Option(
+        False,
+        "--anime-stats",
+        help="Interactively select an anime series to view learned target words sorted by difficulty.",
+    ),
 ) -> None:
     create_db_and_tables()
+    if anime_stats:
+        with get_session() as session:
+            cards = session.exec(select(MinedCard)).all()
+            if not cards:
+                print("[bold yellow]No mined cards found in database.[/bold yellow]")
+                return
+
+            from collections import defaultdict
+            import questionary
+
+            grouped_anime: Dict[str, List[MinedCard]] = defaultdict(list)
+            for card in cards:
+                tag = card.tags if card.tags else "Untagged / Manual"
+                grouped_anime[tag].append(card)
+
+            choices = []
+            tag_map = {}
+            for tag, card_list in grouped_anime.items():
+                clean_title = tag.replace("_", " ")
+                display_label = f"{clean_title} ({len(card_list)} words learned)"
+                choices.append(display_label)
+                tag_map[display_label] = (tag, card_list)
+
+            if not choices:
+                print("[bold yellow]No anime history available.[/bold yellow]")
+                return
+
+            try:
+                selected_label = questionary.select(
+                    "Select an Anime series to view learned target words:",
+                    choices=choices,
+                ).ask()
+            except (KeyboardInterrupt, SystemExit):
+                return
+
+            if not selected_label or selected_label not in tag_map:
+                return
+
+            tag, card_list = tag_map[selected_label]
+            freq = WordFrequency()
+
+            def _get_card_rank(c: MinedCard) -> int:
+                return freq.get_rank(c.target_word)
+
+            sorted_cards = sorted(card_list, key=_get_card_rank)
+
+            console = Console()
+            table = Table(
+                title=f"[bold yellow]Vocabulary Learned from: {tag.replace('_', ' ')}[/bold yellow]",
+                box=box.ROUNDED,
+                header_style="bold magenta",
+                border_style="dim cyan",
+            )
+            table.add_column("No.", justify="right", style="cyan", width=4)
+            table.add_column("Freq Rank", justify="right", style="yellow", width=12)
+            table.add_column("Target Word", style="bold green", width=14)
+            table.add_column("Reading", style="cyan", width=14)
+            table.add_column("Definition", style="white")
+            table.add_column("Date Mined", style="dim white", width=12)
+
+            for idx, c in enumerate(sorted_cards, 1):
+                rank = freq.get_rank(c.target_word)
+                rank_str = f"#{rank:,}" if rank < 100000 else "N/A"
+                date_str = c.created_at.strftime("%Y-%m-%d") if c.created_at else "N/A"
+                def_str = c.definition[:60] + "..." if len(c.definition) > 60 else c.definition
+                table.add_row(
+                    str(idx),
+                    rank_str,
+                    c.target_word,
+                    c.reading or "",
+                    def_str,
+                    date_str,
+                )
+
+            summary_panel = Panel(
+                f"[bold cyan]Anime Series:[/bold cyan] [bold yellow]{tag.replace('_', ' ')}[/bold yellow]\n"
+                f"[bold cyan]Total Target Words Learned:[/bold cyan] [bold green]{len(sorted_cards)}[/bold green]",
+                title="[bold green]Anime Vocabulary Overview[/bold green]",
+                expand=False,
+                padding=(1, 3),
+            )
+
+            console.print()
+            console.print(summary_panel)
+            console.print(table)
+            console.print()
+        return
     if history:
         with get_session() as session:
             cards = session.exec(select(MinedCard)).all()
