@@ -965,7 +965,7 @@ class DictLookup:
         except Exception:
             return None, ""
 
-    def get_definition(self, word: str, reading: str | None = None) -> Tuple[str, str]:
+    async def get_definition(self, word: str, reading: str | None = None) -> Tuple[str, str]:
         if word in GRAMMAR_DICT:
             return GRAMMAR_DICT[word]["definition"], GRAMMAR_DICT[word]["reading"]
         try:
@@ -982,7 +982,7 @@ class DictLookup:
                 if sense_glosses:
                     sense_list.append("; ".join(sense_glosses))
 
-            pitch = get_pitch_accent(word, kana)
+            pitch = await get_pitch_accent(word, kana)
             if pitch:
                 kana = f"{kana} [Pitch: {pitch}]"
 
@@ -1516,11 +1516,9 @@ class CliApp:
             print("  [bold yellow]ℹ Anki is offline. Cards will be saved locally for later sync.[/bold yellow]")
         print()
 
-        # Prefetch pitch accents for the first 3 unknown words
-        first_targets: List[Tuple[str, str]] = []
+        # Prefetch pitch accents for ALL upcoming candidate unknown words concurrently in background
+        all_targets: List[Tuple[str, str]] = []
         for cand in candidates:
-            if len(first_targets) >= 3:
-                break
             if not (
                 knowledge.is_known(cand.unknown_word)
                 or knowledge.is_ignored(cand.unknown_word)
@@ -1529,9 +1527,9 @@ class CliApp:
                     cand.unknown_word, getattr(cand, "unknown_word_reading", None)
                 )
                 if kana:
-                    first_targets.append((cand.unknown_word, kana))
-        if first_targets:
-            asyncio.create_task(prefetch_pitch_accents(first_targets))
+                    all_targets.append((cand.unknown_word, kana))
+        if all_targets:
+            asyncio.create_task(prefetch_pitch_accents(all_targets))
 
         for idx, cand in enumerate(candidates, 1):
             if mined_count >= target_mined:
@@ -1575,7 +1573,7 @@ class CliApp:
 
             print("  [bold cyan]->[/bold cyan] [1/3] Fetching dictionary & pitch accent...")
             t_dict_start = time.time()
-            definition, kana = lookup.get_definition(
+            definition, kana = await lookup.get_definition(
                 cand.unknown_word, getattr(cand, "unknown_word_reading", None)
             )
             if (not definition or definition == "No definition found.") and self.jpdb_vocab and cand.unknown_word in self.jpdb_vocab:
@@ -2248,9 +2246,9 @@ def run_app(
 
             # Print card preview for each content word
             for idx, token in enumerate(tokens, 1):
-                definition, reading = lookup.get_definition(
+                definition, reading = asyncio.run(lookup.get_definition(
                     token.lemma, getattr(token, "reading", None)
-                )
+                ))
                 is_known = knowledge.is_known(token.lemma)
 
                 status = (

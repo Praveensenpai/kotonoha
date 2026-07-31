@@ -9,14 +9,14 @@ from src.database import get_session, PitchAccentCache
 
 from typing import Optional
 
-_client: Optional[httpx.Client] = None
+_async_client: Optional[httpx.AsyncClient] = None
 
 
-def _get_client() -> httpx.Client:
-    global _client
-    if _client is None or _client.is_closed:
-        _client = httpx.Client(timeout=5.0)
-    return _client
+async def _get_async_client() -> httpx.AsyncClient:
+    global _async_client
+    if _async_client is None or _async_client.is_closed:
+        _async_client = httpx.AsyncClient(timeout=5.0)
+    return _async_client
 
 
 def count_morae(text: str) -> int:
@@ -25,7 +25,7 @@ def count_morae(text: str) -> int:
     return sum(1 for char in text if char not in small_kana)
 
 
-def get_pitch_accent(word: str, reading: str) -> str:
+async def get_pitch_accent(word: str, reading: str) -> str:
     """Queries the Jotoba API for pitch accent data of a specific word and reading.
 
     Returns a string of 'H' and 'L' representing High and Low pitch accents,
@@ -43,8 +43,8 @@ def get_pitch_accent(word: str, reading: str) -> str:
             return str(cached.pitch)
 
         try:
-            client = _get_client()
-            response = client.post("https://jotoba.de/api/search/words", json={"query": word, "language": "English"})
+            client = await _get_async_client()
+            response = await client.post("https://jotoba.de/api/search/words", json={"query": word, "language": "English"})
             if response.status_code != 200:
                 return ""
             res = response.json()
