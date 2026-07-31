@@ -1641,29 +1641,25 @@ class CliApp:
             t_render_elapsed = time.time() - t_render_start
 
             print("  [bold cyan]->[/bold cyan] [3/3] Preparing preview audio...")
-            # Play audio snippet if cached, or trigger extraction in background (non-blocking)
             t_audio_start = time.time()
             audio_proc = None
-            media_dir_target = (
-                pathlib.Path(config.media_dir).expanduser()
-                if config.media_dir
-                else self.subtitle_path.parent / "media"
-            )
-            preview_audio = media_dir_target / f"{cand.unknown_word}_{cand.sentence.index}.mp3"
-            if preview_audio.exists():
-                try:
-                    import subprocess
-                    audio_proc = subprocess.Popen(
-                        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(preview_audio)],
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                except Exception:
-                    audio_proc = None
-            else:
-                # Trigger extraction in background so prompt never waits for FFmpeg
-                asyncio.create_task(asyncio.to_thread(self._extract_preview_audio, cand))
+
+            def _play_card_audio(candidate: CandidateSentence) -> None:
+                nonlocal audio_proc
+                audio_path = self._extract_preview_audio(candidate)
+                if audio_path and audio_path.exists():
+                    try:
+                        import subprocess
+                        audio_proc = subprocess.Popen(
+                            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(audio_path)],
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                    except Exception:
+                        pass
+
+            asyncio.create_task(asyncio.to_thread(_play_card_audio, cand))
             t_audio_elapsed = time.time() - t_audio_start
 
             print(f"  [dim]⏱ [Timing] Dict: {t_dict_elapsed:.3f}s │ Render: {t_render_elapsed:.3f}s │ Audio Play: {t_audio_elapsed:.3f}s[/dim]")
