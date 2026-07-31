@@ -2965,6 +2965,16 @@ def run_app(
     _SKIP = "[Skip — no JPDB]"
 
     if cached_entries:
+        if subtitle_path:
+            from rapidfuzz import fuzz
+            target_name = f"{pathlib.Path(subtitle_path).stem} {pathlib.Path(video_path).stem if video_path else ''}".lower()
+
+            def _calc_similarity(entry: dict) -> float:
+                t = (entry.get("title") or entry.get("url") or "").lower()
+                return max(fuzz.token_set_ratio(target_name, t), fuzz.partial_ratio(target_name, t))
+
+            cached_entries.sort(key=_calc_similarity, reverse=True)
+
         choices = []
         for entry in cached_entries:
             label = entry["title"] if entry["title"] else entry["url"]
