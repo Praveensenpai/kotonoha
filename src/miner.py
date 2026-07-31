@@ -1503,6 +1503,9 @@ class CliApp:
         lookup: DictLookup,
     ) -> None:
         mined_count = 0
+        skipped_count = 0
+        ignored_count = 0
+        reviewed_count = 0
 
         # Prefetch pitch accents for the first 3 unknown words
         first_targets: List[Tuple[str, str]] = []
@@ -1533,8 +1536,9 @@ class CliApp:
             ):
                 continue
 
-            # Prefetch pitch accents for the next 3 unknown words
+            # Prefetch pitch accents and preview audio for the next 3 unknown words
             next_targets: List[Tuple[str, str]] = []
+            upcoming_cands: List[CandidateSentence] = []
             for next_cand in candidates[idx:]:
                 if len(next_targets) >= 3:
                     break
@@ -1542,6 +1546,7 @@ class CliApp:
                     knowledge.is_known(next_cand.unknown_word)
                     or knowledge.is_ignored(next_cand.unknown_word)
                 ):
+                    upcoming_cands.append(next_cand)
                     _, kana = lookup._get_best_entry_and_kana(
                         next_cand.unknown_word,
                         getattr(next_cand, "unknown_word_reading", None),
@@ -1550,6 +1555,14 @@ class CliApp:
                         next_targets.append((next_cand.unknown_word, kana))
             if next_targets:
                 asyncio.create_task(prefetch_pitch_accents(next_targets))
+            if upcoming_cands:
+                def _prefetch_audio_batch(cands: List[CandidateSentence]) -> None:
+                    for c in cands:
+                        try:
+                            self._extract_preview_audio(c)
+                        except Exception:
+                            pass
+                asyncio.create_task(asyncio.to_thread(_prefetch_audio_batch, upcoming_cands))
 
             definition, kana = lookup.get_definition(
                 cand.unknown_word, getattr(cand, "unknown_word_reading", None)
@@ -1647,18 +1660,34 @@ class CliApp:
             if choice == "y":
                 added_count = self._mine_candidate(knowledge, cand, kana, definition)
                 mined_count += 1
+                reviewed_count += 1
                 print(
                     f"[bold green]Successfully mined and added {added_count} new known "
                     f"word(s), including '{cand.unknown_word}'.[/bold green]"
                 )
             elif choice == "i":
                 knowledge.add_ignored(cand.unknown_word)
+                ignored_count += 1
+                reviewed_count += 1
                 print(
                     f"[bold yellow]Added '{cand.unknown_word}' to ignored words list.[/bold yellow]"
                 )
+            elif choice == "n":
+                skipped_count += 1
+                reviewed_count += 1
             elif choice == "q":
                 print("[bold yellow]Exiting app.[/bold yellow]")
                 break
+
+            # Print live session stats after card action
+            print(
+                f"  [bold cyan]📊 Session Stats:[/bold cyan] "
+                f"[bold green]Mined: {mined_count}/{target_mined}[/bold green] │ "
+                f"[bold red]Skipped: {skipped_count}[/bold red] │ "
+                f"[bold yellow]Ignored: {ignored_count}[/bold yellow] │ "
+                f"[bold blue]Total Swiped: {reviewed_count}[/bold blue]"
+            )
+            print()
 
     def _extract_preview_audio(self, candidate: CandidateSentence) -> Optional[pathlib.Path]:
         """Extracts (or retrieves cached) preview audio snippet for candidate card."""
