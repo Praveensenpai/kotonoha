@@ -224,7 +224,10 @@ def extract_media_package(
                 ]
                 subprocess.run(img_cmd, capture_output=True, text=True)
 
-            max_workers = min(16, (os.cpu_count() or 4) * 2)
+            # Limit concurrent FFmpeg workers to prevent high RAM & 100% CPU usage on all cores
+            max_workers = max(1, min(4, (os.cpu_count() or 4) // 2))
+            from rich import print
+            print(f"  [bold cyan]⚙[/bold cyan] Worker Pool: [bold yellow]{max_workers}[/bold yellow] parallel FFmpeg threads [dim]({os.cpu_count() or 4} CPU cores detected)[/dim]")
             with Progress(
                 SpinnerColumn(),
                 TextColumn("  [bold cyan]->[/bold cyan] Pre-extracting screenshots"),
