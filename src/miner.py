@@ -1,4 +1,5 @@
 import asyncio
+import time
 import typer
 from rich import print
 from rich import box
