@@ -1630,8 +1630,7 @@ class CliApp:
                     audio_proc = None
 
             try:
-                choice = await asyncio.to_thread(
-                    Prompt.ask,
+                choice = Prompt.ask(
                     "Mine this card? (y/n/i to ignore/q to quit)",
                     choices=["y", "n", "i", "q"],
                     default="n",
