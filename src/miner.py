@@ -1573,6 +1573,8 @@ class CliApp:
                             pass
                 asyncio.create_task(asyncio.to_thread(_prefetch_audio_batch, upcoming_cands))
 
+            print("  [bold cyan]->[/bold cyan] [1/3] Fetching dictionary & pitch accent...")
+            t_dict_start = time.time()
             definition, kana = lookup.get_definition(
                 cand.unknown_word, getattr(cand, "unknown_word_reading", None)
             )
@@ -1580,6 +1582,7 @@ class CliApp:
                 jpdb_def = self.jpdb_vocab[cand.unknown_word].get("definition")
                 if jpdb_def:
                     definition = jpdb_def
+            t_dict_elapsed = time.time() - t_dict_start
 
             display_word = (
                 f"{cand.unknown_word} ({kana})"
@@ -1626,6 +1629,8 @@ class CliApp:
                 f"[bold cyan]Adjusted Score:[/bold cyan] [bold green]{cand.score:.2f}[/bold green]"
             )
 
+            print("  [bold cyan]->[/bold cyan] [2/3] Rendering candidate card...")
+            t_render_start = time.time()
             Console().print(
                 Panel(
                     card_info,
@@ -1635,11 +1640,19 @@ class CliApp:
                 )
             )
             print()
+            t_render_elapsed = time.time() - t_render_start
 
-            # Automatically play audio snippet in background during card review
+            print("  [bold cyan]->[/bold cyan] [3/3] Preparing preview audio...")
+            # Play audio snippet if cached, or trigger extraction in background (non-blocking)
+            t_audio_start = time.time()
             audio_proc = None
-            preview_audio = self._extract_preview_audio(cand)
-            if preview_audio and preview_audio.exists():
+            media_dir_target = (
+                pathlib.Path(config.media_dir).expanduser()
+                if config.media_dir
+                else self.subtitle_path.parent / "media"
+            )
+            preview_audio = media_dir_target / f"{cand.unknown_word}_{cand.sentence.index}.mp3"
+            if preview_audio.exists():
                 try:
                     import subprocess
                     audio_proc = subprocess.Popen(
@@ -1650,6 +1663,12 @@ class CliApp:
                     )
                 except Exception:
                     audio_proc = None
+            else:
+                # Trigger extraction in background so prompt never waits for FFmpeg
+                asyncio.create_task(asyncio.to_thread(self._extract_preview_audio, cand))
+            t_audio_elapsed = time.time() - t_audio_start
+
+            print(f"  [dim]⏱ [Timing] Dict: {t_dict_elapsed:.3f}s │ Render: {t_render_elapsed:.3f}s │ Audio Play: {t_audio_elapsed:.3f}s[/dim]")
 
             try:
                 choice = Prompt.ask(

@@ -7,6 +7,18 @@ from sqlmodel import select
 from src.database import get_session, PitchAccentCache
 
 
+from typing import Optional
+
+_client: Optional[httpx.Client] = None
+
+
+def _get_client() -> httpx.Client:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.Client(timeout=5.0)
+    return _client
+
+
 def count_morae(text: str) -> int:
     """Helper to count the number of morae in a Japanese string, ignoring small kana."""
     small_kana = set("ゃゅょぁぃぅぇぉャュョァィゥェォ")
@@ -30,37 +42,35 @@ def get_pitch_accent(word: str, reading: str) -> str:
         if cached:
             return str(cached.pitch)
 
-        url = "https://jotoba.de/api/search/words"
-        data = json.dumps({"query": word, "language": "English"}).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"}
-        )
         try:
-            with urllib.request.urlopen(req, timeout=1.5) as response:
-                res = json.loads(response.read().decode())
+            client = _get_client()
+            response = client.post("https://jotoba.de/api/search/words", json={"query": word, "language": "English"})
+            if response.status_code != 200:
+                return ""
+            res = response.json()
 
-                pitch_str = ""
-                if res.get("words"):
-                    for w in res["words"]:
-                        w_kana = w["reading"]["kana"]
-                        w_kanji = w["reading"].get("kanji", w_kana)
-                        if w_kanji == word or w_kana == reading:
-                            pitch_data = w.get("pitch")
-                            if pitch_data:
-                                for part in pitch_data:
-                                    mora_count = count_morae(part["part"])
-                                    pitch_char = "H" if part["high"] else "L"
-                                    pitch_str += pitch_char * mora_count
-                                break
+            pitch_str = ""
+            if res.get("words"):
+                for w in res["words"]:
+                    w_kana = w["reading"]["kana"]
+                    w_kanji = w["reading"].get("kanji", w_kana)
+                    if w_kanji == word or w_kana == reading:
+                        pitch_data = w.get("pitch")
+                        if pitch_data:
+                            for part in pitch_data:
+                                mora_count = count_morae(part["part"])
+                                pitch_char = "H" if part["high"] else "L"
+                                pitch_str += pitch_char * mora_count
+                            break
 
-                # Cache the result (even if empty string to avoid repeated API calls for words with no pitch)
-                new_cache = PitchAccentCache(
-                    word=word, reading=reading, pitch=pitch_str
-                )
-                session.add(new_cache)
-                session.commit()
+            # Cache the result (even if empty string to avoid repeated API calls for words with no pitch)
+            new_cache = PitchAccentCache(
+                word=word, reading=reading, pitch=pitch_str
+            )
+            session.add(new_cache)
+            session.commit()
 
-                return pitch_str
+            return pitch_str
         except Exception:
             return ""
 
@@ -92,7 +102,7 @@ async def prefetch_pitch_accents(words_and_readings: list[tuple[str, str]]) -> N
         url = "https://jotoba.de/api/search/words"
         payload = {"query": word, "language": "English"}
         try:
-            response = await client.post(url, json=payload, timeout=2.0)
+            response = await client.post(url, json=payload, timeout=5.0)
             if response.status_code == 200:
                 res = response.json()
                 pitch_str = ""
