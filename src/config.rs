@@ -20,7 +20,7 @@ impl Default for AppConfig {
             .map(|p| p.join("kotonoha"))
             .unwrap_or_else(|| home.join(".config/kotonoha"));
 
-        let media_dir = home.join("Music/immersionpod/media");
+        let media_dir = home.join(".local/share/kotonoha/media");
 
         Self {
             default_card_limit: 25,
