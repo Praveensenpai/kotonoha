@@ -1636,9 +1636,18 @@ class CliApp:
             preview_audio = self._extract_preview_audio(cand)
             if preview_audio and preview_audio.exists():
                 try:
-                    import subprocess
+                    import shutil, subprocess
+                    if shutil.which("mpv"):
+                        cmd = ["mpv", "--no-video", "--really-quiet", "--no-terminal", str(preview_audio)]
+                    elif shutil.which("pw-play"):
+                        cmd = ["pw-play", str(preview_audio)]
+                    elif shutil.which("paplay"):
+                        cmd = ["paplay", str(preview_audio)]
+                    else:
+                        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(preview_audio)]
+
                     audio_proc = subprocess.Popen(
-                        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(preview_audio)],
+                        cmd,
                         stdin=subprocess.DEVNULL,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
