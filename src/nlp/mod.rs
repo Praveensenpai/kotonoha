@@ -59,8 +59,21 @@ impl JapaneseTokenizer {
             let pos: Vec<String> = node.part_of_speech().iter().map(|s| s.to_string()).collect();
 
             let pos_category = pos.first().map(|s| s.as_str()).unwrap_or("");
+            let pos_sub = pos.get(1).map(|s| s.as_str()).unwrap_or("");
+
+            // Filter symbols, interjections, punctuation, particles, numbers
+            let is_symbol_or_junk = matches!(pos_category, "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞")
+                || matches!(pos_sub, "数詞" | "非自立" | "接尾")
+                || matches!(dictionary_form.as_str(), "…" | "？" | "！" | "♪" | "―" | "ー" | "、" | "。" | "～" | "する" | "いる" | "ある" | "なる" | "の" | "ん" | "よう" | "こと" | "もの" | "あ" | "え" | "お" | "う" | "い");
+
+            let has_japanese_char = dictionary_form.chars().any(|c| {
+                matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FFF}')
+            });
+
             let is_content_word = matches!(pos_category, "名詞" | "動詞" | "形容詞" | "副詞")
-                && !matches!(dictionary_form.as_str(), "する" | "いる" | "ある" | "なる" | "の" | "ん" | "よう" | "こと" | "もの");
+                && !is_symbol_or_junk
+                && has_japanese_char
+                && dictionary_form.chars().count() >= 2;
 
             tokens.push(TokenInfo {
                 surface,
