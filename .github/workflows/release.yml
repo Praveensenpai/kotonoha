@@ -31,12 +31,47 @@ jobs:
         run: |
           mkdir -p staging
           cp target/release/kotonoha staging/
-          cp README.md LICENSE staging/ 2>/dev/null || true
+          cp README.md LICENSE config.toml.example staging/ 2>/dev/null || true
           tar -czvf kotonoha-x86_64-unknown-linux-gnu.tar.gz -C staging .
+
+      - name: Generate Rich Release Notes
+        id: release_notes
+        run: |
+          cat << 'EOF' > RELEASE_NOTES.md
+          ## 🌸 言の葉 (kotonoha) ${{ github.ref_name }}
+
+          > **Blazing-fast CLI Japanese $i+1$ sentence miner & card generator for passive immersion.**
+
+          ---
+
+          ### ✨ Key Highlights
+
+          - **⚡ Sub-Millisecond Morphological Analysis**: Powered by official [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) engine from WorksApplications.
+          - **🎯 Smart $i+1$ Candidate Filtering**: Automatically identifies sentences containing 1 unknown content word and ranks them by JPDB frequency and sentence length.
+          - **🖥️ 100% Terminal TUI**: Fully keyboard-driven interactive card review using [`inquire`](https://crates.io/crates/inquire) (arrow keys `↑`/`↓` and `Enter`).
+          - **🔊 Interactive Audio Replay (`r`)**: Replay preview audio snippet as many times as you want before deciding to mine (`y`), skip (`n`), or ignore (`i`).
+          - **🎬 Single-Pass Media Extraction**: Extracts precise audio snippets (`.mp3`) and screenshot thumbnails (`.jpg`) via `ffmpeg`.
+          - **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.config/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
+
+          ---
+
+          ### 🪄 Quick Installation
+
+          ```bash
+          curl -sSL https://raw.githubusercontent.com/Praveensenpai/kotonoha/main/install.sh | bash
+          ```
+
+          ---
+
+          ### 📦 Pre-compiled Assets
+          - `kotonoha-x86_64-unknown-linux-gnu.tar.gz`: Pre-compiled release binary & configuration template for Linux (x86_64).
+          EOF
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: "🌸 kotonoha ${{ github.ref_name }}"
+          body_path: RELEASE_NOTES.md
           files: kotonoha-x86_64-unknown-linux-gnu.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
