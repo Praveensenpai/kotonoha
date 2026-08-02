@@ -1,0 +1,30 @@
+[package]
+name = "kotonoha"
+version = "0.1.0"
+edition = "2021"
+description = "言の葉 — Blazing-fast CLI Japanese $i+1$ sentence miner & card generator"
+authors = ["Praveensenpai"]
+repository = "https://github.com/Praveensenpai/kotonoha"
+license = "MIT"
+
+[[bin]]
+name = "kotonoha"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+inquire = "0.7"
+indicatif = "0.17"
+console = "0.15"
+regex = "1.10"
+md5 = "0.7"
+urlencoding = "2.1"
+anyhow = "1.0"
+toml = "0.8"
+walkdir = "2.5"
+dirs = "5.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git" }

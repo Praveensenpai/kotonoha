@@ -1,58 +1,67 @@
-<div align="center">
+# 🌸 言の葉 (kotonoha)
 
-# `nihongo-miner` 
-**[ にほんご マイナー ]**
+> **Blazing-fast CLI Japanese $i+1$ sentence miner & card generator for passive immersion.**
 
-> *Stop hunting. Start immersing.*
-> An offline, CLI-first sentence miner for AJATT & immersion learners.
+[![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Sudachi](https://img.shields.io/badge/NLP-sudachi.rs-pink.svg)](https://github.com/WorksApplications/sudachi.rs)
 
-</div>
-
----
-
-## ✦ vision 
-
-Anime immersion is the best way to learn Japanese, but finding the perfect $i+1$ sentences (just one unknown word) in a 24-minute episode takes hours. 
-
-`nihongo-miner` analyzes subtitle files against your known vocabulary and recommends the absolute best sentences to mine for Anki, ranked by anime word frequency and sentence length.
+`kotonoha` is a high-performance terminal utility that scans Japanese anime subtitle files (`.srt` / `.ass`) and video files (`.mkv` / `.mp4`), extracts $i+1$ candidate sentences (sentences containing **exactly one unknown vocabulary word**), renders an interactive TUI card preview with definitions & audio snippets, and saves mined cards to a local SQLite database or Anki.
 
 ---
 
-## ✦ features
+## ⚡ Key Features
 
-- **$i+1$ Filtering** ─ Automatically extracts sentences with exactly ONE unknown word.
-- **Interactive Known-Words Bootstrapping** ─ Select and bulk-add known words from the top 100 easiest words on startup (via a keyboard-driven terminal checkbox list).
-- **Smart NLP** ─ Powered by `SudachiPy`. Ignores particles, conjugations, and grammar filler.
-- **Anime Frequency Ranking** ─ Sorts candidate sentences based on anime word frequencies. 
-- **Offline Dictionary** ─ Integrated with `jamdict` for instant English definitions.
-- **Auto-Learning** ─ Automatically updates your "Known Words" database in the background.
+- **⚡ Sub-Millisecond Morphological Analysis**: Powered by the official [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) engine from WorksApplications.
+- **🎯 Smart $i+1$ Candidate Filtering**: Automatically identifies sentences containing 1 unknown content word and ranks them by JPDB frequency and sentence length.
+- **🖥️ 100% Terminal TUI**: Fully keyboard-driven interactive card review using [`inquire`](https://crates.io/crates/inquire) (arrow keys `↑`/`↓` and `Enter`).
+- **🎧 Non-Blocking Preview Audio**: Background audio playback via `mpv` daemon—zero terminal freeze or input locking.
+- **🎬 Single-Pass Media Extraction**: Extracts precise audio snippets (`.mp3`) and screenshot thumbnails (`.jpg`) via `ffmpeg`.
+- **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.config/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
 
 ---
 
-## ✦ setup
+## 🚀 Quick Start
 
-Requires `uv`.
+### Installation
 
 ```bash
-# clone & install
-$ git clone git@github.com:Praveensenpai/nihongo-miner.git
-$ cd nihongo-miner
-$ uv sync
+git clone https://github.com/Praveensenpai/kotonoha.git
+cd kotonoha
+cargo build --release
+install -Dm 755 target/release/kotonoha ~/.local/bin/kotonoha
 ```
 
 ---
 
-## ✦ usage
+## 📖 Usage
 
-Just run the miner, and a beautiful GUI file picker will pop up to let you select your subtitle file.
-
+### 1. Interactive TUI File Picker
+Simply run `kotonoha` without arguments to launch the interactive terminal file picker:
 ```bash
-# launch the app
-$ uv run python main.py
+kotonoha
+```
+
+### 2. Direct File Argument
+Pass a subtitle or video file path directly:
+```bash
+kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
 ```
 
 ---
 
-<div align="center">
-  <i>Read, listen, and mine.</i>
-</div>
+## 🛠️ Architecture & Tech Stack
+
+| Component | Technology | Description |
+| :--- | :--- | :--- |
+| **Language** | Rust 2021 | Native speed & memory safety |
+| **Japanese NLP** | [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) | WorksApplications Japanese tokenizer & POS analyzer |
+| **Database** | SQLite (`rusqlite`) | Local storage for known words & mined cards |
+| **TUI Engine** | `inquire` & `console` | Styled terminal prompts and card boxes |
+| **Media Engine** | `ffmpeg` & `mpv` | Headless audio extraction and background preview |
+
+---
+
+## 📜 License
+
+Distributed under the [MIT License](LICENSE).
