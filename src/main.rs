@@ -22,6 +22,22 @@ use ui::TerminalUi;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if let Some(arg) = std::env::args().nth(1) {
+        if arg == "--version" || arg == "-v" {
+            println!("kotonoha {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        if arg == "--help" || arg == "-h" {
+            println!("🌸 kotonoha {} — Japanese i+1 Sentence Miner", env!("CARGO_PKG_VERSION"));
+            println!("\nUSAGE:");
+            println!("  kotonoha                       Launch interactive TUI file picker");
+            println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
+            println!("  kotonoha --version | -v        Print version information");
+            println!("  kotonoha --help    | -h        Show help information");
+            return Ok(());
+        }
+    }
+
     println!("\n┌───────────────────────────────────────────────────────────────┐");
     println!("│      🌸  K O T O N O H A  ──  Japanese $i+1$ Sentence Miner    │");
     println!("└───────────────────────────────────────────────────────────────┘\n");
