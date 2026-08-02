@@ -1,6 +1,6 @@
 use anyhow::Result;
 use console::Style;
-use inquire::{Select, Text};
+use inquire::{MultiSelect, Select, Text};
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
@@ -40,6 +40,32 @@ impl TerminalUi {
         let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
         let selected = Select::new("Select Subtitle or Anime Video File:", items).prompt()?;
         Ok(PathBuf::from(selected))
+    }
+
+    pub fn bootstrap_known_words(vocab_items: &[(String, usize)]) -> Result<Vec<String>> {
+        if vocab_items.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let options: Vec<String> = vocab_items
+            .iter()
+            .map(|(word, count)| format!("{} ({} occurrences)", word, count))
+            .collect();
+
+        let selected_indices = MultiSelect::new(
+            "Select words you ALREADY KNOW (Space to toggle, Enter to confirm):",
+            options,
+        )
+        .prompt()?;
+
+        let mut checked_words = Vec::new();
+        for item in selected_indices {
+            if let Some(word) = item.split_whitespace().next() {
+                checked_words.push(word.to_string());
+            }
+        }
+
+        Ok(checked_words)
     }
 
     pub fn render_card(

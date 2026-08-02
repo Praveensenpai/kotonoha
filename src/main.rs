@@ -17,7 +17,8 @@ use media::MediaExtractor;
 use miner::MiningEngine;
 use nlp::JapaneseTokenizer;
 use srt::parse_subtitle;
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use ui::TerminalUi;
 
 #[tokio::main]
@@ -74,10 +75,36 @@ async fn main() -> Result<()> {
     println!(" ✔ Parsed {} subtitle lines", sentences.len());
 
     let tokenizer = JapaneseTokenizer::new()?;
-    let engine = MiningEngine::new(tokenizer);
 
     let known_words = db.get_known_words()?;
     let ignored_words = db.get_ignored_words()?;
+
+    // Bootstrap Vocabulary: Extract top unknown content words by frequency
+    let mut word_counts: HashMap<String, usize> = HashMap::new();
+    for sub in &sentences {
+        if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
+            for t in tokens {
+                if t.is_content_word && !known_words.contains(&t.dictionary_form) && !ignored_words.contains(&t.dictionary_form) {
+                    *word_counts.entry(t.dictionary_form).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    let mut top_vocab: Vec<(String, usize)> = word_counts.into_iter().collect();
+    top_vocab.sort_by(|a, b| b.1.cmp(&a.1));
+    let bootstrap_candidates: Vec<(String, usize)> = top_vocab.into_iter().take(25).collect();
+
+    if !bootstrap_candidates.is_empty() {
+        let newly_known = TerminalUi::bootstrap_known_words(&bootstrap_candidates)?;
+        if !newly_known.is_empty() {
+            let count = db.add_known_words(&newly_known)?;
+            println!(" ✔ Marked {} words as known!", count);
+        }
+    }
+
+    let known_words = db.get_known_words()?;
+    let engine = MiningEngine::new(tokenizer);
     let jpdb_list = JpdbVocabList::load_or_fetch("https://jpdb.io/vocabulary-list")?;
 
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
