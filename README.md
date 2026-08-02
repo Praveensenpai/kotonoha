@@ -23,7 +23,17 @@
 
 ## 🚀 Quick Start
 
-### Installation
+### 🪄 One-Liner Magic (Recommended)
+
+Paste this into your terminal to install `kotonoha` automatically:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Praveensenpai/kotonoha/main/install.sh | bash
+```
+
+<br>
+
+### 🛠️ Building From Source
 
 ```bash
 git clone https://github.com/Praveensenpai/kotonoha.git
