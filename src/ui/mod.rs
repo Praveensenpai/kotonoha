@@ -78,6 +78,7 @@ impl TerminalUi {
     pub fn ask_action() -> Result<char> {
         let options = vec![
             "⛏️  Mine this card (y)",
+            "🔊  Replay preview audio (r)",
             "⏭️  Skip to next card (n)",
             "🚫  Ignore target word (i)",
             "🚪  Quit (q)",
@@ -86,6 +87,8 @@ impl TerminalUi {
         let ans = Select::new("Mine this card?", options).prompt()?;
         if ans.contains("(y)") {
             Ok('y')
+        } else if ans.contains("(r)") {
+            Ok('r')
         } else if ans.contains("(i)") {
             Ok('i')
         } else if ans.contains("(q)") {

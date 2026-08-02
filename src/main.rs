@@ -17,7 +17,7 @@ use media::MediaExtractor;
 use miner::MiningEngine;
 use nlp::JapaneseTokenizer;
 use srt::parse_subtitle;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ui::TerminalUi;
 
 #[tokio::main]
@@ -36,15 +36,22 @@ async fn main() -> Result<()> {
 
     println!(" ℹ Loading media file: {}", input_path.display());
 
-    let subtitle_path = if input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase() == "mkv" {
-        let sub_candidate = input_path.with_extension("ja.srt");
-        if sub_candidate.exists() {
-            sub_candidate
+    let ext = input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+    let (subtitle_path, video_path) = if ext == "srt" || ext == "ass" {
+        let mkv = input_path.with_extension("mkv");
+        let mp4 = input_path.with_extension("mp4");
+        let vid = if mkv.exists() {
+            mkv
+        } else if mp4.exists() {
+            mp4
         } else {
             input_path.clone()
-        }
+        };
+        (input_path.clone(), vid)
     } else {
-        input_path.clone()
+        let srt = input_path.with_extension("ja.srt");
+        let sub = if srt.exists() { srt } else { input_path.clone() };
+        (sub, input_path.clone())
     };
 
     let sentences = parse_subtitle(&subtitle_path)?;
@@ -92,43 +99,61 @@ async fn main() -> Result<()> {
         );
 
         let audio_path = cfg.media_dir.join(format!("{}_{}.mp3", cand.target_word, cand.sentence.index));
-        let _ = MediaExtractor::extract_preview_audio(&subtitle_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
+        let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
 
-        let audio_child = MediaExtractor::play_preview_audio(&audio_path);
+        let mut audio_child = MediaExtractor::play_preview_audio(&audio_path);
 
-        let action = TerminalUi::ask_action()?;
+        let mut user_quit = false;
+        loop {
+            let action = TerminalUi::ask_action()?;
 
-        if let Some(mut child) = audio_child {
-            let _ = child.kill();
+            if action == 'r' {
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
+                audio_child = MediaExtractor::play_preview_audio(&audio_path);
+                continue;
+            }
+
+            if let Some(mut child) = audio_child.take() {
+                let _ = child.kill();
+            }
+
+            match action {
+                'y' => {
+                    let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
+                    let _ = MediaExtractor::extract_screenshot(&video_path, cand.sentence.start_ms, &image_path);
+
+                    db.save_mined_card(
+                        &cand.sentence.text,
+                        &cand.target_word,
+                        &dict_info.reading,
+                        &dict_info.definition,
+                        Some(&audio_path.to_string_lossy()),
+                        Some(&image_path.to_string_lossy()),
+                    )?;
+
+                    let _ = db.add_known_words(&[cand.target_word.clone()]);
+                    mined_count += 1;
+                    println!(" ✔ Card mined successfully!");
+                    break;
+                }
+                'i' => {
+                    let _ = db.add_ignored_word(&cand.target_word);
+                    println!(" 🚫 Target word ignored.");
+                    break;
+                }
+                'q' => {
+                    println!(" 🚪 Exiting mining session.");
+                    user_quit = true;
+                    break;
+                }
+                _ => break,
+            }
         }
 
-        match action {
-            'y' => {
-                let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
-                let _ = MediaExtractor::extract_screenshot(&subtitle_path, cand.sentence.start_ms, &image_path);
-
-                db.save_mined_card(
-                    &cand.sentence.text,
-                    &cand.target_word,
-                    &dict_info.reading,
-                    &dict_info.definition,
-                    Some(&audio_path.to_string_lossy()),
-                    Some(&image_path.to_string_lossy()),
-                )?;
-
-                let _ = db.add_known_words(&[cand.target_word.clone()]);
-                mined_count += 1;
-                println!(" ✔ Card mined successfully!");
-            }
-            'i' => {
-                let _ = db.add_ignored_word(&cand.target_word);
-                println!(" 🚫 Target word ignored.");
-            }
-            'q' => {
-                println!(" 🚪 Exiting mining session.");
-                break;
-            }
-            _ => continue,
+        if user_quit {
+            break;
         }
     }
 
