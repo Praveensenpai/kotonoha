@@ -1,0 +1,18 @@
+# 🌸 kotonoha Configuration File
+
+# Default maximum cards to mine per session
+default_card_limit = 25
+
+# Media storage directory for audio snippets & screenshots
+media_dir = "~/.local/share/kotonoha/media"
+
+# SQLite database file path
+db_path = "~/.config/kotonoha/kotonoha.db"
+
+# Audio padding around sentence timestamps (seconds)
+audio_padding_secs = 0.25
+
+# AnkiConnect Integration
+enable_anki_sync = true
+anki_connect_url = "http://127.0.0.1:8765"
+anki_deck_name = "Japanese::Mining"

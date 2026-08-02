@@ -4,6 +4,7 @@ set -e
 REPO="Praveensenpai/kotonoha"
 BINARY_NAME="kotonoha"
 INSTALL_DIR="$HOME/.local/bin"
+CONFIG_DIR="$HOME/.config/kotonoha"
 
 echo "🌸 Installing kotonoha (言の葉)..."
 
@@ -18,6 +19,13 @@ fi
 if [ "$ARCH" != "x86_64" ]; then
     echo "❌ Currently only x86_64 architecture is supported."
     exit 1
+fi
+
+# Deploy default config.toml if missing
+mkdir -p "$CONFIG_DIR"
+if [ ! -f "$CONFIG_DIR/config.toml" ]; then
+    echo "⚙️  Deploying default config to $CONFIG_DIR/config.toml..."
+    curl -sSL "https://raw.githubusercontent.com/$REPO/main/config.toml.example" -o "$CONFIG_DIR/config.toml" || true
 fi
 
 TAG=$(curl -sSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
