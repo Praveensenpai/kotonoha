@@ -51,26 +51,40 @@ impl TerminalUi {
         jpdb_rank: Option<u32>,
         definition: &str,
         known_context: &[String],
+        unknown_context: &[String],
     ) {
         let cyan = Style::new().cyan().bold();
         let yellow = Style::new().yellow().bold();
         let green = Style::new().green().bold();
-        let dim = Style::new().dim();
+        let red = Style::new().red().bold();
 
         let rank_str = format!("RANK #{}", rank);
         let border = "─".repeat(50);
 
+        let highlighted_sentence = sentence.replace(target_word, &green.apply_to(target_word).to_string());
+
+        let unknown_str = if unknown_context.is_empty() {
+            "None (i+1 target)".to_string()
+        } else {
+            unknown_context.join(", ")
+        };
+
+        let known_str = if known_context.is_empty() {
+            "None".to_string()
+        } else {
+            known_context.join(", ")
+        };
+
         println!("\n┌─ {} {} ┐", yellow.apply_to(&rank_str), border);
         println!("│ ");
-        println!("│  Sentence:    {}", cyan.apply_to(sentence));
-        println!("│  Target Word: {} ({} [Pitch: {}])", green.apply_to(target_word), reading, pitch);
+        println!("│  Sentence:       {}", highlighted_sentence);
+        println!("│  Target Word:    {} ({} [Pitch: {}])", green.apply_to(target_word), reading, pitch);
         if let Some(r) = jpdb_rank {
-            println!("│  JPDB Rank:   #{}", r);
+            println!("│  JPDB Rank:      #{}", r);
         }
-        println!("│  Definition:  {}", definition);
-        if !known_context.is_empty() {
-            println!("│  Known Words: {}", dim.apply_to(known_context.join(", ")));
-        }
+        println!("│  Definitions:    {}", definition);
+        println!("│  Unknown Words:  {}", red.apply_to(&unknown_str));
+        println!("│  Known Words:    {}", cyan.apply_to(&known_str));
         println!("│ ");
         println!("└{}┘\n", "─".repeat(54));
     }

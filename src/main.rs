@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
             cand.jpdb_rank,
             &dict_info.definition,
             &cand.known_context_words,
+            &cand.unknown_context_words,
         );
 
         let audio_path = cfg.media_dir.join(format!("{}_{}.mp3", cand.target_word, cand.sentence.index));

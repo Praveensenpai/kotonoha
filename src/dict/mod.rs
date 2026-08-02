@@ -26,20 +26,25 @@ impl DictionaryService {
 
                 let mut defs = Vec::new();
                 if let Some(senses) = data["senses"].as_array() {
-                    for sense in senses.iter().take(2) {
+                    for (i, sense) in senses.iter().take(5).enumerate() {
                         if let Some(english) = sense["english_definitions"].as_array() {
                             let items: Vec<&str> = english.iter().filter_map(|v| v.as_str()).collect();
+                            let pos_str = sense["parts_of_speech"]
+                                .as_array()
+                                .and_then(|a| a.first())
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("def");
                             if !items.is_empty() {
-                                defs.push(items.join(", "));
+                                defs.push(format!("{}. [{}] {}", i + 1, pos_str, items.join(", ")));
                             }
                         }
                     }
                 }
 
                 let definition = if defs.is_empty() {
-                    "definition unavailable".to_string()
+                    "1. [def] vocabulary word".to_string()
                 } else {
-                    defs.join("; ")
+                    defs.join("\n│                 ")
                 };
 
                 return Ok(LookupResult {
@@ -54,7 +59,7 @@ impl DictionaryService {
         Ok(LookupResult {
             expression: word.to_string(),
             reading: word.to_string(),
-            definition: "vocabulary word".to_string(),
+            definition: "1. [def] vocabulary word".to_string(),
             pitch_accent: "LH".to_string(),
         })
     }
