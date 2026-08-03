@@ -225,7 +225,25 @@ impl TerminalUi {
         let mut sorted_sentences = sentences.to_vec();
         sorted_sentences.sort_by_key(|s| s.start_ms);
 
-        println!("\n🔍 Inspecting {} subtitle lines (sorted by subtitle timing):\n", sorted_sentences.len());
+        let mut file_known = std::collections::HashSet::new();
+        let mut file_unknown = std::collections::HashSet::new();
+
+        for sub in &sorted_sentences {
+            if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
+                for t in tokens {
+                    if t.is_content_word && !ignored_words.contains(&t.dictionary_form) {
+                        if known_words.contains(&t.dictionary_form) {
+                            file_known.insert(t.dictionary_form.clone());
+                        } else {
+                            file_unknown.insert(t.dictionary_form.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("\n🔍 Inspecting {} subtitle lines (sorted by subtitle timing):", sorted_sentences.len());
+        println!("   Stats: {} | {}", blue.apply_to(&format!("{} Known Words", file_known.len())), red.apply_to(&format!("{} Unknown Words", file_unknown.len())));
         println!("   Legend: {} | {} | {}\n", blue.apply_to("Known Word"), red.apply_to("Unknown Word"), dim.apply_to("Grammar/Ignored"));
         println!("{}\n", "─".repeat(70));
 
