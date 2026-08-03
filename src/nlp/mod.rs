@@ -70,9 +70,17 @@ impl JapaneseTokenizer {
                 matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FFF}')
             });
 
+            // Single hiragana/katakana are always filler (そ, ぞ, ア…) — block them.
+            // Single kanji are legitimate content words (仲, 愛, 心) — allow them.
+            let is_single_kana = dictionary_form.chars().count() == 1
+                && dictionary_form.chars().all(|c| {
+                    matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}')
+                });
+
             let is_content_word = matches!(pos_category, "名詞" | "動詞" | "形容詞" | "副詞")
                 && !is_symbol_or_junk
-                && has_japanese_char;
+                && has_japanese_char
+                && !is_single_kana;
 
             tokens.push(TokenInfo {
                 surface,
