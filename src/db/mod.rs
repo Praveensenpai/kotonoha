@@ -171,6 +171,11 @@ impl Database {
         Ok(())
     }
 
+    pub fn clear_dictionary_cache(&self) -> Result<usize> {
+        let count = self.conn.execute("DELETE FROM dictionary_cache", [])?;
+        Ok(count)
+    }
+
     pub fn save_mined_card(&self, sentence: &str, target_word: &str, reading: &str, definition: &str, audio_path: Option<&str>, image_path: Option<&str>) -> Result<()> {
         self.conn.execute(
             "INSERT INTO mined_cards (sentence, target_word, reading, definition, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?)",

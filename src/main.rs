@@ -159,6 +159,13 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        if matches!(arg.as_str(), "--clear-cache" | "--clear-dict-cache" | "--clear-jpdb-cache") {
+            let cfg = AppConfig::load()?;
+            let db = Database::open(&cfg.db_path)?;
+            let count = db.clear_dictionary_cache()?;
+            println!(" ✔ Cleared dictionary cache ({} cached entries purged).", count);
+            return Ok(());
+        }
     }
 
     TerminalUi::print_banner();
