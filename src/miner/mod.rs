@@ -37,6 +37,12 @@ impl MiningEngine {
                 continue;
             }
 
+            // Skip sound effects / stage directions: lines that are entirely wrapped in
+            // Japanese brackets, e.g. （チャイム）、「ピンポン」、【効果音】
+            if is_bracketed_sound_effect(&sub.text) {
+                continue;
+            }
+
             if let Ok(tokens) = self.tokenizer.tokenize(&sub.text) {
                 let mut unknown_words = Vec::new();
                 let mut known_context = Vec::new();
@@ -91,4 +97,10 @@ impl MiningEngine {
         candidates.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
         candidates
     }
+}
+
+/// Returns true if the entire text is a sound-effect notation enclosed in
+/// fullwidth parentheses: （…）
+fn is_bracketed_sound_effect(text: &str) -> bool {
+    text.starts_with('（') && text.ends_with('）')
 }
