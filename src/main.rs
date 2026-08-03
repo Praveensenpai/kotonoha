@@ -197,10 +197,11 @@ async fn main() -> Result<()> {
 
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
     println!(
-        " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {})\n",
+        " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {} | {})\n",
         candidates.len(),
         style(format!("{} Known Words", file_known.len())).blue().bold(),
         style(format!("{} Unknown Words", file_unknown.len())).red().bold(),
+        style(format!("{} Eligible i+1 Sentences", candidates.len())).green().bold(),
     );
 
     let mut mined_count = 0;

@@ -138,10 +138,17 @@ impl TerminalUi {
         let iw = bw - 4;           // inner content width (│ _ _ _ │)
         const LABEL: usize = 15;   // fixed label column display width
 
-        // Top border: ┌─ RANK #N ──────────────────────────────┐
+        // Top border: ┌─ RANK #N [★ i+1 Candidate] ──────────────────────────────┐
         let rank_label = format!(" RANK #{} ", rank);
-        let dash_count = bw.saturating_sub(rank_label.len() + 3); // ┌ + ─ + label + dashes + ┐
-        let top = format!("┌─{}{}┐", yellow.apply_to(&rank_label), "─".repeat(dash_count));
+        let i1_label = " [★ i+1 Candidate] ";
+        let label_width = rank_label.len() + i1_label.len();
+        let dash_count = bw.saturating_sub(label_width + 3);
+        let top = format!(
+            "┌─{}{}{}┐",
+            yellow.apply_to(&rank_label),
+            green.apply_to(i1_label),
+            "─".repeat(dash_count)
+        );
 
         // Bottom border
         let bottom = format!("└{}┘", "─".repeat(bw - 2));
