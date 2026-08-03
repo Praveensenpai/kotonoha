@@ -52,6 +52,8 @@ impl Database {
                 image_path TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            DELETE FROM dictionary_cache WHERE definition LIKE '%[Noun] serif%' OR definition LIKE '%[Wikipedia definition] Serif%';
             ",
         )?;
         Ok(())

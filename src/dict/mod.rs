@@ -21,28 +21,74 @@ impl DictionaryService {
             if let Some(items) = json["data"].as_array() {
                 let best_entry = items
                     .iter()
-                    .find(|entry| {
+                    .max_by_key(|entry| {
+                        let mut score: i32 = 0;
                         let is_common = entry["is_common"].as_bool().unwrap_or(false);
-                        let matches_word = entry["japanese"].as_array().map_or(false, |jap_arr| {
-                            jap_arr.iter().any(|j| {
-                                j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
-                            })
-                        });
-                        is_common && matches_word
-                    })
-                    .or_else(|| {
-                        items.iter().find(|entry| {
-                            entry["japanese"].as_array().map_or(false, |jap_arr| {
-                                jap_arr.iter().any(|j| {
-                                    j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
-                                })
-                            })
-                        })
-                    })
-                    .or_else(|| {
-                        items.iter().find(|entry| entry["is_common"].as_bool().unwrap_or(false))
-                    })
-                    .or_else(|| items.first());
+                        if is_common {
+                            score += 20;
+                        }
+
+                        let mut exact_match = false;
+                        let mut has_kanji_form = false;
+                        let mut min_len_diff = 1000;
+
+                        if let Some(jap_arr) = entry["japanese"].as_array() {
+                            for j in jap_arr {
+                                let w_str = j["word"].as_str().unwrap_or("");
+                                let r_str = j["reading"].as_str().unwrap_or("");
+
+                                if w_str == word || r_str == word {
+                                    exact_match = true;
+                                }
+
+                                let w_len = if !w_str.is_empty() { w_str.chars().count() } else { r_str.chars().count() };
+                                let word_len = word.chars().count();
+                                let diff = (w_len as i32 - word_len as i32).abs();
+                                if diff < min_len_diff {
+                                    min_len_diff = diff;
+                                }
+
+                                if w_str.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}')) {
+                                    has_kanji_form = true;
+                                }
+                            }
+                        }
+
+                        if exact_match {
+                            score += 100;
+                        }
+                        if has_kanji_form {
+                            score += 30;
+                        }
+                        score -= min_len_diff * 10;
+
+                        if let Some(senses) = entry["senses"].as_array() {
+                            let is_wiki = senses.iter().any(|s| {
+                                s["parts_of_speech"]
+                                    .as_array()
+                                    .and_then(|a| a.first())
+                                    .and_then(|v| v.as_str())
+                                    == Some("Wikipedia definition")
+                            });
+                            if is_wiki {
+                                score -= 100;
+                            }
+
+                            // Penalize single-word definitions that look like obscure typography loanwords
+                            if senses.len() == 1 {
+                                if let Some(english) = senses[0]["english_definitions"].as_array() {
+                                    if english.len() == 1 {
+                                        let def_str = english[0].as_str().unwrap_or("").to_lowercase();
+                                        if def_str == "serif" || def_str == word.to_lowercase() {
+                                            score -= 40;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        score
+                    });
 
                 if let Some(data) = best_entry {
                     let reading = data["japanese"][0]["reading"]
@@ -107,5 +153,18 @@ impl DictionaryService {
             definition: "1. [def] vocabulary word".to_string(),
             pitch_accent: "LH".to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_serif_lookup() {
+        let client = reqwest::Client::new();
+        let res = DictionaryService::lookup(&client, "セリフ").await.unwrap();
+        println!("LOOKUP RESULT: {:?}", res);
+        assert!(res.definition.contains("speech") || res.definition.contains("lines"));
     }
 }
