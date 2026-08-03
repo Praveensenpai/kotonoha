@@ -277,20 +277,24 @@ async fn main() -> Result<()> {
         pb1.set_position(cached_count);
 
         if !uncached_words.is_empty() {
-            use futures::StreamExt;
-            let fetch_stream = futures::stream::iter(uncached_words)
-                .map(|word| async move {
-                    let res = DictionaryService::lookup(&word).await;
-                    (word, res)
-                })
-                .buffer_unordered(5);
+            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+            let mut tasks = Vec::new();
 
-            let mut stream = fetch_stream;
-            while let Some((_word, res)) = stream.next().await {
-                if let Ok(dict_res) = res {
+            for word in uncached_words {
+                let sem = std::sync::Arc::clone(&semaphore);
+                let pb = pb1.clone();
+                tasks.push(tokio::spawn(async move {
+                    let _permit = sem.acquire().await;
+                    let res = DictionaryService::lookup(&word).await;
+                    pb.inc(1);
+                    (word, res)
+                }));
+            }
+
+            for task in tasks {
+                if let Ok((_word, Ok(dict_res))) = task.await {
                     let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
                 }
-                pb1.inc(1);
             }
         }
         pb1.finish();
