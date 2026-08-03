@@ -769,6 +769,23 @@ async fn main() -> Result<()> {
     }
 
     println!("\n🎉 Mining session finished! Mined {} cards.\n", mined_count);
+
+    let unsynced = db.get_unsynced_mined_cards()?;
+    if !unsynced.is_empty() {
+        if anki_connected(&cfg.anki_connect_url).await {
+            println!(" 🔄 Auto-syncing mined cards to Anki...");
+            if let Err(e) = sync_to_anki(&cfg, &db).await {
+                eprintln!(" ❌ Auto-sync error: {e}");
+            }
+        } else {
+            println!(
+                " ⚠ Anki is not connected — {} card(s) saved locally in database.\n   Run {} once Anki is open to push them.",
+                unsynced.len(),
+                style("kotonoha --sync").cyan()
+            );
+        }
+    }
+
     Ok(())
 }
 
