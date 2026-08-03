@@ -214,6 +214,7 @@ impl DictionaryService {
                 let candidates = if exact_entries.is_empty() { items.iter().collect() } else { exact_entries };
                 let best_entry = candidates
                     .into_iter()
+                    .rev()
                     .max_by_key(|entry| {
                         let mut score: i32 = 0;
                         let is_common = entry["is_common"].as_bool().unwrap_or(false);
@@ -256,14 +257,14 @@ impl DictionaryService {
                         score -= min_len_diff * 10;
 
                         if let Some(senses) = entry["senses"].as_array() {
-                            let is_wiki = senses.iter().any(|s| {
+                            let is_only_wiki = senses.iter().all(|s| {
                                 s["parts_of_speech"]
                                     .as_array()
                                     .and_then(|a| a.first())
                                     .and_then(|v| v.as_str())
                                     == Some("Wikipedia definition")
                             });
-                            if is_wiki {
+                            if is_only_wiki {
                                 score -= 100;
                             }
 
@@ -397,5 +398,14 @@ mod tests {
             truncated,
             "1. [Adverb] word1, word2, word3\n│                 2. [Adverb] wordA, wordB, wordC"
         );
+    }
+
+    #[tokio::test]
+    async fn test_hen_lookup_first_result() {
+        let client = reqwest::Client::new();
+        let res = DictionaryService::lookup(&client, "辺").await.unwrap();
+        println!("HEN RESULT: {:?}", res);
+        assert_eq!(res.reading, "へん");
+        assert!(res.definition.contains("area") || res.definition.contains("vicinity") || res.definition.contains("region"));
     }
 }
