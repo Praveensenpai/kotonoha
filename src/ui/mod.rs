@@ -2,8 +2,50 @@ use anyhow::Result;
 use console::{measure_text_width, Style};
 use crossterm::terminal;
 use inquire::{MultiSelect, Select, Text};
+use std::cmp::Ordering;
 use std::path::PathBuf;
 use walkdir::WalkDir;
+
+/// Compare strings naturally, treating consecutive ASCII digits as a number.
+fn natural_cmp(left: &str, right: &str) -> Ordering {
+    let mut left_chars = left.chars().peekable();
+    let mut right_chars = right.chars().peekable();
+
+    loop {
+        match (left_chars.peek(), right_chars.peek()) {
+            (Some(left_char), Some(right_char)) if left_char.is_ascii_digit() && right_char.is_ascii_digit() => {
+                let mut left_number = String::new();
+                while matches!(left_chars.peek(), Some(c) if c.is_ascii_digit()) {
+                    left_number.push(left_chars.next().expect("digit was peeked"));
+                }
+                let mut right_number = String::new();
+                while matches!(right_chars.peek(), Some(c) if c.is_ascii_digit()) {
+                    right_number.push(right_chars.next().expect("digit was peeked"));
+                }
+                let left_trimmed = left_number.trim_start_matches('0');
+                let right_trimmed = right_number.trim_start_matches('0');
+                let order = left_trimmed
+                    .len()
+                    .cmp(&right_trimmed.len())
+                    .then_with(|| left_trimmed.cmp(right_trimmed));
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+            (Some(left_char), Some(right_char)) => {
+                let order = left_char.cmp(right_char);
+                if order != Ordering::Equal {
+                    return order;
+                }
+                left_chars.next();
+                right_chars.next();
+            }
+            (None, None) => return left.cmp(right),
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+        }
+    }
+}
 
 /// Returns terminal width capped at 110, minimum 60.
 fn box_width() -> usize {
@@ -49,7 +91,7 @@ impl TerminalUi {
     pub fn select_media_file() -> Result<PathBuf> {
 
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let search_dirs = vec![home.join("Videos"), PathBuf::from(".")];
+        let search_dirs = vec![home.join("Videos")];
 
         let mut files = Vec::new();
         for dir in search_dirs {
@@ -74,7 +116,7 @@ impl TerminalUi {
             return Ok(PathBuf::from(input));
         }
 
-        files.sort();
+        files.sort_by(|left, right| natural_cmp(&left.to_string_lossy(), &right.to_string_lossy()));
         files.dedup();
 
         let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
@@ -381,3 +423,14 @@ impl TerminalUi {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::natural_cmp;
+
+    #[test]
+    fn sorts_episode_numbers_naturally() {
+        let mut episodes = ["episode-10.mkv", "episode-08.mkv", "episode-01.mkv", "episode-2.mkv"];
+        episodes.sort_by(|left, right| natural_cmp(left, right));
+        assert_eq!(episodes, ["episode-01.mkv", "episode-2.mkv", "episode-08.mkv", "episode-10.mkv"]);
+    }
+}

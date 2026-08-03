@@ -7,6 +7,16 @@ pub struct Database {
     conn: Connection,
 }
 
+pub struct MinedCard {
+    pub id: i64,
+    pub sentence: String,
+    pub target_word: String,
+    pub reading: String,
+    pub definition: String,
+    pub audio_path: Option<String>,
+    pub image_path: Option<String>,
+}
+
 impl Database {
     pub fn open(db_path: &Path) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
@@ -56,6 +66,16 @@ impl Database {
             DELETE FROM dictionary_cache WHERE definition LIKE '%[Noun] serif%' OR definition LIKE '%[Wikipedia definition] Serif%';
             ",
         )?;
+        let has_anki_note_id = self
+            .conn
+            .prepare("PRAGMA table_info(mined_cards)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<std::result::Result<Vec<_>, _>>()?
+            .iter()
+            .any(|column| column == "anki_note_id");
+        if !has_anki_note_id {
+            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN anki_note_id INTEGER", [])?;
+        }
         Ok(())
     }
 
@@ -180,6 +200,33 @@ impl Database {
         self.conn.execute(
             "INSERT INTO mined_cards (sentence, target_word, reading, definition, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?)",
             params![sentence, target_word, reading, definition, audio_path, image_path],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_unsynced_mined_cards(&self) -> Result<Vec<MinedCard>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, sentence, target_word, reading, definition, audio_path, image_path
+             FROM mined_cards WHERE anki_note_id IS NULL ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(MinedCard {
+                id: row.get(0)?,
+                sentence: row.get(1)?,
+                target_word: row.get(2)?,
+                reading: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                definition: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                audio_path: row.get(5)?,
+                image_path: row.get(6)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn mark_mined_card_synced(&self, card_id: i64, anki_note_id: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE mined_cards SET anki_note_id = ? WHERE id = ?",
+            params![anki_note_id, card_id],
         )?;
         Ok(())
     }

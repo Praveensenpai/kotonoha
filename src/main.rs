@@ -9,6 +9,7 @@ mod srt;
 mod ui;
 
 use anyhow::Result;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use config::AppConfig;
 use console::style;
 use db::Database;
@@ -31,6 +32,67 @@ async fn anki_connected(url: &str) -> bool {
         .send()
         .await
         .is_ok()
+}
+
+async fn anki_request(client: &reqwest::Client, url: &str, action: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+    let response = client
+        .post(url)
+        .json(&serde_json::json!({"action": action, "version": 6, "params": params}))
+        .send()
+        .await?
+        .error_for_status()?;
+    let body: serde_json::Value = response.json().await?;
+    if let Some(error) = body.get("error").and_then(|value| value.as_str()) {
+        anyhow::bail!("AnkiConnect error: {error}");
+    }
+    Ok(body.get("result").cloned().unwrap_or(serde_json::Value::Null))
+}
+
+async fn upload_anki_media(client: &reqwest::Client, url: &str, card_id: i64, path: &str, extension: &str) -> Result<Option<String>> {
+    let path = Path::new(path);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let filename = format!("kotonoha-{card_id}.{extension}");
+    let data = BASE64.encode(std::fs::read(path)?);
+    anki_request(client, url, "storeMediaFile", serde_json::json!({"filename": filename, "data": data})).await?;
+    Ok(Some(filename))
+}
+
+async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
+    let cards = db.get_unsynced_mined_cards()?;
+    if cards.is_empty() {
+        println!(" ✔ No locally mined cards are waiting to sync.");
+        return Ok(());
+    }
+
+    let client = reqwest::Client::new();
+    anki_request(&client, &cfg.anki_connect_url, "version", serde_json::json!({})).await?;
+    anki_request(&client, &cfg.anki_connect_url, "createDeck", serde_json::json!({"deck": cfg.anki_deck_name})).await?;
+
+    let mut synced = 0;
+    for card in cards {
+        let audio = match card.audio_path.as_deref() {
+            Some(path) => upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus").await?,
+            None => None,
+        };
+        let image = match card.image_path.as_deref() {
+            Some(path) => upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg").await?,
+            None => None,
+        };
+        let front = format!("{}<br><small>{}</small>", card.sentence, card.target_word);
+        let mut back = format!("<b>{}</b> [{}]<br>{}", card.target_word, card.reading, card.definition);
+        if let Some(filename) = audio { back.push_str(&format!("<br>[sound:{filename}]")); }
+        if let Some(filename) = image { back.push_str(&format!("<br><img src=\"{filename}\">")); }
+        let note_id = anki_request(&client, &cfg.anki_connect_url, "addNote", serde_json::json!({
+            "note": {"deckName": cfg.anki_deck_name, "modelName": "Basic", "fields": {"Front": front, "Back": back}, "tags": ["kotonoha", "mined"]}
+        })).await?;
+        let note_id = note_id.as_i64().ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?;
+        db.mark_mined_card_synced(card.id, note_id)?;
+        synced += 1;
+    }
+    println!(" ✔ Synced {synced} card(s) to Anki deck: {}", cfg.anki_deck_name);
+    Ok(())
 }
 
 fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
@@ -101,7 +163,7 @@ async fn main() -> Result<()> {
             println!("kotonoha {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
         }
-        if arg == "--help" || arg == "-h" {
+        if arg == "--help" || arg == "-h" || arg == "--h" {
             println!("🌸 kotonoha {} — Japanese i+1 Sentence Miner", env!("CARGO_PKG_VERSION"));
             println!("\nUSAGE:");
             println!("  kotonoha                       Launch interactive TUI file picker");
@@ -112,7 +174,13 @@ async fn main() -> Result<()> {
             println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
             println!("  kotonoha --sync                Push locally mined cards to Anki");
             println!("  kotonoha --version | -v        Print version information");
-            println!("  kotonoha --help    | -h        Show help information");
+            println!("  kotonoha --help    | -h | --h  Show help information");
+            return Ok(());
+        }
+        if arg == "--sync" {
+            let cfg = AppConfig::load()?;
+            let db = Database::open(&cfg.db_path)?;
+            sync_to_anki(&cfg, &db).await?;
             return Ok(());
         }
         if arg == "--inspect" {
@@ -324,7 +392,7 @@ async fn main() -> Result<()> {
             }
         }
         pb1.finish();
-        println!();
+        println!("\n");
 
         // Step 2: Audio Preview Clips (.opus)
         let pb2 = indicatif::ProgressBar::new(total);
@@ -342,7 +410,7 @@ async fn main() -> Result<()> {
             pb2.inc(1);
         }
         pb2.finish();
-        println!();
+        println!("\n");
 
         // Step 3: Screenshots (.jpg)
         let pb3 = indicatif::ProgressBar::new(total);
@@ -360,7 +428,7 @@ async fn main() -> Result<()> {
             pb3.inc(1);
         }
         pb3.finish();
-        println!();
+        println!("\n");
     }
 
     let http_client = reqwest::Client::new();
