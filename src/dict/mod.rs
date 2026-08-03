@@ -353,6 +353,101 @@ impl DictionaryService {
             pitch_accent: "LH".to_string(),
         })
     }
+
+    pub fn parse_entry(
+        data: &serde_json::Value,
+        word: &str,
+        max_senses: usize,
+        max_glosses: usize,
+    ) -> LookupResult {
+        let kanji_expr = data["japanese"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|v| v["word"].as_str())
+            .unwrap_or(word)
+            .to_string();
+
+        let reading = data["japanese"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|v| v["reading"].as_str())
+            .unwrap_or(word)
+            .to_string();
+
+        let mut defs = Vec::new();
+        if let Some(senses) = data["senses"].as_array() {
+            let mut num = 1;
+            for sense in senses {
+                if num > max_senses {
+                    break;
+                }
+
+                let pos_str = sense["parts_of_speech"]
+                    .as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Vocab");
+
+                if pos_str == "Wikipedia definition" {
+                    continue;
+                }
+
+                if let Some(defs_arr) = sense["english_definitions"].as_array() {
+                    let def_list: Vec<&str> = defs_arr
+                        .iter()
+                        .filter_map(|d| d.as_str())
+                        .take(max_glosses)
+                        .collect();
+                    if !def_list.is_empty() {
+                        defs.push(format!("{}. [{}] {}", num, pos_str, def_list.join(", ")));
+                        num += 1;
+                    }
+                }
+            }
+        }
+
+        let definition = if defs.is_empty() {
+            "No dictionary definition found".to_string()
+        } else {
+            defs.join("\n│                 ")
+        };
+
+        LookupResult {
+            expression: kanji_expr,
+            reading,
+            definition,
+            pitch_accent: "LH".to_string(),
+        }
+    }
+
+    pub async fn lookup_all_candidates(
+        client: &reqwest::Client,
+        word: &str,
+        max_senses: usize,
+        max_glosses: usize,
+    ) -> Result<Vec<LookupResult>> {
+        let url = format!(
+            "https://jisho.org/api/v1/search/words?keyword={}",
+            urlencoding::encode(word)
+        );
+        let resp = client.get(&url).send().await?;
+
+        let mut results = Vec::new();
+        if resp.status().is_success() {
+            let json: serde_json::Value = resp.json().await?;
+            if let Some(items) = json["data"].as_array() {
+                for item in items {
+                    let res = Self::parse_entry(item, word, max_senses, max_glosses);
+                    if !is_placeholder_definition(&res.definition)
+                        && res.definition != "No dictionary definition found"
+                    {
+                        results.push(res);
+                    }
+                }
+            }
+        }
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
@@ -407,5 +502,16 @@ mod tests {
         println!("HEN RESULT: {:?}", res);
         assert_eq!(res.reading, "へん");
         assert!(res.definition.contains("area") || res.definition.contains("vicinity") || res.definition.contains("region"));
+    }
+
+    #[tokio::test]
+    async fn test_ato_lookup_all_candidates() {
+        let client = reqwest::Client::new();
+        let candidates = DictionaryService::lookup_all_candidates(&client, "あと", 3, 4).await.unwrap();
+        println!("ATO CANDIDATES COUNT: {}", candidates.len());
+        assert!(candidates.len() >= 2);
+        let has_ato_after = candidates.iter().any(|c| c.expression == "後" || c.definition.contains("behind") || c.definition.contains("after"));
+        let has_ato_trace = candidates.iter().any(|c| c.expression == "跡" || c.definition.contains("trace"));
+        assert!(has_ato_after && has_ato_trace);
     }
 }

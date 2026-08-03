@@ -301,6 +301,7 @@ impl TerminalUi {
         let options = vec![
             "⏭️  Skip to next card (n)",
             "⛏️  Mine this card (y)",
+            "📖  Change dictionary candidate (c)",
             "🔊  Replay preview audio (r)",
             "🚫  Ignore target word (i)",
             "🚪  Quit (q)",
@@ -309,6 +310,8 @@ impl TerminalUi {
         let ans = Select::new("Action?", options).prompt()?;
         if ans.contains("(y)") {
             Ok('y')
+        } else if ans.contains("(c)") {
+            Ok('c')
         } else if ans.contains("(r)") {
             Ok('r')
         } else if ans.contains("(i)") {
@@ -318,6 +321,29 @@ impl TerminalUi {
         } else {
             Ok('n')
         }
+    }
+
+    pub fn select_candidate(candidates: &[crate::dict::LookupResult]) -> Result<crate::dict::LookupResult> {
+        let options: Vec<String> = candidates
+            .iter()
+            .enumerate()
+            .map(|(idx, res)| {
+                let first_line = res.definition.lines().next().unwrap_or("");
+                let clean_line = first_line.trim().strip_prefix('│').unwrap_or(first_line).trim();
+                format!("#{} 【{} ({})】 {}", idx + 1, res.expression, res.reading, clean_line)
+            })
+            .collect();
+
+        let selected = Select::new("Select dictionary definition:", options.clone())
+            .with_page_size(10)
+            .prompt()?;
+
+        for (idx, opt) in options.iter().enumerate() {
+            if opt == &selected {
+                return Ok(candidates[idx].clone());
+            }
+        }
+        Ok(candidates[0].clone())
     }
 
     /// Show all known words in DB and let the user multiselect which ones to remove/forget.

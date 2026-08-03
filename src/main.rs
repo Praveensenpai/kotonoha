@@ -669,7 +669,7 @@ async fn main() -> Result<()> {
     for (idx, cand) in candidates_to_process.iter().enumerate() {
         TerminalUi::render_progress(idx + 1, total_cards, mined_count, skipped_count, ignored_count);
 
-        let dict_info = match db.get_cached_definition(&cand.target_word)? {
+        let mut dict_info = match db.get_cached_definition(&cand.target_word)? {
             Some(res) => dict::LookupResult {
                 expression: cand.target_word.clone(),
                 reading: res.0,
@@ -715,6 +715,43 @@ async fn main() -> Result<()> {
                     let _ = child.kill();
                 }
                 audio_child = MediaExtractor::play_preview_audio(&audio_path);
+                continue;
+            }
+
+            if action == 'c' {
+                println!(" 🔍 Fetching dictionary candidates...");
+                if let Ok(candidates) = DictionaryService::lookup_all_candidates(
+                    &http_client,
+                    &cand.target_word,
+                    cfg.max_definition_senses,
+                    cfg.max_glosses_per_sense,
+                )
+                .await
+                {
+                    if candidates.is_empty() {
+                        println!(" ⚠️  No alternative dictionary definitions found.");
+                    } else if let Ok(chosen) = TerminalUi::select_candidate(&candidates) {
+                        dict_info = chosen;
+                        let _ = db.cache_definition(
+                            &dict_info.expression,
+                            &dict_info.reading,
+                            &dict_info.definition,
+                            &dict_info.pitch_accent,
+                        );
+                        println!(" ✨ Updated candidate: 【{} ({})】", dict_info.expression, dict_info.reading);
+                        TerminalUi::render_card(
+                            idx + 1,
+                            &cand.sentence.text,
+                            &cand.target_word,
+                            &dict_info.reading,
+                            &dict_info.pitch_accent,
+                            cand.jpdb_rank,
+                            &dict_info.definition,
+                            &cand.known_context_words,
+                            &cand.unknown_context_words,
+                        );
+                    }
+                }
                 continue;
             }
 
