@@ -36,12 +36,20 @@ async fn anki_connected(url: &str) -> bool {
 }
 
 async fn anki_request(client: &reqwest::Client, url: &str, action: &str, params: serde_json::Value) -> Result<serde_json::Value> {
-    let response = client
+    let response = match client
         .post(url)
         .json(&serde_json::json!({"action": action, "version": 6, "params": params}))
         .send()
-        .await?
-        .error_for_status()?;
+        .await
+    {
+        Ok(res) => res,
+        Err(e) if e.is_connect() => {
+            anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    let response = response.error_for_status()?;
     let body: serde_json::Value = response.json().await?;
     if let Some(error) = body.get("error").and_then(|value| value.as_str()) {
         anyhow::bail!("AnkiConnect error: {error}");
@@ -148,6 +156,10 @@ fn pitch_pattern(reading: &str, pitch_accent: &str) -> (String, String) {
 }
 
 async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
+    if !anki_connected(&cfg.anki_connect_url).await {
+        anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
+    }
+
     let cards = db.get_unsynced_mined_cards()?;
     if cards.is_empty() {
         println!(" ✔ No locally mined cards are waiting to sync.");
@@ -221,6 +233,9 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
 }
 
 async fn add_test_card(cfg: &AppConfig) -> Result<()> {
+    if !anki_connected(&cfg.anki_connect_url).await {
+        anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
+    }
     const TEST_DECK: &str = "kotonohatest";
 
     let sentence = Text::new("Japanese sentence:").prompt()?;
@@ -744,4 +759,17 @@ async fn main() -> Result<()> {
 
     println!("\n🎉 Mining session finished! Mined {} cards.\n", mined_count);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_anki_not_connected_error() {
+        let client = reqwest::Client::new();
+        let err = anki_request(&client, "http://127.0.0.1:18765", "version", serde_json::json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("Anki is not connected"));
+        assert!(err.to_string().contains("Please open Anki and make sure AnkiConnect is installed"));
+    }
 }
