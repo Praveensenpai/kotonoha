@@ -89,12 +89,13 @@ impl TerminalUi {
 
         let options: Vec<String> = vocab_items
             .iter()
-            .map(|(word, count, reading)| {
+            .enumerate()
+            .map(|(idx, (word, count, reading))| {
                 let has_kanji = word.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'));
                 if has_kanji && word != reading && !reading.is_empty() {
-                    format!("{} ({}) — {} occurrences", word, reading, count)
+                    format!("#{:02}  {} ({}) — {} occurrences", idx + 1, word, reading, count)
                 } else {
-                    format!("{} — {} occurrences", word, count)
+                    format!("#{:02}  {} — {} occurrences", idx + 1, word, count)
                 }
             })
             .collect();
@@ -110,8 +111,9 @@ impl TerminalUi {
 
         let mut checked_words = Vec::new();
         for item in selected_indices {
-            if let Some(word) = item.split_whitespace().next() {
-                checked_words.push(word.to_string());
+            let parts: Vec<&str> = item.split_whitespace().collect();
+            if parts.len() >= 2 {
+                checked_words.push(parts[1].to_string());
             }
         }
 
