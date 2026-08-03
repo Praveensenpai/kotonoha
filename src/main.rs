@@ -68,6 +68,60 @@ async fn upload_anki_media(client: &reqwest::Client, url: &str, card_id: i64, pa
     Ok(Some(filename))
 }
 
+fn anki_search_text(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+async fn find_existing_anki_note(
+    client: &reqwest::Client,
+    url: &str,
+    model_name: &str,
+    sentence: &str,
+) -> Result<Option<i64>> {
+    // Anki determines duplicates from the first field. SentKanji is the
+    // first field in the Kotonoha note type, so use it as the stable key.
+    let note_ids = anki_request(
+        client,
+        url,
+        "findNotes",
+        serde_json::json!({"query": format!("SentKanji:\"{}\"", anki_search_text(sentence))}),
+    )
+    .await?;
+    let Some(note_ids) = note_ids.as_array() else {
+        return Ok(None);
+    };
+    if note_ids.is_empty() {
+        return Ok(None);
+    }
+
+    let note_ids: Vec<i64> = note_ids.iter().filter_map(serde_json::Value::as_i64).collect();
+    if note_ids.is_empty() {
+        return Ok(None);
+    }
+    let notes = anki_request(
+        client,
+        url,
+        "notesInfo",
+        serde_json::json!({"notes": note_ids}),
+    )
+    .await?;
+    let Some(notes) = notes.as_array() else {
+        return Ok(None);
+    };
+
+    Ok(notes.iter().find_map(|note| {
+        if note.get("modelName").and_then(serde_json::Value::as_str) != Some(model_name) {
+            return None;
+        }
+        let value = note
+            .get("fields")
+            .and_then(|fields| fields.get("SentKanji"))
+            .and_then(|field| field.get("value"))
+            .and_then(serde_json::Value::as_str);
+        (value == Some(sentence)).then(|| note.get("noteId").and_then(serde_json::Value::as_i64)).flatten()
+    }))
+}
+
 fn escape_html(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -200,42 +254,88 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
 
     let mut synced = 0;
     for card in cards {
-        let sentence_furigana = sentence_with_furigana(&tokenizer, &card.sentence, &card.target_word);
-        let (pitch_pattern, pitch_number) = pitch_pattern(&card.reading, &card.pitch_accent);
-        let audio = match card.audio_path.as_deref() {
-            Some(path) => upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus").await?,
-            None => None,
-        };
-        let image = match card.image_path.as_deref() {
-            Some(path) => upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg").await?,
-            None => None,
-        };
-        let sentence_audio = audio.map(|filename| format!("[sound:{filename}]")).unwrap_or_default();
-        let image = image.map(|filename| format!("<img src=\"{filename}\">")).unwrap_or_default();
-        let note_id = anki_request(&client, &cfg.anki_connect_url, "addNote", serde_json::json!({
-            "note": {
-                "deckName": cfg.anki_deck_name,
-                "modelName": cfg.anki_model_name,
-                "fields": {
-                    "SentKanji": card.sentence,
-                    "SentFurigana": sentence_furigana,
-                    "SentEng": "",
-                    "SentAudio": sentence_audio,
-                    "VocabKanji": card.target_word,
-                    "VocabFurigana": card.reading,
-                    "VocabPitchPattern": pitch_pattern,
-                    "VocabPitchNum": pitch_number,
-                    "VocabDef": format_definition_for_anki(&card.definition),
-                    "VocabAudio": "",
-                    "Image": image,
-                    "Notes": "",
-                    "MakeProductionCard": "",
-                    "Focus": ""
-                },
-                "tags": ["jp1k", "kotonoha", "mined"]
+        // Sync is intentionally idempotent. This also repairs local rows that
+        // were left unsynced after a previous addNote succeeded but the
+        // process exited before mark_mined_card_synced ran.
+        let existing_note_id = find_existing_anki_note(
+            &client,
+            &cfg.anki_connect_url,
+            &cfg.anki_model_name,
+            &card.sentence,
+        )
+        .await?;
+        let note_id = if let Some(note_id) = existing_note_id {
+            note_id
+        } else {
+            let sentence_furigana =
+                sentence_with_furigana(&tokenizer, &card.sentence, &card.target_word);
+            let (pitch_pattern, pitch_number) = pitch_pattern(&card.reading, &card.pitch_accent);
+            let audio = match card.audio_path.as_deref() {
+                Some(path) => {
+                    upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus")
+                        .await?
+                }
+                None => None,
+            };
+            let image = match card.image_path.as_deref() {
+                Some(path) => {
+                    upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg")
+                        .await?
+                }
+                None => None,
+            };
+            let sentence_audio = audio
+                .map(|filename| format!("[sound:{filename}]"))
+                .unwrap_or_default();
+            let image = image
+                .map(|filename| format!("<img src=\"{filename}\">"))
+                .unwrap_or_default();
+            match anki_request(
+                &client,
+                &cfg.anki_connect_url,
+                "addNote",
+                serde_json::json!({
+                    "note": {
+                        "deckName": cfg.anki_deck_name,
+                        "modelName": cfg.anki_model_name,
+                        "fields": {
+                            "SentKanji": card.sentence,
+                            "SentFurigana": sentence_furigana,
+                            "SentEng": "",
+                            "SentAudio": sentence_audio,
+                            "VocabKanji": card.target_word,
+                            "VocabFurigana": card.reading,
+                            "VocabPitchPattern": pitch_pattern,
+                            "VocabPitchNum": pitch_number,
+                            "VocabDef": format_definition_for_anki(&card.definition),
+                            "VocabAudio": "",
+                            "Image": image,
+                            "Notes": "",
+                            "MakeProductionCard": "",
+                            "Focus": ""
+                        },
+                        "tags": ["jp1k", "kotonoha", "mined"]
+                    }
+                }),
+            )
+            .await
+            {
+                Ok(note_id) => note_id
+                    .as_i64()
+                    .ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?,
+                Err(error) if error.to_string().to_ascii_lowercase().contains("duplicate") => {
+                    find_existing_anki_note(
+                        &client,
+                        &cfg.anki_connect_url,
+                        &cfg.anki_model_name,
+                        &card.sentence,
+                    )
+                    .await?
+                    .ok_or(error)?
+                }
+                Err(error) => return Err(error),
             }
-        })).await?;
-        let note_id = note_id.as_i64().ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?;
+        };
         db.mark_mined_card_synced(card.id, note_id)?;
         synced += 1;
     }
@@ -848,5 +948,10 @@ mod tests {
             formatted,
             "1. [Pre-noun adjectival (rentaishi)] such, that sort of, that kind of, like that<br>2. [Vocab] no way!, never!"
         );
+    }
+
+    #[test]
+    fn test_anki_search_text_escapes_query_delimiters() {
+        assert_eq!(anki_search_text(r#"a\"b"#), r#"a\\\"b"#);
     }
 }
