@@ -313,7 +313,13 @@ async fn main() -> Result<()> {
     }
 
     let mut mined_count = 0;
+    let mut skipped_count = 0;
+    let mut ignored_count = 0;
+    let total_cards = candidates_to_process.len();
+
     for (idx, cand) in candidates_to_process.iter().enumerate() {
+        TerminalUi::render_progress(idx + 1, total_cards, mined_count, skipped_count, ignored_count);
+
         let dict_info = match db.get_cached_definition(&cand.target_word)? {
             Some(res) => dict::LookupResult {
                 expression: cand.target_word.clone(),
@@ -384,7 +390,13 @@ async fn main() -> Result<()> {
                 }
                 'i' => {
                     let _ = db.add_ignored_word(&cand.target_word);
+                    ignored_count += 1;
                     println!(" 🚫 Target word ignored.");
+                    break;
+                }
+                'n' => {
+                    skipped_count += 1;
+                    println!(" ⏭️ Card skipped.");
                     break;
                 }
                 'q' => {
@@ -392,7 +404,10 @@ async fn main() -> Result<()> {
                     user_quit = true;
                     break;
                 }
-                _ => break,
+                _ => {
+                    skipped_count += 1;
+                    break;
+                }
             }
         }
 

@@ -120,6 +120,29 @@ impl TerminalUi {
         Ok(checked_words)
     }
 
+    pub fn render_progress(current: usize, total: usize, mined: usize, skipped: usize, ignored: usize) {
+        let magenta = Style::new().magenta().bold();
+        let cyan = Style::new().cyan().bold();
+        let green = Style::new().green().bold();
+        let yellow = Style::new().yellow();
+        let dim = Style::new().dim();
+
+        println!(
+            "\n {} Progress [{}]  {}  {} {}  {}  {} {}  {}  {} {}",
+            magenta.apply_to("🌸"),
+            cyan.apply_to(&format!("{}/{}", current, total)),
+            dim.apply_to("───"),
+            green.apply_to("✨"),
+            green.apply_to(&format!("{} Mined", mined)),
+            dim.apply_to("•"),
+            yellow.apply_to("⏭️"),
+            yellow.apply_to(&format!("{} Skipped", skipped)),
+            dim.apply_to("•"),
+            dim.apply_to("🙈"),
+            dim.apply_to(&format!("{} Ignored", ignored)),
+        );
+    }
+
     pub fn render_card(
         rank: usize,
         sentence: &str,
