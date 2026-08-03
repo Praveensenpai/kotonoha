@@ -256,25 +256,60 @@ async fn main() -> Result<()> {
     let candidates_to_process: Vec<_> = candidates.into_iter().take(cfg.default_card_limit).collect();
 
     if !candidates_to_process.is_empty() {
-        print!(" ℹ Pre-processing definitions, audio clips & screenshots... ");
-        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let total = candidates_to_process.len() as u64;
 
+        // Step 1: Definitions & Pitch Accents
+        let pb1 = indicatif::ProgressBar::new(total);
+        pb1.set_style(
+            indicatif::ProgressStyle::default_bar()
+                .template(" ℹ [1/3] Definitions & Pitch Accents  [{bar:35.cyan/blue}] {pos}/{len} ({percent}%)")
+                .unwrap()
+                .progress_chars("█▓▒░"),
+        );
         for cand in &candidates_to_process {
             if db.get_cached_definition(&cand.target_word).unwrap_or(None).is_none() {
                 if let Ok(res) = DictionaryService::lookup(&cand.target_word).await {
                     let _ = db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent);
                 }
             }
+            pb1.inc(1);
+        }
+        pb1.finish();
+
+        // Step 2: Audio Preview Clips (.opus)
+        let pb2 = indicatif::ProgressBar::new(total);
+        pb2.set_style(
+            indicatif::ProgressStyle::default_bar()
+                .template(" ℹ [2/3] Audio Preview Clips (.opus)   [{bar:35.magenta/blue}] {pos}/{len} ({percent}%)")
+                .unwrap()
+                .progress_chars("█▓▒░"),
+        );
+        for cand in &candidates_to_process {
             let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
             if !audio_path.exists() {
                 let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
             }
+            pb2.inc(1);
+        }
+        pb2.finish();
+
+        // Step 3: Screenshots (.jpg)
+        let pb3 = indicatif::ProgressBar::new(total);
+        pb3.set_style(
+            indicatif::ProgressStyle::default_bar()
+                .template(" ℹ [3/3] Screenshots 360p (.jpg)       [{bar:35.yellow/blue}] {pos}/{len} ({percent}%)")
+                .unwrap()
+                .progress_chars("█▓▒░"),
+        );
+        for cand in &candidates_to_process {
             let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
             if !image_path.exists() {
                 let _ = MediaExtractor::extract_screenshot(&video_path, cand.sentence.start_ms, &image_path);
             }
+            pb3.inc(1);
         }
-        println!("✔ Ready!\n");
+        pb3.finish();
+        println!();
     }
 
     let mut mined_count = 0;
