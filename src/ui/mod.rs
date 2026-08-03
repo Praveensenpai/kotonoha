@@ -214,14 +214,14 @@ impl TerminalUi {
 
     pub fn ask_action() -> Result<char> {
         let options = vec![
+            "⏭️  Skip to next card (n)",
             "⛏️  Mine this card (y)",
             "🔊  Replay preview audio (r)",
-            "⏭️  Skip to next card (n)",
             "🚫  Ignore target word (i)",
             "🚪  Quit (q)",
         ];
 
-        let ans = Select::new("Mine this card?", options).prompt()?;
+        let ans = Select::new("Action?", options).prompt()?;
         if ans.contains("(y)") {
             Ok('y')
         } else if ans.contains("(r)") {

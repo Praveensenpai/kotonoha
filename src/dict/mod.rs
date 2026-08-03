@@ -13,6 +13,42 @@ pub struct DictionaryService;
 
 impl DictionaryService {
     pub async fn lookup(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
+        let res = Self::lookup_exact(client, word).await?;
+        if res.definition != "1. [def] vocabulary word" && !res.definition.contains("[Noun] serif") {
+            return Ok(res);
+        }
+
+        let stem_fallbacks = [
+            ("り", "る"),
+            ("い", "う"),
+            ("ち", "つ"),
+            ("き", "く"),
+            ("ぎ", "ぐ"),
+            ("み", "む"),
+            ("び", "ぶ"),
+            ("し", "す"),
+        ];
+
+        for (stem_end, verb_end) in stem_fallbacks {
+            if word.ends_with(stem_end) {
+                let verb_form = format!("{}{}", &word[..word.len() - stem_end.len()], verb_end);
+                if let Ok(fallback_res) = Self::lookup_exact(client, &verb_form).await {
+                    if fallback_res.definition != "1. [def] vocabulary word" {
+                        return Ok(LookupResult {
+                            expression: word.to_string(),
+                            reading: fallback_res.reading,
+                            definition: fallback_res.definition,
+                            pitch_accent: fallback_res.pitch_accent,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(res)
+    }
+
+    async fn lookup_exact(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
         let url = format!("https://jisho.org/api/v1/search/words?keyword={}", urlencoding::encode(word));
         let resp = client.get(&url).send().await?;
 
@@ -91,6 +127,21 @@ impl DictionaryService {
                     });
 
                 if let Some(data) = best_entry {
+                    // If no entry matched the target word/reading exactly, return default fallback so verb stem fallback can trigger
+                    let has_exact = data["japanese"].as_array().map_or(false, |arr| {
+                        arr.iter().any(|j| {
+                            j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
+                        })
+                    });
+
+                    if !has_exact {
+                        return Ok(LookupResult {
+                            expression: word.to_string(),
+                            reading: word.to_string(),
+                            definition: "1. [def] vocabulary word".to_string(),
+                            pitch_accent: "LH".to_string(),
+                        });
+                    }
                     let reading = data["japanese"][0]["reading"]
                         .as_str()
                         .unwrap_or(word)
@@ -166,5 +217,13 @@ mod tests {
         let res = DictionaryService::lookup(&client, "セリフ").await.unwrap();
         println!("LOOKUP RESULT: {:?}", res);
         assert!(res.definition.contains("speech") || res.definition.contains("lines"));
+    }
+
+    #[tokio::test]
+    async fn test_sakibashiri_lookup() {
+        let client = reqwest::Client::new();
+        let res = DictionaryService::lookup(&client, "先走り").await.unwrap();
+        println!("SAKIBASHIRI RESULT: {:?}", res);
+        assert!(res.definition.contains("rash") || res.definition.contains("act") || res.definition.contains("ahead"));
     }
 }
