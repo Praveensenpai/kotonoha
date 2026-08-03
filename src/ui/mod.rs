@@ -90,7 +90,8 @@ impl TerminalUi {
         let options: Vec<String> = vocab_items
             .iter()
             .map(|(word, count, reading)| {
-                if word != reading && !reading.is_empty() {
+                let has_kanji = word.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'));
+                if has_kanji && word != reading && !reading.is_empty() {
                     format!("{} ({}) — {} occurrences", word, reading, count)
                 } else {
                     format!("{} — {} occurrences", word, count)
