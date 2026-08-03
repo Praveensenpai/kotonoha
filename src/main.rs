@@ -106,8 +106,11 @@ async fn main() -> Result<()> {
             println!("\nUSAGE:");
             println!("  kotonoha                       Launch interactive TUI file picker");
             println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
-            println!("  kotonoha --inspect [FILE]      Inspect sentences (Blue=Known, Red=Unknown)");
+            println!("  kotonoha --inspect [FILE]      Inspect sentences (Blue=Known, Red=Unknown, ★=i+1)");
+            println!("  kotonoha --manage-known        View & remove words from the known database");
             println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
+            println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
+            println!("  kotonoha --sync                Push locally mined cards to Anki");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h        Show help information");
             return Ok(());
