@@ -229,6 +229,7 @@ impl TerminalUi {
     ) {
         let blue = Style::new().blue().bold();
         let red = Style::new().red().bold();
+        let green = Style::new().green().bold();
         let dim = Style::new().dim();
         let yellow = Style::new().yellow();
 
@@ -237,8 +238,11 @@ impl TerminalUi {
 
         let mut file_known = std::collections::HashSet::new();
         let mut file_unknown = std::collections::HashSet::new();
+        let mut eligible_i1_count = 0;
+        let mut sentence_i1_status = Vec::with_capacity(sorted_sentences.len());
 
         for sub in &sorted_sentences {
+            let mut sentence_unknowns = std::collections::HashSet::new();
             if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
                 for t in tokens {
                     if t.is_content_word && !ignored_words.contains(&t.dictionary_form) {
@@ -246,19 +250,37 @@ impl TerminalUi {
                             file_known.insert(t.dictionary_form.clone());
                         } else {
                             file_unknown.insert(t.dictionary_form.clone());
+                            sentence_unknowns.insert(t.dictionary_form.clone());
                         }
                     }
                 }
             }
+            let is_i1 = sentence_unknowns.len() == 1;
+            if is_i1 {
+                eligible_i1_count += 1;
+            }
+            sentence_i1_status.push(is_i1);
         }
 
         println!("\n🔍 Inspecting {} subtitle lines (sorted by subtitle timing):", sorted_sentences.len());
-        println!("   Stats: {} | {}", blue.apply_to(&format!("{} Known Words", file_known.len())), red.apply_to(&format!("{} Unknown Words", file_unknown.len())));
-        println!("   Legend: {} | {} | {}\n", blue.apply_to("Known Word"), red.apply_to("Unknown Word"), dim.apply_to("Grammar/Ignored"));
+        println!(
+            "   Stats: {} | {} | {}",
+            blue.apply_to(&format!("{} Known Words", file_known.len())),
+            red.apply_to(&format!("{} Unknown Words", file_unknown.len())),
+            green.apply_to(&format!("{} Eligible i+1 Sentences", eligible_i1_count))
+        );
+        println!(
+            "   Legend: {} | {} | {} | {}\n",
+            blue.apply_to("Known Word"),
+            red.apply_to("Unknown Word"),
+            dim.apply_to("Grammar/Ignored"),
+            green.apply_to("★ i+1 Eligible")
+        );
 
         let mut options = Vec::with_capacity(sorted_sentences.len());
 
-        for sub in &sorted_sentences {
+        for (idx, sub) in sorted_sentences.iter().enumerate() {
+            let is_i1 = sentence_i1_status[idx];
             let mut formatted_sentence = String::new();
 
             if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
@@ -285,7 +307,13 @@ impl TerminalUi {
                 format!("{:02}:{:02}", mins, secs)
             };
 
-            options.push(format!("[{}]  {}", yellow.apply_to(ts_str), formatted_sentence));
+            let prefix = if is_i1 {
+                format!("★ [{}]", green.apply_to(&ts_str))
+            } else {
+                format!("  [{}]", yellow.apply_to(&ts_str))
+            };
+
+            options.push(format!("{}  {}", prefix, formatted_sentence));
         }
 
         let _ = Select::new(
