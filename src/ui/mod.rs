@@ -93,9 +93,10 @@ impl TerminalUi {
             .collect();
 
         let selected_indices = MultiSelect::new(
-            "Select words you ALREADY KNOW (Space to toggle, Enter to confirm):",
+            "Select words you ALREADY KNOW (Space to toggle, Enter to confirm, type to filter):",
             options,
         )
+        .with_page_size(18)
         .prompt()?;
 
         let mut checked_words = Vec::new();

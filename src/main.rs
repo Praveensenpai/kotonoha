@@ -156,9 +156,12 @@ async fn main() -> Result<()> {
         }
     }
 
-    let mut top_vocab: Vec<(String, usize)> = word_counts.into_iter().collect();
+    let mut top_vocab: Vec<(String, usize)> = word_counts
+        .into_iter()
+        .filter(|(_, count)| *count >= 2)
+        .collect();
     top_vocab.sort_by(|a, b| b.1.cmp(&a.1));
-    let bootstrap_candidates: Vec<(String, usize)> = top_vocab.into_iter().take(25).collect();
+    let bootstrap_candidates: Vec<(String, usize)> = top_vocab.into_iter().take(100).collect();
 
     if !bootstrap_candidates.is_empty() {
         let newly_known = TerminalUi::bootstrap_known_words(&bootstrap_candidates)?;
