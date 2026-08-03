@@ -210,7 +210,7 @@ impl TerminalUi {
         Ok(selected)
     }
 
-    /// Prints all subtitle sentences with known words in Blue and unknown words in Red.
+    /// Prints all subtitle sentences sorted by timestamp with known words in Blue and unknown words in Red.
     pub fn inspect_sentences(
         sentences: &[crate::srt::SubtitleSentence],
         tokenizer: &crate::nlp::JapaneseTokenizer,
@@ -220,12 +220,16 @@ impl TerminalUi {
         let blue = Style::new().blue().bold();
         let red = Style::new().red().bold();
         let dim = Style::new().dim();
+        let yellow = Style::new().yellow();
 
-        println!("\n🔍 Inspecting {} subtitle lines:\n", sentences.len());
+        let mut sorted_sentences = sentences.to_vec();
+        sorted_sentences.sort_by_key(|s| s.start_ms);
+
+        println!("\n🔍 Inspecting {} subtitle lines (sorted by subtitle timing):\n", sorted_sentences.len());
         println!("   Legend: {} | {} | {}\n", blue.apply_to("Known Word"), red.apply_to("Unknown Word"), dim.apply_to("Grammar/Ignored"));
         println!("{}\n", "─".repeat(70));
 
-        for sub in sentences {
+        for sub in &sorted_sentences {
             let mut formatted_sentence = String::new();
 
             if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
@@ -242,7 +246,17 @@ impl TerminalUi {
                 formatted_sentence = sub.text.clone();
             }
 
-            println!("  [#{:03}] {}", sub.index, formatted_sentence);
+            let total_secs = sub.start_ms / 1000;
+            let mins = (total_secs / 60) % 60;
+            let secs = total_secs % 60;
+            let hours = total_secs / 3600;
+            let ts_str = if hours > 0 {
+                format!("{:02}:{:02}:{:02}", hours, mins, secs)
+            } else {
+                format!("{:02}:{:02}", mins, secs)
+            };
+
+            println!("  [{}]  {}", yellow.apply_to(ts_str), formatted_sentence);
         }
         println!("\n{}\n", "─".repeat(70));
     }

@@ -29,7 +29,15 @@ fn clean_text(text: &str) -> String {
 
     let cleaned = re_html.replace_all(text, "");
     let cleaned = re_ass.replace_all(&cleaned, "");
-    cleaned.replace("\\N", " ").replace("\\n", " ").trim().to_string()
+    let flattened = cleaned
+        .replace("\\N", " ")
+        .replace("\\n", " ")
+        .replace("\r\n", " ")
+        .replace('\n', " ")
+        .replace('\r', " ");
+
+    let re_spaces = Regex::new(r"\s+").unwrap();
+    re_spaces.replace_all(flattened.trim(), " ").to_string()
 }
 
 fn parse_time_srt(s: &str) -> Option<u64> {
