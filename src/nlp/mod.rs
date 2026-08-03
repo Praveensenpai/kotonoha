@@ -10,8 +10,21 @@ use std::path::PathBuf;
 pub struct TokenInfo {
     pub surface: String,
     pub dictionary_form: String,
+    pub reading: String,
     pub pos: Vec<String>,
     pub is_content_word: bool,
+}
+
+fn kata_to_hira(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if matches!(c, '\u{30A1}'..='\u{30F6}') {
+                std::char::from_u32(c as u32 - 0x60).unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 pub struct JapaneseTokenizer {
@@ -82,9 +95,12 @@ impl JapaneseTokenizer {
                 && has_japanese_char
                 && !is_single_kana;
 
+            let reading = kata_to_hira(node.reading_form());
+
             tokens.push(TokenInfo {
                 surface,
                 dictionary_form,
+                reading,
                 pos,
                 is_content_word,
             });

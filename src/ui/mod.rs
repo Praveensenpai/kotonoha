@@ -82,14 +82,20 @@ impl TerminalUi {
         Ok(PathBuf::from(selected))
     }
 
-    pub fn bootstrap_known_words(vocab_items: &[(String, usize)]) -> Result<Vec<String>> {
+    pub fn bootstrap_known_words(vocab_items: &[(String, usize, String)]) -> Result<Vec<String>> {
         if vocab_items.is_empty() {
             return Ok(Vec::new());
         }
 
         let options: Vec<String> = vocab_items
             .iter()
-            .map(|(word, count)| format!("{} ({} occurrences)", word, count))
+            .map(|(word, count, reading)| {
+                if word != reading && !reading.is_empty() {
+                    format!("{} ({}) — {} occurrences", word, reading, count)
+                } else {
+                    format!("{} — {} occurrences", word, count)
+                }
+            })
             .collect();
 
         let prompt_msg = format!(

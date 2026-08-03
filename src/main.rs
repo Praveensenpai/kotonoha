@@ -145,23 +145,25 @@ async fn main() -> Result<()> {
     let ignored_words = db.get_ignored_words()?;
 
     // Bootstrap Vocabulary: Extract top unknown content words by frequency
-    let mut word_counts: HashMap<String, usize> = HashMap::new();
+    let mut word_counts: HashMap<String, (usize, String)> = HashMap::new();
     for sub in &sentences {
         if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
             for t in tokens {
                 if t.is_content_word && !known_words.contains(&t.dictionary_form) && !ignored_words.contains(&t.dictionary_form) {
-                    *word_counts.entry(t.dictionary_form).or_insert(0) += 1;
+                    let entry = word_counts.entry(t.dictionary_form.clone()).or_insert((0, t.reading.clone()));
+                    entry.0 += 1;
                 }
             }
         }
     }
 
-    let mut top_vocab: Vec<(String, usize)> = word_counts
+    let mut top_vocab: Vec<(String, usize, String)> = word_counts
         .into_iter()
-        .filter(|(_, count)| *count >= 2)
+        .map(|(word, (count, reading))| (word, count, reading))
+        .filter(|(_, count, _)| *count >= 2)
         .collect();
     top_vocab.sort_by(|a, b| b.1.cmp(&a.1));
-    let bootstrap_candidates: Vec<(String, usize)> = top_vocab.into_iter().take(100).collect();
+    let bootstrap_candidates: Vec<(String, usize, String)> = top_vocab.into_iter().take(100).collect();
 
     if !bootstrap_candidates.is_empty() {
         let newly_known = TerminalUi::bootstrap_known_words(&bootstrap_candidates)?;
