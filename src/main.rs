@@ -257,8 +257,9 @@ async fn main() -> Result<()> {
 
     if !candidates_to_process.is_empty() {
         let total = candidates_to_process.len() as u64;
+        let http_client = std::sync::Arc::new(reqwest::Client::new());
 
-        // Step 1: Definitions & Pitch Accents (Concurrent 5 at a time)
+        // Step 1: Definitions & Pitch Accents (Concurrent 5 at a time with HTTP connection pooling)
         let pb1 = indicatif::ProgressBar::new(total);
         pb1.set_style(
             indicatif::ProgressStyle::default_bar()
@@ -277,24 +278,26 @@ async fn main() -> Result<()> {
         pb1.set_position(cached_count);
 
         if !uncached_words.is_empty() {
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<dict::LookupResult>(100);
             let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
-            let mut tasks = Vec::new();
 
             for word in uncached_words {
                 let sem = std::sync::Arc::clone(&semaphore);
-                let pb = pb1.clone();
-                tasks.push(tokio::spawn(async move {
-                    let _permit = sem.acquire().await;
-                    let res = DictionaryService::lookup(&word).await;
-                    pb.inc(1);
-                    (word, res)
-                }));
-            }
+                let client = std::sync::Arc::clone(&http_client);
+                let tx = tx.clone();
 
-            for task in tasks {
-                if let Ok((_word, Ok(dict_res))) = task.await {
-                    let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
-                }
+                tokio::spawn(async move {
+                    let _permit = sem.acquire().await;
+                    if let Ok(dict_res) = DictionaryService::lookup(&client, &word).await {
+                        let _ = tx.send(dict_res).await;
+                    }
+                });
+            }
+            drop(tx);
+
+            while let Some(dict_res) = rx.recv().await {
+                let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
+                pb1.inc(1);
             }
         }
         pb1.finish();
@@ -337,6 +340,7 @@ async fn main() -> Result<()> {
         println!();
     }
 
+    let http_client = reqwest::Client::new();
     let mut mined_count = 0;
     let mut skipped_count = 0;
     let mut ignored_count = 0;
@@ -353,7 +357,7 @@ async fn main() -> Result<()> {
                 pitch_accent: res.2,
             },
             None => {
-                let res = DictionaryService::lookup(&cand.target_word).await?;
+                let res = DictionaryService::lookup(&http_client, &cand.target_word).await?;
                 db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent)?;
                 res
             }

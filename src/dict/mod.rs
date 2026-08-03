@@ -12,9 +12,9 @@ pub struct LookupResult {
 pub struct DictionaryService;
 
 impl DictionaryService {
-    pub async fn lookup(word: &str) -> Result<LookupResult> {
+    pub async fn lookup(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
         let url = format!("https://jisho.org/api/v1/search/words?keyword={}", urlencoding::encode(word));
-        let resp = reqwest::get(&url).await?;
+        let resp = client.get(&url).send().await?;
 
         if resp.status().is_success() {
             let json: serde_json::Value = resp.json().await?;
