@@ -77,7 +77,7 @@ impl JapaneseTokenizer {
                     matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}')
                 });
 
-            let is_content_word = matches!(pos_category, "名詞" | "代名詞" | "動詞" | "形容詞" | "副詞")
+            let is_content_word = matches!(pos_category, "名詞" | "代名詞" | "接頭辞" | "動詞" | "形容詞" | "形状詞" | "副詞" | "連体詞")
                 && !is_symbol_or_junk
                 && has_japanese_char
                 && !is_single_kana;
