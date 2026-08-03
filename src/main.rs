@@ -19,7 +19,7 @@ use miner::MiningEngine;
 use nlp::JapaneseTokenizer;
 use srt::parse_subtitle;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ui::TerminalUi;
 
 async fn anki_connected(url: &str) -> bool {
@@ -31,6 +31,67 @@ async fn anki_connected(url: &str) -> bool {
         .send()
         .await
         .is_ok()
+}
+
+fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
+    let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
+    let ext = input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+
+    let is_sub = matches!(ext.as_str(), "srt" | "ass" | "vtt");
+    let is_vid = matches!(ext.as_str(), "mkv" | "mp4" | "webm" | "avi");
+
+    let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let clean_stem = stem
+        .trim_end_matches(".ja")
+        .trim_end_matches(".jp")
+        .trim_end_matches(".ja-JP")
+        .trim_end_matches(".japanese")
+        .trim_end_matches(".en");
+
+    if is_sub {
+        let sub_path = input_path.to_path_buf();
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let p_ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                if matches!(p_ext.as_str(), "mkv" | "mp4" | "webm" | "avi") {
+                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    if p_stem == stem || p_stem == clean_stem || stem.starts_with(p_stem) || p_stem.starts_with(clean_stem) {
+                        return Ok((sub_path, p));
+                    }
+                }
+            }
+        }
+        anyhow::bail!(
+            "No matching video file (.mkv, .mp4) found for subtitle: {}\n   Place the video file in the same folder to mine cards.",
+            input_path.display()
+        );
+    } else if is_vid {
+        let vid_path = input_path.to_path_buf();
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let p_ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                if matches!(p_ext.as_str(), "srt" | "ass" | "vtt") {
+                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let p_clean = p_stem
+                        .trim_end_matches(".ja")
+                        .trim_end_matches(".jp")
+                        .trim_end_matches(".ja-JP")
+                        .trim_end_matches(".japanese");
+                    if p_stem == stem || p_clean == stem || p_stem.starts_with(stem) || stem.starts_with(p_clean) {
+                        return Ok((p, vid_path));
+                    }
+                }
+            }
+        }
+        anyhow::bail!(
+            "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   Place the subtitle file in the same folder to mine cards.",
+            input_path.display()
+        );
+    } else {
+        anyhow::bail!("Unsupported file format: {}", input_path.display());
+    }
 }
 
 #[tokio::main]
@@ -113,28 +174,16 @@ async fn main() -> Result<()> {
         None => TerminalUi::select_media_file()?,
     };
 
-    println!(" ℹ Loading media file: {}", input_path.display());
-
-    let ext = input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-    let (subtitle_path, video_path, has_video) = if ext == "srt" || ext == "ass" {
-        let mkv = input_path.with_extension("mkv");
-        let mp4 = input_path.with_extension("mp4");
-        if mkv.exists() {
-            (input_path.clone(), mkv, true)
-        } else if mp4.exists() {
-            (input_path.clone(), mp4, true)
-        } else {
-            (input_path.clone(), input_path.clone(), false)
+    let (subtitle_path, video_path) = match find_paired_media(&input_path) {
+        Ok(pair) => pair,
+        Err(e) => {
+            eprintln!("\n {} {}", style("❌ Error:").red().bold(), e);
+            std::process::exit(1);
         }
-    } else {
-        let srt = input_path.with_extension("ja.srt");
-        let sub = if srt.exists() { srt } else { input_path.clone() };
-        (sub, input_path.clone(), true)
     };
 
-    if !has_video {
-        println!(" {} No paired video found — audio preview disabled.", style("⚠").yellow().bold());
-    }
+    println!(" ℹ Subtitle File: {}", style(subtitle_path.display()).cyan());
+    println!(" ℹ Video File:    {} ({})", style(video_path.display()).cyan(), style("✔ Video paired").green().bold());
 
     let sentences = parse_subtitle(&subtitle_path)?;
     println!(" ✔ Parsed {} subtitle lines", sentences.len());
@@ -216,15 +265,13 @@ async fn main() -> Result<()> {
                     let _ = db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent);
                 }
             }
-            if has_video {
-                let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
-                if !audio_path.exists() {
-                    let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
-                }
-                let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
-                if !image_path.exists() {
-                    let _ = MediaExtractor::extract_screenshot(&video_path, cand.sentence.start_ms, &image_path);
-                }
+            let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
+            if !audio_path.exists() {
+                let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
+            }
+            let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
+            if !image_path.exists() {
+                let _ = MediaExtractor::extract_screenshot(&video_path, cand.sentence.start_ms, &image_path);
             }
         }
         println!("✔ Ready!\n");
@@ -259,7 +306,7 @@ async fn main() -> Result<()> {
         );
 
         let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
-        let mut audio_child = if has_video && audio_path.exists() {
+        let mut audio_child = if audio_path.exists() {
             MediaExtractor::play_preview_audio(&audio_path)
         } else {
             None
