@@ -1,13 +1,53 @@
 use anyhow::Result;
-use console::Style;
+use console::{measure_text_width, Style};
+use crossterm::terminal;
 use inquire::{MultiSelect, Select, Text};
 use std::path::PathBuf;
 use walkdir::WalkDir;
 
+/// Returns terminal width capped at 110, minimum 60.
+fn box_width() -> usize {
+    terminal::size().map(|(w, _)| w as usize).unwrap_or(80).min(110).max(60)
+}
+
+/// Wraps content in a full-width box row: "│ <content><padding> │"
+fn box_row(content: &str, inner_w: usize) -> String {
+    let vis = measure_text_width(content);
+    let pad = inner_w.saturating_sub(vis);
+    format!("│ {}{} │", content, " ".repeat(pad))
+}
+
+/// Empty padded row.
+fn box_empty(inner_w: usize) -> String {
+    format!("│ {} │", " ".repeat(inner_w))
+}
+
 pub struct TerminalUi;
 
 impl TerminalUi {
+    /// Prints a full-width box with the app title centered inside.
+    pub fn print_banner() {
+        let bw = box_width();
+        let iw = bw - 4; // inner width between "│ " and " │"
+
+        let title = "🌸  K O T O N O H A  ──  Japanese $i+1$ Sentence Miner";
+        let title_vis = measure_text_width(title);
+
+        let total_pad = iw.saturating_sub(title_vis);
+        let left_pad  = total_pad / 2;
+        let right_pad = total_pad - left_pad;
+
+        let top    = format!("┌{}┐", "─".repeat(bw - 2));
+        let middle = format!("│ {}{}{} │", " ".repeat(left_pad), title, " ".repeat(right_pad));
+        let bottom = format!("└{}┘", "─".repeat(bw - 2));
+
+        println!("\n{}", top);
+        println!("{}", middle);
+        println!("{}\n", bottom);
+    }
+
     pub fn select_media_file() -> Result<PathBuf> {
+
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let search_dirs = vec![home.join("Videos"), PathBuf::from(".")];
 
@@ -84,35 +124,50 @@ impl TerminalUi {
         let green = Style::new().green().bold();
         let red = Style::new().red().bold();
 
-        let rank_str = format!("RANK #{}", rank);
-        let border = "─".repeat(50);
+        let bw = box_width();      // total box width incl. borders
+        let iw = bw - 4;           // inner content width (│ _ _ _ │)
+        const LABEL: usize = 15;   // fixed label column display width
 
-        let highlighted_sentence = sentence.replace(target_word, &green.apply_to(target_word).to_string());
+        // Top border: ┌─ RANK #N ──────────────────────────────┐
+        let rank_label = format!(" RANK #{} ", rank);
+        let dash_count = bw.saturating_sub(rank_label.len() + 3); // ┌ + ─ + label + dashes + ┐
+        let top = format!("┌─{}{}┐", yellow.apply_to(&rank_label), "─".repeat(dash_count));
+
+        // Bottom border
+        let bottom = format!("└{}┘", "─".repeat(bw - 2));
+
+        // Helper: label row  e.g. "Sentence:       <value>"
+        let lrow = |label: &str, value: &str| -> String {
+            let label_pad = LABEL.saturating_sub(measure_text_width(label));
+            let content = format!("{}{}{}", label, " ".repeat(label_pad), value);
+            box_row(&content, iw)
+        };
+
+        let highlighted = sentence.replace(target_word, &green.apply_to(target_word).to_string());
 
         let unknown_str = if unknown_context.is_empty() {
             "None (i+1 target)".to_string()
         } else {
             unknown_context.join(", ")
         };
-
         let known_str = if known_context.is_empty() {
             "None".to_string()
         } else {
             known_context.join(", ")
         };
 
-        println!("\n┌─ {} {} ┐", yellow.apply_to(&rank_str), border);
-        println!("│ ");
-        println!("│  Sentence:       {}", highlighted_sentence);
-        println!("│  Target Word:    {} ({} [Pitch: {}])", green.apply_to(target_word), reading, pitch);
+        println!("\n{}", top);
+        println!("{}", box_empty(iw));
+        println!("{}", lrow("Sentence:", &highlighted));
+        println!("{}", lrow("Target Word:", &format!("{} ({} [Pitch: {}])", green.apply_to(target_word), reading, pitch)));
         if let Some(r) = jpdb_rank {
-            println!("│  JPDB Rank:      #{}", r);
+            println!("{}", lrow("JPDB Rank:", &format!("#{}", r)));
         }
-        println!("│  Definitions:    {}", definition);
-        println!("│  Unknown Words:  {}", red.apply_to(&unknown_str));
-        println!("│  Known Words:    {}", cyan.apply_to(&known_str));
-        println!("│ ");
-        println!("└{}┘\n", "─".repeat(54));
+        println!("{}", lrow("Definitions:", definition));
+        println!("{}", lrow("Unknown Words:", &red.apply_to(&unknown_str).to_string()));
+        println!("{}", lrow("Known Words:", &cyan.apply_to(&known_str).to_string()));
+        println!("{}", box_empty(iw));
+        println!("{}\n", bottom);
     }
 
     pub fn ask_action() -> Result<char> {
@@ -136,5 +191,22 @@ impl TerminalUi {
         } else {
             Ok('n')
         }
+    }
+
+    /// Show all ignored words and let the user multiselect which ones to un-ignore.
+    /// Returns the words that were selected for removal.
+    pub fn manage_ignored_words(words: &[String]) -> Result<Vec<String>> {
+        if words.is_empty() {
+            println!("\n 📭 No ignored words yet.\n");
+            return Ok(Vec::new());
+        }
+
+        let selected = MultiSelect::new(
+            "Select words to UN-IGNORE (Space to toggle, Enter to confirm):",
+            words.to_vec(),
+        )
+        .prompt()?;
+
+        Ok(selected)
     }
 }

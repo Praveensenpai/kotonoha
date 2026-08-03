@@ -746,6 +746,7 @@ version = "0.1.5"
 dependencies = [
  "anyhow",
  "console",
+ "crossterm",
  "dirs",
  "indicatif",
  "inquire",
@@ -758,6 +759,7 @@ dependencies = [
  "sudachi",
  "tokio",
  "toml",
+ "unicode-width 0.1.14",
  "urlencoding",
  "walkdir",
 ]

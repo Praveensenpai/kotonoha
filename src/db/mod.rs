@@ -100,6 +100,29 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_ignored_words_sorted(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT word FROM ignored_words ORDER BY word ASC")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut words = Vec::new();
+        for r in rows {
+            words.push(r?);
+        }
+        Ok(words)
+    }
+
+    pub fn remove_ignored_words(&self, words: &[String]) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut removed = 0;
+        {
+            let mut stmt = tx.prepare("DELETE FROM ignored_words WHERE word = ?")?;
+            for w in words {
+                removed += stmt.execute(params![w])?;
+            }
+        }
+        tx.commit()?;
+        Ok(removed)
+    }
+
     pub fn get_cached_definition(&self, expression: &str) -> Result<Option<(String, String, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT reading, definition, pitch_accent FROM dictionary_cache WHERE expression = ?",

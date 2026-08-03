@@ -10,6 +10,7 @@ mod ui;
 
 use anyhow::Result;
 use config::AppConfig;
+use console::style;
 use db::Database;
 use dict::DictionaryService;
 use jpdb::JpdbVocabList;
@@ -20,6 +21,17 @@ use srt::parse_subtitle;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use ui::TerminalUi;
+
+async fn anki_connected(url: &str) -> bool {
+    let body = serde_json::json!({"action": "version", "version": 6});
+    reqwest::Client::new()
+        .post(url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .is_ok()
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,18 +45,42 @@ async fn main() -> Result<()> {
             println!("\nUSAGE:");
             println!("  kotonoha                       Launch interactive TUI file picker");
             println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
+            println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h        Show help information");
             return Ok(());
         }
+        if arg == "--manage-ignored" {
+            let cfg = AppConfig::load()?;
+            let db = Database::open(&cfg.db_path)?;
+            let words = db.get_ignored_words_sorted()?;
+            let to_remove = TerminalUi::manage_ignored_words(&words)?;
+            if !to_remove.is_empty() {
+                let count = db.remove_ignored_words(&to_remove)?;
+                println!(" ✔ Removed {} word(s) from the ignore list.", count);
+            } else {
+                println!(" ℹ No changes made.");
+            }
+            return Ok(());
+        }
     }
 
-    println!("\n┌───────────────────────────────────────────────────────────────┐");
-    println!("│      🌸  K O T O N O H A  ──  Japanese $i+1$ Sentence Miner    │");
-    println!("└───────────────────────────────────────────────────────────────┘\n");
+    TerminalUi::print_banner();
 
     let cfg = AppConfig::load()?;
     let db = Database::open(&cfg.db_path)?;
+
+    // AnkiConnect status
+    if anki_connected(&cfg.anki_connect_url).await {
+        println!(" {}  Anki connected", style("✔").green().bold());
+    } else {
+        println!(
+            " {}  Anki not connected — cards will be saved locally.\n    Use {} to push them to Anki later.",
+            style("⚠").yellow().bold(),
+            style("kotonoha --sync").cyan()
+        );
+    }
+    println!();
 
     let input_path = match std::env::args().nth(1) {
         Some(arg) => PathBuf::from(arg),
