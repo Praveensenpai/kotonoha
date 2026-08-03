@@ -146,6 +146,19 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        if arg == "--manage-known" {
+            let cfg = AppConfig::load()?;
+            let db = Database::open(&cfg.db_path)?;
+            let words = db.get_known_words_sorted()?;
+            let to_remove = TerminalUi::manage_known_words(&words)?;
+            if !to_remove.is_empty() {
+                let count = db.remove_known_words(&to_remove)?;
+                println!(" ✔ Removed {} word(s) from known database.", count);
+            } else {
+                println!(" ℹ No changes made.");
+            }
+            return Ok(());
+        }
     }
 
     TerminalUi::print_banner();

@@ -82,6 +82,29 @@ impl Database {
         Ok(added)
     }
 
+    pub fn get_known_words_sorted(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT word FROM known_words ORDER BY word ASC")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut words = Vec::new();
+        for r in rows {
+            words.push(r?);
+        }
+        Ok(words)
+    }
+
+    pub fn remove_known_words(&self, words: &[String]) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut removed = 0;
+        {
+            let mut stmt = tx.prepare("DELETE FROM known_words WHERE word = ?")?;
+            for w in words {
+                removed += stmt.execute(params![w])?;
+            }
+        }
+        tx.commit()?;
+        Ok(removed)
+    }
+
     pub fn get_ignored_words(&self) -> Result<HashSet<String>> {
         let mut stmt = self.conn.prepare("SELECT word FROM ignored_words")?;
         let rows = stmt.query_map([], |row| row.get(0))?;

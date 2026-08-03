@@ -235,6 +235,25 @@ impl TerminalUi {
         }
     }
 
+    /// Show all known words in DB and let the user multiselect which ones to remove/forget.
+    pub fn manage_known_words(words: &[String]) -> Result<Vec<String>> {
+        if words.is_empty() {
+            println!("\n 📭 No known words in database yet.\n");
+            return Ok(Vec::new());
+        }
+
+        let prompt_msg = format!(
+            "Select known words to REMOVE / FORGET ({} words in DB — Space to toggle, Enter to confirm, type to filter):",
+            words.len()
+        );
+
+        let selected = MultiSelect::new(&prompt_msg, words.to_vec())
+            .with_page_size(18)
+            .prompt()?;
+
+        Ok(selected)
+    }
+
     /// Show all ignored words and let the user multiselect which ones to un-ignore.
     /// Returns the words that were selected for removal.
     pub fn manage_ignored_words(words: &[String]) -> Result<Vec<String>> {
