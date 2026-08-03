@@ -169,11 +169,34 @@ async fn main() -> Result<()> {
     }
 
     let known_words = db.get_known_words()?;
+
+    let mut file_known = std::collections::HashSet::new();
+    let mut file_unknown = std::collections::HashSet::new();
+
+    for sub in &sentences {
+        if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
+            for t in tokens {
+                if t.is_content_word && !ignored_words.contains(&t.dictionary_form) {
+                    if known_words.contains(&t.dictionary_form) {
+                        file_known.insert(t.dictionary_form);
+                    } else {
+                        file_unknown.insert(t.dictionary_form);
+                    }
+                }
+            }
+        }
+    }
+
     let engine = MiningEngine::new(tokenizer);
     let jpdb_list = JpdbVocabList::load_or_fetch("https://jpdb.io/vocabulary-list")?;
 
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
-    println!(" ✔ Found {} $i+1$ candidate sentences\n", candidates.len());
+    println!(
+        " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {})\n",
+        candidates.len(),
+        style(format!("{} Known Words", file_known.len())).blue().bold(),
+        style(format!("{} Unknown Words", file_unknown.len())).red().bold(),
+    );
 
     let mut mined_count = 0;
     for (idx, cand) in candidates.iter().enumerate() {
