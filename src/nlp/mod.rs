@@ -26,6 +26,44 @@ fn kata_to_hira(s: &str) -> String {
         .collect()
 }
 
+fn normalize_colloquial_negative(
+    surface: &str,
+    dictionary_form: String,
+    reading: String,
+) -> (String, String) {
+    let Some(stem) = ["ねえ", "ねぇ", "ねー"]
+        .iter()
+        .find_map(|suffix| surface.strip_suffix(suffix).filter(|stem| !stem.is_empty()))
+    else {
+        return (dictionary_form, reading);
+    };
+
+    // Limit the correction to the common Sudachi misparse where the form is
+    // incorrectly classified as a godan/ichidan verb ending in る. This keeps
+    // slang adjectives such as すげえ from being rewritten as すげない.
+    if !dictionary_form.ends_with('る') {
+        return (dictionary_form, reading);
+    }
+
+    // Sudachi can analyse rough negative forms such as いけねえ as the
+    // unrelated verb いける. In this construction, ねえ/ねぇ/ねー is the
+    // colloquial equivalent of ない.
+    let normalized_dictionary_form = format!("{stem}ない");
+    let normalized_reading = if let Some(prefix) = reading.strip_suffix('る') {
+        format!("{prefix}ない")
+    } else if let Some(prefix) = reading
+        .strip_suffix("ねえ")
+        .or_else(|| reading.strip_suffix("ねぇ"))
+        .or_else(|| reading.strip_suffix("ねー"))
+    {
+        format!("{prefix}ない")
+    } else {
+        reading
+    };
+
+    (normalized_dictionary_form, normalized_reading)
+}
+
 pub struct JapaneseTokenizer {
     dict: JapaneseDictionary,
 }
@@ -95,6 +133,8 @@ impl JapaneseTokenizer {
                 && !is_single_kana;
 
             let reading = kata_to_hira(node.reading_form());
+            let (dictionary_form, reading) =
+                normalize_colloquial_negative(&surface, dictionary_form, reading);
 
             tokens.push(TokenInfo {
                 surface,
@@ -105,5 +145,26 @@ impl JapaneseTokenizer {
         }
 
         Ok(tokens)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_colloquial_negative;
+
+    #[test]
+    fn normalizes_rough_negative_form() {
+        assert_eq!(
+            normalize_colloquial_negative("いけねえ", "いける".into(), "いける".into()),
+            ("いけない".into(), "いけない".into())
+        );
+    }
+
+    #[test]
+    fn leaves_non_negative_forms_unchanged() {
+        assert_eq!(
+            normalize_colloquial_negative("ねえ", "ねえ".into(), "ねえ".into()),
+            ("ねえ".into(), "ねえ".into())
+        );
     }
 }
