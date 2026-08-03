@@ -13,10 +13,22 @@ pub struct AppConfig {
     pub anki_deck_name: String,
     #[serde(default = "default_anki_model_name")]
     pub anki_model_name: String,
+    #[serde(default = "default_max_definition_senses")]
+    pub max_definition_senses: usize,
+    #[serde(default = "default_max_glosses_per_sense")]
+    pub max_glosses_per_sense: usize,
 }
 
 fn default_anki_model_name() -> String {
     "Japanese sentences+".to_string()
+}
+
+fn default_max_definition_senses() -> usize {
+    3
+}
+
+fn default_max_glosses_per_sense() -> usize {
+    4
 }
 
 /// Expands a leading `~/` using the home directory of the user running Kotonoha.
@@ -50,6 +62,8 @@ impl Default for AppConfig {
             anki_connect_url: "http://127.0.0.1:8765".to_string(),
             anki_deck_name: "Anime Mining T1".to_string(),
             anki_model_name: default_anki_model_name(),
+            max_definition_senses: 3,
+            max_glosses_per_sense: 4,
         }
     }
 }

@@ -80,8 +80,18 @@ pub fn format_pitch_accent(reading: &str, pitch_num: usize) -> (String, String, 
 pub struct DictionaryService;
 
 impl DictionaryService {
+    #[allow(dead_code)]
     pub async fn lookup(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
-        let res = Self::lookup_internal(client, word, true).await?;
+        Self::lookup_with_limits(client, word, 3, 4).await
+    }
+
+    pub async fn lookup_with_limits(
+        client: &reqwest::Client,
+        word: &str,
+        max_senses: usize,
+        max_glosses: usize,
+    ) -> Result<LookupResult> {
+        let res = Self::lookup_internal(client, word, true, max_senses, max_glosses).await?;
         if !is_placeholder_definition(&res.definition)
             && res.definition != "No dictionary definition found"
             && !res.definition.contains("[Noun] serif")
@@ -103,7 +113,7 @@ impl DictionaryService {
         for (stem_end, verb_end) in stem_fallbacks {
             if word.ends_with(stem_end) {
                 let verb_form = format!("{}{}", &word[..word.len() - stem_end.len()], verb_end);
-                if let Ok(fallback_res) = Self::lookup_internal(client, &verb_form, true).await {
+                if let Ok(fallback_res) = Self::lookup_internal(client, &verb_form, true, max_senses, max_glosses).await {
                     if !is_placeholder_definition(&fallback_res.definition)
                         && fallback_res.definition != "No dictionary definition found"
                     {
@@ -120,7 +130,7 @@ impl DictionaryService {
 
         // If no exact match and no verb stem match, try inexact candidate lookup (e.g. 月曜 -> 月曜日)
         if res.definition == "No dictionary definition found" || is_placeholder_definition(&res.definition) {
-            if let Ok(inexact_res) = Self::lookup_internal(client, word, false).await {
+            if let Ok(inexact_res) = Self::lookup_internal(client, word, false, max_senses, max_glosses).await {
                 if !is_placeholder_definition(&inexact_res.definition)
                     && inexact_res.definition != "No dictionary definition found"
                 {
@@ -132,7 +142,13 @@ impl DictionaryService {
         Ok(res)
     }
 
-    async fn lookup_internal(client: &reqwest::Client, word: &str, exact_only: bool) -> Result<LookupResult> {
+    async fn lookup_internal(
+        client: &reqwest::Client,
+        word: &str,
+        exact_only: bool,
+        max_senses: usize,
+        max_glosses: usize,
+    ) -> Result<LookupResult> {
         let url = format!("https://jisho.org/api/v1/search/words?keyword={}", urlencoding::encode(word));
         let resp = client.get(&url).send().await?;
 
@@ -241,6 +257,10 @@ impl DictionaryService {
                     if let Some(senses) = data["senses"].as_array() {
                         let mut num = 1;
                         for sense in senses {
+                            if num > max_senses {
+                                break;
+                            }
+
                             let pos_str = sense["parts_of_speech"]
                                 .as_array()
                                 .and_then(|a| a.first())
@@ -255,6 +275,7 @@ impl DictionaryService {
                                 let def_list: Vec<&str> = defs_arr
                                     .iter()
                                     .filter_map(|d| d.as_str())
+                                    .take(max_glosses)
                                     .collect();
                                 if !def_list.is_empty() {
                                     defs.push(format!("{}. [{}] {}", num, pos_str, def_list.join(", ")));
@@ -318,5 +339,14 @@ mod tests {
         let res = DictionaryService::lookup(&client, "先走り").await.unwrap();
         println!("SAKIBASHIRI RESULT: {:?}", res);
         assert!(res.definition.contains("rash") || res.definition.contains("act") || res.definition.contains("ahead"));
+    }
+
+    #[tokio::test]
+    async fn test_definition_limits() {
+        let client = reqwest::Client::new();
+        let res = DictionaryService::lookup_with_limits(&client, "つまり", 2, 3).await.unwrap();
+        println!("LIMITED RESULT:\n{}", res.definition);
+        let lines: Vec<&str> = res.definition.lines().collect();
+        assert!(lines.len() <= 2);
     }
 }

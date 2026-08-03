@@ -600,9 +600,11 @@ async fn main() -> Result<()> {
                 let client = std::sync::Arc::clone(&http_client);
                 let tx = tx.clone();
 
+                let max_senses = cfg.max_definition_senses;
+                let max_glosses = cfg.max_glosses_per_sense;
                 tokio::spawn(async move {
                     let _permit = sem.acquire().await;
-                    if let Ok(dict_res) = DictionaryService::lookup(&client, &word).await {
+                    if let Ok(dict_res) = DictionaryService::lookup_with_limits(&client, &word, max_senses, max_glosses).await {
                         let _ = tx.send(dict_res).await;
                     }
                 });
@@ -675,7 +677,7 @@ async fn main() -> Result<()> {
                 pitch_accent: res.2,
             },
             None => {
-                let res = DictionaryService::lookup(&http_client, &cand.target_word).await?;
+                let res = DictionaryService::lookup_with_limits(&http_client, &cand.target_word, cfg.max_definition_senses, cfg.max_glosses_per_sense).await?;
                 if !dict::is_placeholder_definition(&res.definition)
                     && res.definition != "No dictionary definition found"
                 {
