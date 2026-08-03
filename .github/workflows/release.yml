@@ -34,38 +34,24 @@ jobs:
           cp README.md LICENSE config.toml.example staging/ 2>/dev/null || true
           tar -czvf kotonoha-x86_64-unknown-linux-gnu.tar.gz -C staging .
 
-      - name: Generate Rich Release Notes
-        id: release_notes
+      - name: Generate Dynamic Changelog
         run: |
-          cat << 'EOF' > RELEASE_NOTES.md
-          ## 🌸 言の葉 (kotonoha) ${{ github.ref_name }}
-
-          > **Blazing-fast CLI Japanese $i+1$ sentence miner & card generator for passive immersion.**
-
-          ---
-
-          ### ✨ Key Highlights
-
-          - **⚡ Sub-Millisecond Morphological Analysis**: Powered by official [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) engine from WorksApplications.
-          - **🎯 Smart $i+1$ Candidate Filtering**: Automatically identifies sentences containing 1 unknown content word and ranks them by JPDB frequency and sentence length.
-          - **🖥️ 100% Terminal TUI**: Fully keyboard-driven interactive card review using [`inquire`](https://crates.io/crates/inquire) (arrow keys `↑`/`↓` and `Enter`).
-          - **🔊 Interactive Audio Replay (`r`)**: Replay preview audio snippet as many times as you want before deciding to mine (`y`), skip (`n`), or ignore (`i`).
-          - **🎬 Single-Pass Media Extraction**: Extracts precise audio snippets (`.mp3`) and screenshot thumbnails (`.jpg`) via `ffmpeg`.
-          - **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.config/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
-
-          ---
-
-          ### 🪄 Quick Installation
-
-          ```bash
-          curl -sSL https://raw.githubusercontent.com/Praveensenpai/kotonoha/main/install.sh | bash
-          ```
-
-          ---
-
-          ### 📦 Pre-compiled Assets
-          - `kotonoha-x86_64-unknown-linux-gnu.tar.gz`: Pre-compiled release binary & configuration template for Linux (x86_64).
-          EOF
+          PREV_TAG=$(git describe --tags --abbrev=0 ${{ github.ref_name }}^ 2>/dev/null || echo "")
+          echo "## 🌸 言の葉 (kotonoha) ${{ github.ref_name }}" > RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### 📝 Changes in this release" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          if [ -n "$PREV_TAG" ]; then
+            git log ${PREV_TAG}..${{ github.ref_name }} --oneline --no-merges | sed 's/^[a-f0-9]* /* /' >> RELEASE_NOTES.md
+          else
+            git log -n 10 --oneline --no-merges | sed 's/^[a-f0-9]* /* /' >> RELEASE_NOTES.md
+          fi
+          echo "" >> RELEASE_NOTES.md
+          echo "---" >> RELEASE_NOTES.md
+          echo "### 🪄 Quick Installation" >> RELEASE_NOTES.md
+          echo '```bash' >> RELEASE_NOTES.md
+          echo 'curl -sSL https://raw.githubusercontent.com/Praveensenpai/kotonoha/main/install.sh | bash' >> RELEASE_NOTES.md
+          echo '```' >> RELEASE_NOTES.md
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
