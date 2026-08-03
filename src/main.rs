@@ -90,22 +90,25 @@ async fn main() -> Result<()> {
     println!(" ℹ Loading media file: {}", input_path.display());
 
     let ext = input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-    let (subtitle_path, video_path) = if ext == "srt" || ext == "ass" {
+    let (subtitle_path, video_path, has_video) = if ext == "srt" || ext == "ass" {
         let mkv = input_path.with_extension("mkv");
         let mp4 = input_path.with_extension("mp4");
-        let vid = if mkv.exists() {
-            mkv
+        if mkv.exists() {
+            (input_path.clone(), mkv, true)
         } else if mp4.exists() {
-            mp4
+            (input_path.clone(), mp4, true)
         } else {
-            input_path.clone()
-        };
-        (input_path.clone(), vid)
+            (input_path.clone(), input_path.clone(), false)
+        }
     } else {
         let srt = input_path.with_extension("ja.srt");
         let sub = if srt.exists() { srt } else { input_path.clone() };
-        (sub, input_path.clone())
+        (sub, input_path.clone(), true)
     };
+
+    if !has_video {
+        println!(" {} No paired video found — audio preview disabled.", style("⚠").yellow().bold());
+    }
 
     let sentences = parse_subtitle(&subtitle_path)?;
     println!(" ✔ Parsed {} subtitle lines", sentences.len());
@@ -178,10 +181,15 @@ async fn main() -> Result<()> {
             &cand.unknown_context_words,
         );
 
-        let audio_path = cfg.media_dir.join(format!("{}_{}.mp3", cand.target_word, cand.sentence.index));
-        let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
-
-        let mut audio_child = MediaExtractor::play_preview_audio(&audio_path);
+        let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
+        if has_video {
+            let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
+        }
+        let mut audio_child = if has_video && audio_path.exists() {
+            MediaExtractor::play_preview_audio(&audio_path)
+        } else {
+            None
+        };
 
         let mut user_quit = false;
         loop {

@@ -72,8 +72,7 @@ impl JapaneseTokenizer {
 
             let is_content_word = matches!(pos_category, "名詞" | "動詞" | "形容詞" | "副詞")
                 && !is_symbol_or_junk
-                && has_japanese_char
-                && dictionary_form.chars().count() >= 2;
+                && has_japanese_char;
 
             tokens.push(TokenInfo {
                 surface,

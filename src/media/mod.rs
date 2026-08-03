@@ -25,8 +25,9 @@ impl MediaExtractor {
                 "-i", &video_path.to_string_lossy(),
                 "-t", &format!("{:.3}", duration_sec),
                 "-vn",
-                "-c:a", "libmp3lame",
-                "-q:a", "4",
+                "-c:a", "libopus",
+                "-b:a", "64k",
+                "-ar", "48000",
                 &output_path.to_string_lossy(),
             ])
             .stdout(Stdio::null())
