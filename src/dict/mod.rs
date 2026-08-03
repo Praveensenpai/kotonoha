@@ -15,6 +15,45 @@ pub fn is_placeholder_definition(definition: &str) -> bool {
     definition.trim() == "1. [def] vocabulary word"
 }
 
+pub fn truncate_definition(def: &str, max_senses: usize, max_glosses: usize) -> String {
+    if def.is_empty() || is_placeholder_definition(def) || def == "No dictionary definition found" {
+        return def.to_string();
+    }
+
+    let mut new_senses = Vec::new();
+    let mut num = 1;
+
+    for line in def.lines() {
+        if num > max_senses {
+            break;
+        }
+
+        let clean = line.trim();
+        let clean = clean.strip_prefix('│').unwrap_or(clean).trim();
+
+        if let Some(dot_idx) = clean.find(". [") {
+            let rest = &clean[dot_idx + 2..];
+            if let Some(close_bracket) = rest.find(']') {
+                let pos_part = &rest[..close_bracket + 1];
+                let glosses_part = rest[close_bracket + 1..].trim();
+                let glosses: Vec<&str> = glosses_part.split(", ").collect();
+                let truncated_glosses: Vec<&str> = glosses.into_iter().take(max_glosses).collect();
+                new_senses.push(format!("{}. {} {}", num, pos_part, truncated_glosses.join(", ")));
+                num += 1;
+                continue;
+            }
+        }
+
+        new_senses.push(clean.to_string());
+    }
+
+    if new_senses.is_empty() {
+        def.to_string()
+    } else {
+        new_senses.join("\n│                 ")
+    }
+}
+
 pub fn split_morae(reading: &str) -> Vec<String> {
     let small_kana = ['ゃ', 'ゅ', 'ょ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ャ', 'ュ', 'ョ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ'];
     let mut morae = Vec::new();
@@ -348,5 +387,15 @@ mod tests {
         println!("LIMITED RESULT:\n{}", res.definition);
         let lines: Vec<&str> = res.definition.lines().collect();
         assert!(lines.len() <= 2);
+    }
+
+    #[test]
+    fn test_truncate_definition() {
+        let raw = "1. [Adverb] word1, word2, word3, word4, word5\n│                 2. [Adverb] wordA, wordB, wordC, wordD, wordE\n│                 3. [Noun] wordX, wordY, wordZ\n│                 4. [Noun] extra sense";
+        let truncated = truncate_definition(raw, 2, 3);
+        assert_eq!(
+            truncated,
+            "1. [Adverb] word1, word2, word3\n│                 2. [Adverb] wordA, wordB, wordC"
+        );
     }
 }

@@ -673,7 +673,7 @@ async fn main() -> Result<()> {
             Some(res) => dict::LookupResult {
                 expression: cand.target_word.clone(),
                 reading: res.0,
-                definition: res.1,
+                definition: dict::truncate_definition(&res.1, cfg.max_definition_senses, cfg.max_glosses_per_sense),
                 pitch_accent: res.2,
             },
             None => {

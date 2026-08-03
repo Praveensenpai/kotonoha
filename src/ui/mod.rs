@@ -227,6 +227,28 @@ impl TerminalUi {
             box_row(&content, iw)
         };
 
+        let max_val_w = iw.saturating_sub(LABEL);
+
+        let format_val = |val: &str| -> String {
+            let vis = measure_text_width(val);
+            if vis > max_val_w && max_val_w > 3 {
+                let mut truncated = String::new();
+                let mut current_w = 0;
+                for c in val.chars() {
+                    let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
+                    if current_w + cw + 3 > max_val_w {
+                        truncated.push_str("...");
+                        break;
+                    }
+                    truncated.push(c);
+                    current_w += cw;
+                }
+                truncated
+            } else {
+                val.to_string()
+            }
+        };
+
         let highlighted = sentence.replace(target_word, &green.apply_to(target_word).to_string());
 
         let unknown_str = if unknown_context.is_empty() {
@@ -252,9 +274,25 @@ impl TerminalUi {
         if let Some(r) = jpdb_rank {
             println!("{}", lrow("JPDB Rank:", &format!("#{}", r)));
         }
-        println!("{}", lrow("Definitions:", definition));
-        println!("{}", lrow("Unknown Words:", &red.apply_to(&unknown_str).to_string()));
-        println!("{}", lrow("Known Words:", &cyan.apply_to(&known_str).to_string()));
+
+        let def_lines: Vec<&str> = definition.lines().collect();
+        if def_lines.is_empty() {
+            println!("{}", lrow("Definitions:", "No definition"));
+        } else {
+            for (idx, line) in def_lines.iter().enumerate() {
+                let clean_line = line.trim();
+                let clean_line = clean_line.strip_prefix('│').unwrap_or(clean_line).trim();
+                let truncated_line = format_val(clean_line);
+                if idx == 0 {
+                    println!("{}", lrow("Definitions:", &truncated_line));
+                } else {
+                    println!("{}", lrow("", &truncated_line));
+                }
+            }
+        }
+
+        println!("{}", lrow("Unknown Words:", &red.apply_to(&format_val(&unknown_str)).to_string()));
+        println!("{}", lrow("Known Words:", &cyan.apply_to(&format_val(&known_str)).to_string()));
         println!("{}", box_empty(iw));
         println!("{}\n", bottom);
     }
