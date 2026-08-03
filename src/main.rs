@@ -204,12 +204,30 @@ async fn main() -> Result<()> {
         style(format!("{} Eligible i+1 Sentences", candidates.len())).green().bold(),
     );
 
-    let mut mined_count = 0;
-    for (idx, cand) in candidates.iter().enumerate() {
-        if mined_count >= cfg.default_card_limit {
-            break;
-        }
+    let candidates_to_process: Vec<_> = candidates.into_iter().take(cfg.default_card_limit).collect();
 
+    if !candidates_to_process.is_empty() {
+        print!(" ℹ Pre-processing definitions & audio clips... ");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+
+        for cand in &candidates_to_process {
+            if db.get_cached_definition(&cand.target_word).unwrap_or(None).is_none() {
+                if let Ok(res) = DictionaryService::lookup(&cand.target_word).await {
+                    let _ = db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent);
+                }
+            }
+            if has_video {
+                let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
+                if !audio_path.exists() {
+                    let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
+                }
+            }
+        }
+        println!("✔ Ready!\n");
+    }
+
+    let mut mined_count = 0;
+    for (idx, cand) in candidates_to_process.iter().enumerate() {
         let dict_info = match db.get_cached_definition(&cand.target_word)? {
             Some(res) => dict::LookupResult {
                 expression: cand.target_word.clone(),
@@ -237,9 +255,6 @@ async fn main() -> Result<()> {
         );
 
         let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
-        if has_video {
-            let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
-        }
         let mut audio_child = if has_video && audio_path.exists() {
             MediaExtractor::play_preview_audio(&audio_path)
         } else {
