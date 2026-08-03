@@ -94,7 +94,11 @@ async fn main() -> Result<()> {
 
     // AnkiConnect status
     if anki_connected(&cfg.anki_connect_url).await {
-        println!(" {}  Anki connected", style("✔").green().bold());
+        println!(
+            " {}  Anki connected (Deck: {})",
+            style("✔").green().bold(),
+            style(&cfg.anki_deck_name).cyan().bold()
+        );
     } else {
         println!(
             " {}  Anki not connected — cards will be saved locally.\n    Use {} to push them to Anki later.",
