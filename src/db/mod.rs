@@ -12,6 +12,7 @@ pub struct MinedCard {
     pub sentence: String,
     pub target_word: String,
     pub reading: String,
+    pub pitch_accent: String,
     pub definition: String,
     pub audio_path: Option<String>,
     pub image_path: Option<String>,
@@ -66,15 +67,16 @@ impl Database {
             DELETE FROM dictionary_cache WHERE definition LIKE '%[Noun] serif%' OR definition LIKE '%[Wikipedia definition] Serif%';
             ",
         )?;
-        let has_anki_note_id = self
+        let columns = self
             .conn
             .prepare("PRAGMA table_info(mined_cards)")?
             .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<std::result::Result<Vec<_>, _>>()?
-            .iter()
-            .any(|column| column == "anki_note_id");
-        if !has_anki_note_id {
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if !columns.iter().any(|column| column == "anki_note_id") {
             self.conn.execute("ALTER TABLE mined_cards ADD COLUMN anki_note_id INTEGER", [])?;
+        }
+        if !columns.iter().any(|column| column == "pitch_accent") {
+            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN pitch_accent TEXT", [])?;
         }
         Ok(())
     }
@@ -196,17 +198,17 @@ impl Database {
         Ok(count)
     }
 
-    pub fn save_mined_card(&self, sentence: &str, target_word: &str, reading: &str, definition: &str, audio_path: Option<&str>, image_path: Option<&str>) -> Result<()> {
+    pub fn save_mined_card(&self, sentence: &str, target_word: &str, reading: &str, pitch_accent: &str, definition: &str, audio_path: Option<&str>, image_path: Option<&str>) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO mined_cards (sentence, target_word, reading, definition, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?)",
-            params![sentence, target_word, reading, definition, audio_path, image_path],
+            "INSERT INTO mined_cards (sentence, target_word, reading, pitch_accent, definition, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params![sentence, target_word, reading, pitch_accent, definition, audio_path, image_path],
         )?;
         Ok(())
     }
 
     pub fn get_unsynced_mined_cards(&self) -> Result<Vec<MinedCard>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, sentence, target_word, reading, definition, audio_path, image_path
+            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path
              FROM mined_cards WHERE anki_note_id IS NULL ORDER BY id",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -215,9 +217,10 @@ impl Database {
                 sentence: row.get(1)?,
                 target_word: row.get(2)?,
                 reading: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                definition: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                audio_path: row.get(5)?,
-                image_path: row.get(6)?,
+                pitch_accent: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                definition: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                audio_path: row.get(6)?,
+                image_path: row.get(7)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)

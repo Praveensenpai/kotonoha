@@ -14,6 +14,7 @@ use config::AppConfig;
 use console::style;
 use db::Database;
 use dict::DictionaryService;
+use inquire::Text;
 use jpdb::JpdbVocabList;
 use media::MediaExtractor;
 use miner::MiningEngine;
@@ -59,6 +60,93 @@ async fn upload_anki_media(client: &reqwest::Client, url: &str, card_id: i64, pa
     Ok(Some(filename))
 }
 
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn sentence_with_furigana(tokenizer: &JapaneseTokenizer, sentence: &str, target_word: &str) -> String {
+    tokenizer
+        .tokenize(sentence)
+        .map(|tokens| {
+            tokens
+                .into_iter()
+                .map(|token| {
+                    let surface = escape_html(&token.surface);
+                    let is_target = token.surface == target_word || token.dictionary_form == target_word;
+                    let display = if token.surface.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'))
+                        && !token.reading.is_empty()
+                    {
+                        format!("<ruby>{surface}<rt>{}</rt></ruby>", escape_html(&token.reading))
+                    } else {
+                        surface
+                    };
+                    if is_target { format!("<b>{display}</b>") } else { display }
+                })
+                .collect()
+        })
+        .unwrap_or_else(|_| escape_html(sentence))
+}
+
+fn to_katakana(text: &str) -> String {
+    text.chars()
+        .map(|character| match character {
+            '\u{3041}'..='\u{3096}' => std::char::from_u32(character as u32 + 0x60).unwrap_or(character),
+            _ => character,
+        })
+        .collect()
+}
+
+fn pitch_number(pitch_accent: &str, mora_count: usize) -> usize {
+    if let Ok(number) = pitch_accent.trim().parse::<usize>() {
+        return number.min(mora_count);
+    }
+    let pattern = pitch_accent.trim().to_ascii_uppercase();
+    if pattern.starts_with('H') {
+        1
+    } else if let Some(drop) = pattern.chars().position(|level| level == 'L').filter(|drop| *drop > 1) {
+        drop
+    } else {
+        0
+    }
+}
+
+fn pitch_pattern(reading: &str, pitch_accent: &str) -> (String, String) {
+    let morae = dict::split_morae(&to_katakana(reading));
+    let pitch = pitch_number(pitch_accent, morae.len());
+    let levels: Vec<bool> = (0..morae.len())
+        .map(|index| {
+            if pitch == 1 { index == 0 } else if pitch == 0 { index > 0 } else { index > 0 && index < pitch }
+        })
+        .collect();
+    let pattern = morae
+        .iter()
+        .enumerate()
+        .map(|(index, mora)| {
+            let current = levels[index];
+            let previous = index.checked_sub(1).and_then(|previous| levels.get(previous)).copied();
+            let next = levels.get(index + 1).copied();
+            let shadow = match (previous, current, next) {
+                (_, false, Some(true)) => "inset -2px -2px 0 0 #3366CC",
+                (Some(true), true, Some(false)) => "inset -2px 2px 0 0 #3366CC",
+                (_, true, _) => "inset 0 2px 0 0 #3366CC",
+                _ => "inset 0 -2px 0 0 #3366CC",
+            };
+            format!("<span style=\"box-shadow: {shadow};\">{mora}</span>")
+        })
+        .collect::<String>();
+    let notation: String = levels.iter().map(|is_high| if *is_high { 'H' } else { 'L' }).collect();
+    (
+        format!(
+            "{pattern} <span class=\"pitch_number\">{pitch}</span> <span class=\"pitch_pattern_text\">[{notation}]</span>"
+        ),
+        pitch.to_string(),
+    )
+}
+
 async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     let cards = db.get_unsynced_mined_cards()?;
     if cards.is_empty() {
@@ -67,11 +155,30 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     }
 
     let client = reqwest::Client::new();
+    let tokenizer = JapaneseTokenizer::new()?;
     anki_request(&client, &cfg.anki_connect_url, "version", serde_json::json!({})).await?;
     anki_request(&client, &cfg.anki_connect_url, "createDeck", serde_json::json!({"deck": cfg.anki_deck_name})).await?;
+    let fields = anki_request(
+        &client,
+        &cfg.anki_connect_url,
+        "modelFieldNames",
+        serde_json::json!({"modelName": cfg.anki_model_name}),
+    )
+    .await?;
+    let required_fields = [
+        "SentKanji", "SentFurigana", "SentEng", "SentAudio", "VocabKanji", "VocabFurigana",
+        "VocabPitchPattern", "VocabPitchNum", "VocabDef", "VocabAudio", "Image", "Notes",
+        "MakeProductionCard", "Focus",
+    ];
+    let available_fields = fields.as_array().ok_or_else(|| anyhow::anyhow!("AnkiConnect returned invalid fields for note type: {}", cfg.anki_model_name))?;
+    if required_fields.iter().any(|field| !available_fields.iter().any(|value| value.as_str() == Some(field))) {
+        anyhow::bail!("Anki note type '{}' does not have the required Japanese sentences+ fields", cfg.anki_model_name);
+    }
 
     let mut synced = 0;
     for card in cards {
+        let sentence_furigana = sentence_with_furigana(&tokenizer, &card.sentence, &card.target_word);
+        let (pitch_pattern, pitch_number) = pitch_pattern(&card.reading, &card.pitch_accent);
         let audio = match card.audio_path.as_deref() {
             Some(path) => upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus").await?,
             None => None,
@@ -80,18 +187,102 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             Some(path) => upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg").await?,
             None => None,
         };
-        let front = format!("{}<br><small>{}</small>", card.sentence, card.target_word);
-        let mut back = format!("<b>{}</b> [{}]<br>{}", card.target_word, card.reading, card.definition);
-        if let Some(filename) = audio { back.push_str(&format!("<br>[sound:{filename}]")); }
-        if let Some(filename) = image { back.push_str(&format!("<br><img src=\"{filename}\">")); }
+        let sentence_audio = audio.map(|filename| format!("[sound:{filename}]")).unwrap_or_default();
+        let image = image.map(|filename| format!("<img src=\"{filename}\">")).unwrap_or_default();
         let note_id = anki_request(&client, &cfg.anki_connect_url, "addNote", serde_json::json!({
-            "note": {"deckName": cfg.anki_deck_name, "modelName": "Basic", "fields": {"Front": front, "Back": back}, "tags": ["kotonoha", "mined"]}
+            "note": {
+                "deckName": cfg.anki_deck_name,
+                "modelName": cfg.anki_model_name,
+                "fields": {
+                    "SentKanji": card.sentence,
+                    "SentFurigana": sentence_furigana,
+                    "SentEng": "",
+                    "SentAudio": sentence_audio,
+                    "VocabKanji": card.target_word,
+                    "VocabFurigana": card.reading,
+                    "VocabPitchPattern": pitch_pattern,
+                    "VocabPitchNum": pitch_number,
+                    "VocabDef": card.definition,
+                    "VocabAudio": "",
+                    "Image": image,
+                    "Notes": "",
+                    "MakeProductionCard": "",
+                    "Focus": ""
+                },
+                "tags": ["jp1k", "kotonoha", "mined"]
+            }
         })).await?;
         let note_id = note_id.as_i64().ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?;
         db.mark_mined_card_synced(card.id, note_id)?;
         synced += 1;
     }
     println!(" ✔ Synced {synced} card(s) to Anki deck: {}", cfg.anki_deck_name);
+    Ok(())
+}
+
+async fn add_test_card(cfg: &AppConfig) -> Result<()> {
+    const TEST_DECK: &str = "kotonohatest";
+
+    let sentence = Text::new("Japanese sentence:").prompt()?;
+    let target_word = Text::new("Target word:").prompt()?;
+    let audio_path = Text::new("Audio file path (optional):").prompt()?;
+    let image_path = Text::new("Screenshot path (optional):").prompt()?;
+    let definition = Text::new("Definition (optional):").prompt()?;
+    let pitch = Text::new("Pitch number (0 = heiban, optional):").prompt()?;
+
+    if sentence.trim().is_empty() || target_word.trim().is_empty() {
+        anyhow::bail!("Sentence and target word are required.");
+    }
+
+    let client = reqwest::Client::new();
+    let tokenizer = JapaneseTokenizer::new()?;
+    anki_request(&client, &cfg.anki_connect_url, "version", serde_json::json!({})).await?;
+    anki_request(&client, &cfg.anki_connect_url, "createDeck", serde_json::json!({"deck": TEST_DECK})).await?;
+
+    let token = tokenizer
+        .tokenize(&sentence)?
+        .into_iter()
+        .find(|token| token.surface == target_word || token.dictionary_form == target_word);
+    let reading = token.map(|token| token.reading).unwrap_or_else(|| target_word.clone());
+    let test_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as i64;
+    let audio = if audio_path.trim().is_empty() {
+        None
+    } else {
+        upload_anki_media(&client, &cfg.anki_connect_url, test_id, audio_path.trim(), "opus").await?
+    };
+    let image = if image_path.trim().is_empty() {
+        None
+    } else {
+        upload_anki_media(&client, &cfg.anki_connect_url, test_id, image_path.trim(), "jpg").await?
+    };
+
+    let note_id = anki_request(&client, &cfg.anki_connect_url, "addNote", serde_json::json!({
+        "note": {
+            "deckName": TEST_DECK,
+            "modelName": cfg.anki_model_name,
+            "fields": {
+                "SentKanji": sentence,
+                "SentFurigana": sentence_with_furigana(&tokenizer, &sentence, &target_word),
+                "SentEng": "",
+                "SentAudio": audio.map(|filename| format!("[sound:{filename}]")).unwrap_or_default(),
+                "VocabKanji": target_word,
+                "VocabFurigana": reading,
+                "VocabPitchPattern": pitch_pattern(&reading, &pitch).0,
+                "VocabPitchNum": pitch_pattern(&reading, &pitch).1,
+                "VocabDef": definition,
+                "VocabAudio": "",
+                "Image": image.map(|filename| format!("<img src=\"{filename}\">")),
+                "Notes": "Test card created with kotonoha --test-add.",
+                "MakeProductionCard": "",
+                "Focus": ""
+            },
+            "tags": ["jp1k", "kotonoha", "test"]
+        }
+    })).await?;
+    let note_id = note_id.as_i64().ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?;
+    println!(" ✔ Test card added to {TEST_DECK} (note ID: {note_id}).");
     Ok(())
 }
 
@@ -173,6 +364,7 @@ async fn main() -> Result<()> {
             println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
             println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
             println!("  kotonoha --sync                Push locally mined cards to Anki");
+            println!("  kotonoha --test-add            Add a test card to the kotonohatest deck");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h | --h  Show help information");
             return Ok(());
@@ -181,6 +373,11 @@ async fn main() -> Result<()> {
             let cfg = AppConfig::load()?;
             let db = Database::open(&cfg.db_path)?;
             sync_to_anki(&cfg, &db).await?;
+            return Ok(());
+        }
+        if arg == "--test-add" {
+            let cfg = AppConfig::load()?;
+            add_test_card(&cfg).await?;
             return Ok(());
         }
         if arg == "--inspect" {
@@ -498,6 +695,7 @@ async fn main() -> Result<()> {
                         &cand.sentence.text,
                         &cand.target_word,
                         &dict_info.reading,
+                        &dict_info.pitch_accent,
                         &dict_info.definition,
                         Some(&audio_path.to_string_lossy()),
                         Some(&image_path.to_string_lossy()),

@@ -11,6 +11,25 @@ pub struct AppConfig {
     pub enable_anki_sync: bool,
     pub anki_connect_url: String,
     pub anki_deck_name: String,
+    #[serde(default = "default_anki_model_name")]
+    pub anki_model_name: String,
+}
+
+fn default_anki_model_name() -> String {
+    "Japanese sentences+".to_string()
+}
+
+/// Expands a leading `~/` using the home directory of the user running Kotonoha.
+/// This keeps paths in `config.toml` portable across user accounts.
+fn expand_home_path(path: PathBuf, home: &std::path::Path) -> PathBuf {
+    match path.to_str() {
+        Some("~") => home.to_path_buf(),
+        Some(value) => value
+            .strip_prefix("~/")
+            .map(|suffix| home.join(suffix))
+            .unwrap_or(path),
+        None => path,
+    }
 }
 
 impl Default for AppConfig {
@@ -30,6 +49,7 @@ impl Default for AppConfig {
             enable_anki_sync: true,
             anki_connect_url: "http://127.0.0.1:8765".to_string(),
             anki_deck_name: "Anime Mining T1".to_string(),
+            anki_model_name: default_anki_model_name(),
         }
     }
 }
@@ -46,7 +66,9 @@ impl AppConfig {
 
         if config_file.exists() {
             let content = std::fs::read_to_string(&config_file)?;
-            let cfg: AppConfig = toml::from_str(&content).unwrap_or_default();
+            let mut cfg: AppConfig = toml::from_str(&content).unwrap_or_default();
+            cfg.media_dir = expand_home_path(cfg.media_dir, &home);
+            cfg.db_path = expand_home_path(cfg.db_path, &home);
             Ok(cfg)
         } else {
             let cfg = AppConfig::default();
