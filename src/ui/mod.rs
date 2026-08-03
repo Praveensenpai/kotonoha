@@ -92,12 +92,14 @@ impl TerminalUi {
             .map(|(word, count)| format!("{} ({} occurrences)", word, count))
             .collect();
 
-        let selected_indices = MultiSelect::new(
-            "Select words you ALREADY KNOW (Space to toggle, Enter to confirm, type to filter):",
-            options,
-        )
-        .with_page_size(18)
-        .prompt()?;
+        let prompt_msg = format!(
+            "Select words you ALREADY KNOW (Top {} frequent words — Space to toggle, Enter to confirm, type to filter):",
+            vocab_items.len()
+        );
+
+        let selected_indices = MultiSelect::new(&prompt_msg, options)
+            .with_page_size(18)
+            .prompt()?;
 
         let mut checked_words = Vec::new();
         for item in selected_indices {
