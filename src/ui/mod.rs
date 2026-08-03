@@ -201,7 +201,12 @@ impl TerminalUi {
         println!("\n{}", top);
         println!("{}", box_empty(iw));
         println!("{}", lrow("Sentence:", &highlighted));
-        println!("{}", lrow("Target Word:", &format!("{} ({} [Pitch: {}])", green.apply_to(target_word), reading, pitch)));
+        let pitch_num = pitch.parse::<usize>().unwrap_or_else(|_| {
+            if pitch == "HLL" || pitch == "1" { 1 } else { 0 }
+        });
+        let (pitch_overbar, pitch_tag, _morae_cnt) = crate::dict::format_pitch_accent(reading, pitch_num);
+
+        println!("{}", lrow("Target Word:", &format!("{} ({} [Pitch: {}])", green.apply_to(target_word), yellow.apply_to(&pitch_overbar), cyan.apply_to(&pitch_tag))));
         if let Some(r) = jpdb_rank {
             println!("{}", lrow("JPDB Rank:", &format!("#{}", r)));
         }
