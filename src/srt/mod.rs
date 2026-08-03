@@ -26,9 +26,13 @@ pub fn parse_subtitle(path: &Path) -> Result<Vec<SubtitleSentence>> {
 fn clean_text(text: &str) -> String {
     let re_html = Regex::new(r"<[^>]*>").unwrap();
     let re_ass = Regex::new(r"\{[^}]*\}").unwrap();
+    let re_full_parens = Regex::new(r"（[^）]*）").unwrap();
+    let re_half_parens = Regex::new(r"\([^)]*\)").unwrap();
 
     let cleaned = re_html.replace_all(text, "");
     let cleaned = re_ass.replace_all(&cleaned, "");
+    let cleaned = re_full_parens.replace_all(&cleaned, "");
+    let cleaned = re_half_parens.replace_all(&cleaned, "");
     let flattened = cleaned
         .replace("\\N", " ")
         .replace("\\n", " ")
