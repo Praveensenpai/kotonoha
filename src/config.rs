@@ -29,7 +29,7 @@ impl Default for AppConfig {
             audio_padding_secs: 0.25,
             enable_anki_sync: true,
             anki_connect_url: "http://127.0.0.1:8765".to_string(),
-            anki_deck_name: "Japanese::Mining".to_string(),
+            anki_deck_name: "Anime Mining T1".to_string(),
         }
     }
 }
