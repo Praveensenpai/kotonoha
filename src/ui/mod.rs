@@ -153,9 +153,20 @@ impl TerminalUi {
 
         let mut checked_words = Vec::new();
         for item in selected_indices {
-            let parts: Vec<&str> = item.split_whitespace().collect();
-            if parts.len() >= 2 {
-                checked_words.push(parts[1].to_string());
+            // Recover the original vocabulary entry by its stable numbered
+            // option. Parsing the rendered label is fragile because labels
+            // contain readings, punctuation, and whitespace.
+            let Some(index) = item
+                .split_whitespace()
+                .next()
+                .and_then(|rank| rank.strip_prefix('#'))
+                .and_then(|rank| rank.parse::<usize>().ok())
+                .and_then(|rank| rank.checked_sub(1))
+            else {
+                continue;
+            };
+            if let Some((word, _, _)) = vocab_items.get(index) {
+                checked_words.push(word.clone());
             }
         }
 

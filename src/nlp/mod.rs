@@ -144,7 +144,24 @@ impl JapaneseTokenizer {
             });
         }
 
-        Ok(tokens)
+        let mut normalized_tokens = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let is_rough_negative_suffix = matches!(token.surface.as_str(), "ねえ" | "ねぇ" | "ねー")
+                && !token.is_content_word;
+            if is_rough_negative_suffix
+                && normalized_tokens
+                    .last()
+                    .is_some_and(|previous: &TokenInfo| previous.dictionary_form.ends_with('る'))
+            {
+                let previous = normalized_tokens.last_mut().expect("previous token exists");
+                previous.dictionary_form = format!("{}ない", previous.surface);
+                previous.reading = format!("{}ない", previous.reading);
+            } else {
+                normalized_tokens.push(token);
+            }
+        }
+
+        Ok(normalized_tokens)
     }
 }
 
@@ -166,5 +183,14 @@ mod tests {
             normalize_colloquial_negative("ねえ", "ねえ".into(), "ねえ".into()),
             ("ねえ".into(), "ねえ".into())
         );
+    }
+
+    #[test]
+    fn normalizes_split_rough_negative_sentence() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("バカ言っちゃいけねえよ！").unwrap();
+        let token = tokens.iter().find(|token| token.surface == "いけ").unwrap();
+        assert_eq!(token.dictionary_form, "いけない");
+        assert_eq!(token.reading, "いけない");
     }
 }
