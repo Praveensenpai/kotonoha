@@ -209,4 +209,42 @@ impl TerminalUi {
 
         Ok(selected)
     }
+
+    /// Prints all subtitle sentences with known words in Blue and unknown words in Red.
+    pub fn inspect_sentences(
+        sentences: &[crate::srt::SubtitleSentence],
+        tokenizer: &crate::nlp::JapaneseTokenizer,
+        known_words: &std::collections::HashSet<String>,
+        ignored_words: &std::collections::HashSet<String>,
+    ) {
+        let blue = Style::new().blue().bold();
+        let red = Style::new().red().bold();
+        let dim = Style::new().dim();
+
+        println!("\n🔍 Inspecting {} subtitle lines:\n", sentences.len());
+        println!("   Legend: {} | {} | {}\n", blue.apply_to("Known Word"), red.apply_to("Unknown Word"), dim.apply_to("Grammar/Ignored"));
+        println!("{}\n", "─".repeat(70));
+
+        for sub in sentences {
+            let mut formatted_sentence = String::new();
+
+            if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
+                for t in tokens {
+                    if !t.is_content_word || ignored_words.contains(&t.dictionary_form) {
+                        formatted_sentence.push_str(&dim.apply_to(&t.surface).to_string());
+                    } else if known_words.contains(&t.dictionary_form) {
+                        formatted_sentence.push_str(&blue.apply_to(&t.surface).to_string());
+                    } else {
+                        formatted_sentence.push_str(&red.apply_to(&t.surface).to_string());
+                    }
+                }
+            } else {
+                formatted_sentence = sub.text.clone();
+            }
+
+            println!("  [#{:03}] {}", sub.index, formatted_sentence);
+        }
+        println!("\n{}\n", "─".repeat(70));
+    }
 }
+

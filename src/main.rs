@@ -45,9 +45,31 @@ async fn main() -> Result<()> {
             println!("\nUSAGE:");
             println!("  kotonoha                       Launch interactive TUI file picker");
             println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
+            println!("  kotonoha --inspect [FILE]      Inspect sentences (Blue=Known, Red=Unknown)");
             println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h        Show help information");
+            return Ok(());
+        }
+        if arg == "--inspect" {
+            let cfg = AppConfig::load()?;
+            let db = Database::open(&cfg.db_path)?;
+            let input_path = match std::env::args().nth(2) {
+                Some(p) => PathBuf::from(p),
+                None => TerminalUi::select_media_file()?,
+            };
+            let ext = input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            let subtitle_path = if ext == "srt" || ext == "ass" {
+                input_path
+            } else {
+                let srt = input_path.with_extension("ja.srt");
+                if srt.exists() { srt } else { input_path }
+            };
+            let sentences = parse_subtitle(&subtitle_path)?;
+            let tokenizer = JapaneseTokenizer::new()?;
+            let known_words = db.get_known_words()?;
+            let ignored_words = db.get_ignored_words()?;
+            TerminalUi::inspect_sentences(&sentences, &tokenizer, &known_words, &ignored_words);
             return Ok(());
         }
         if arg == "--manage-ignored" {
