@@ -76,6 +76,17 @@ fn escape_html(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+fn format_definition_for_anki(def: &str) -> String {
+    def.lines()
+        .map(|line| {
+            let trimmed = line.trim();
+            trimmed.strip_prefix('│').unwrap_or(trimmed).trim()
+        })
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("<br>")
+}
+
 fn sentence_with_furigana(tokenizer: &JapaneseTokenizer, sentence: &str, target_word: &str) -> String {
     tokenizer
         .tokenize(sentence)
@@ -214,7 +225,7 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                     "VocabFurigana": card.reading,
                     "VocabPitchPattern": pitch_pattern,
                     "VocabPitchNum": pitch_number,
-                    "VocabDef": card.definition,
+                    "VocabDef": format_definition_for_anki(&card.definition),
                     "VocabAudio": "",
                     "Image": image,
                     "Notes": "",
@@ -286,7 +297,7 @@ async fn add_test_card(cfg: &AppConfig) -> Result<()> {
                 "VocabFurigana": reading,
                 "VocabPitchPattern": pitch_pattern(&reading, &pitch).0,
                 "VocabPitchNum": pitch_pattern(&reading, &pitch).1,
-                "VocabDef": definition,
+                "VocabDef": format_definition_for_anki(&definition),
                 "VocabAudio": "",
                 "Image": image.map(|filename| format!("<img src=\"{filename}\">")),
                 "Notes": "Test card created with kotonoha --test-add.",
@@ -771,5 +782,15 @@ mod tests {
         let err = anki_request(&client, "http://127.0.0.1:18765", "version", serde_json::json!({})).await.unwrap_err();
         assert!(err.to_string().contains("Anki is not connected"));
         assert!(err.to_string().contains("Please open Anki and make sure AnkiConnect is installed"));
+    }
+
+    #[test]
+    fn test_format_definition_for_anki() {
+        let raw = "1. [Pre-noun adjectival (rentaishi)] such, that sort of, that kind of, like that\n│                 2. [Vocab] no way!, never!";
+        let formatted = format_definition_for_anki(raw);
+        assert_eq!(
+            formatted,
+            "1. [Pre-noun adjectival (rentaishi)] such, that sort of, that kind of, like that<br>2. [Vocab] no way!, never!"
+        );
     }
 }
