@@ -245,7 +245,8 @@ impl TerminalUi {
         println!("\n🔍 Inspecting {} subtitle lines (sorted by subtitle timing):", sorted_sentences.len());
         println!("   Stats: {} | {}", blue.apply_to(&format!("{} Known Words", file_known.len())), red.apply_to(&format!("{} Unknown Words", file_unknown.len())));
         println!("   Legend: {} | {} | {}\n", blue.apply_to("Known Word"), red.apply_to("Unknown Word"), dim.apply_to("Grammar/Ignored"));
-        println!("{}\n", "─".repeat(70));
+
+        let mut options = Vec::with_capacity(sorted_sentences.len());
 
         for sub in &sorted_sentences {
             let mut formatted_sentence = String::new();
@@ -274,9 +275,15 @@ impl TerminalUi {
                 format!("{:02}:{:02}", mins, secs)
             };
 
-            println!("  [{}]  {}", yellow.apply_to(ts_str), formatted_sentence);
+            options.push(format!("[{}]  {}", yellow.apply_to(ts_str), formatted_sentence));
         }
-        println!("\n{}\n", "─".repeat(70));
+
+        let _ = Select::new(
+            "Inspect Subtitles (↑/↓ scroll, type to search, Enter/Esc to exit):",
+            options,
+        )
+        .with_page_size(18)
+        .prompt();
     }
 }
 
