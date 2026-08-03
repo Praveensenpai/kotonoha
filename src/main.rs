@@ -258,7 +258,7 @@ async fn main() -> Result<()> {
     if !candidates_to_process.is_empty() {
         let total = candidates_to_process.len() as u64;
 
-        // Step 1: Definitions & Pitch Accents
+        // Step 1: Definitions & Pitch Accents (Concurrent 5 at a time)
         let pb1 = indicatif::ProgressBar::new(total);
         pb1.set_style(
             indicatif::ProgressStyle::default_bar()
@@ -266,15 +266,35 @@ async fn main() -> Result<()> {
                 .unwrap()
                 .progress_chars("█▓▒░"),
         );
-        for cand in &candidates_to_process {
-            if db.get_cached_definition(&cand.target_word).unwrap_or(None).is_none() {
-                if let Ok(res) = DictionaryService::lookup(&cand.target_word).await {
-                    let _ = db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent);
+
+        let uncached_words: Vec<String> = candidates_to_process
+            .iter()
+            .map(|c| c.target_word.clone())
+            .filter(|w| db.get_cached_definition(w).unwrap_or(None).is_none())
+            .collect();
+
+        let cached_count = (candidates_to_process.len() - uncached_words.len()) as u64;
+        pb1.set_position(cached_count);
+
+        if !uncached_words.is_empty() {
+            use futures::StreamExt;
+            let fetch_stream = futures::stream::iter(uncached_words)
+                .map(|word| async move {
+                    let res = DictionaryService::lookup(&word).await;
+                    (word, res)
+                })
+                .buffer_unordered(5);
+
+            let mut stream = fetch_stream;
+            while let Some((_word, res)) = stream.next().await {
+                if let Ok(dict_res) = res {
+                    let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
                 }
+                pb1.inc(1);
             }
-            pb1.inc(1);
         }
         pb1.finish();
+        println!();
 
         // Step 2: Audio Preview Clips (.opus)
         let pb2 = indicatif::ProgressBar::new(total);
@@ -292,6 +312,7 @@ async fn main() -> Result<()> {
             pb2.inc(1);
         }
         pb2.finish();
+        println!();
 
         // Step 3: Screenshots (.jpg)
         let pb3 = indicatif::ProgressBar::new(total);
