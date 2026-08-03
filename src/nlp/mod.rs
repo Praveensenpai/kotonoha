@@ -11,7 +11,6 @@ pub struct TokenInfo {
     pub surface: String,
     pub dictionary_form: String,
     pub reading: String,
-    pub pos: Vec<String>,
     pub is_content_word: bool,
 }
 
@@ -101,7 +100,6 @@ impl JapaneseTokenizer {
                 surface,
                 dictionary_form,
                 reading,
-                pos,
                 is_content_word,
             });
         }

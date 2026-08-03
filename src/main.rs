@@ -584,7 +584,11 @@ async fn main() -> Result<()> {
             drop(tx);
 
             while let Some(dict_res) = rx.recv().await {
-                let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
+                if !dict::is_placeholder_definition(&dict_res.definition)
+                    && dict_res.definition != "No dictionary definition found"
+                {
+                    let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
+                }
                 pb1.inc(1);
             }
         }
@@ -646,7 +650,11 @@ async fn main() -> Result<()> {
             },
             None => {
                 let res = DictionaryService::lookup(&http_client, &cand.target_word).await?;
-                db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent)?;
+                if !dict::is_placeholder_definition(&res.definition)
+                    && res.definition != "No dictionary definition found"
+                {
+                    db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent)?;
+                }
                 res
             }
         };

@@ -9,6 +9,12 @@ pub struct LookupResult {
     pub pitch_accent: String,
 }
 
+/// Returns true for the legacy value used when a dictionary lookup failed.
+/// This value must never be persisted as if it were a real definition.
+pub fn is_placeholder_definition(definition: &str) -> bool {
+    definition.trim() == "1. [def] vocabulary word"
+}
+
 pub fn split_morae(reading: &str) -> Vec<String> {
     let small_kana = ['ゃ', 'ゅ', 'ょ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ャ', 'ュ', 'ョ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ'];
     let mut morae = Vec::new();
@@ -75,8 +81,11 @@ pub struct DictionaryService;
 
 impl DictionaryService {
     pub async fn lookup(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
-        let res = Self::lookup_exact(client, word).await?;
-        if res.definition != "1. [def] vocabulary word" && !res.definition.contains("[Noun] serif") {
+        let res = Self::lookup_internal(client, word, true).await?;
+        if !is_placeholder_definition(&res.definition)
+            && res.definition != "No dictionary definition found"
+            && !res.definition.contains("[Noun] serif")
+        {
             return Ok(res);
         }
 
@@ -94,8 +103,10 @@ impl DictionaryService {
         for (stem_end, verb_end) in stem_fallbacks {
             if word.ends_with(stem_end) {
                 let verb_form = format!("{}{}", &word[..word.len() - stem_end.len()], verb_end);
-                if let Ok(fallback_res) = Self::lookup_exact(client, &verb_form).await {
-                    if fallback_res.definition != "1. [def] vocabulary word" {
+                if let Ok(fallback_res) = Self::lookup_internal(client, &verb_form, true).await {
+                    if !is_placeholder_definition(&fallback_res.definition)
+                        && fallback_res.definition != "No dictionary definition found"
+                    {
                         return Ok(LookupResult {
                             expression: word.to_string(),
                             reading: fallback_res.reading,
@@ -107,18 +118,47 @@ impl DictionaryService {
             }
         }
 
+        // If no exact match and no verb stem match, try inexact candidate lookup (e.g. 月曜 -> 月曜日)
+        if res.definition == "No dictionary definition found" || is_placeholder_definition(&res.definition) {
+            if let Ok(inexact_res) = Self::lookup_internal(client, word, false).await {
+                if !is_placeholder_definition(&inexact_res.definition)
+                    && inexact_res.definition != "No dictionary definition found"
+                {
+                    return Ok(inexact_res);
+                }
+            }
+        }
+
         Ok(res)
     }
 
-    async fn lookup_exact(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
+    async fn lookup_internal(client: &reqwest::Client, word: &str, exact_only: bool) -> Result<LookupResult> {
         let url = format!("https://jisho.org/api/v1/search/words?keyword={}", urlencoding::encode(word));
         let resp = client.get(&url).send().await?;
 
         if resp.status().is_success() {
             let json: serde_json::Value = resp.json().await?;
             if let Some(items) = json["data"].as_array() {
-                let best_entry = items
-                    .iter()
+                let exact_entries: Vec<&serde_json::Value> = items.iter().filter(|entry| {
+                    entry["japanese"].as_array().map_or(false, |forms| {
+                        forms.iter().any(|j| {
+                            j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
+                        })
+                    })
+                }).collect();
+
+                if exact_only && exact_entries.is_empty() {
+                    return Ok(LookupResult {
+                        expression: word.to_string(),
+                        reading: word.to_string(),
+                        definition: "No dictionary definition found".to_string(),
+                        pitch_accent: "LH".to_string(),
+                    });
+                }
+
+                let candidates = if exact_entries.is_empty() { items.iter().collect() } else { exact_entries };
+                let best_entry = candidates
+                    .into_iter()
                     .max_by_key(|entry| {
                         let mut score: i32 = 0;
                         let is_common = entry["is_common"].as_bool().unwrap_or(false);
@@ -189,66 +229,51 @@ impl DictionaryService {
                     });
 
                 if let Some(data) = best_entry {
-                    // If no entry matched the target word/reading exactly, return default fallback so verb stem fallback can trigger
-                    let has_exact = data["japanese"].as_array().map_or(false, |arr| {
-                        arr.iter().any(|j| {
+                    let reading = data["japanese"].as_array()
+                        .and_then(|forms| forms.iter().find(|j| {
                             j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
-                        })
-                    });
-
-                    if !has_exact {
-                        return Ok(LookupResult {
-                            expression: word.to_string(),
-                            reading: word.to_string(),
-                            definition: "1. [def] vocabulary word".to_string(),
-                            pitch_accent: "LH".to_string(),
-                        });
-                    }
-                    let reading = data["japanese"][0]["reading"]
-                        .as_str()
+                        }).or_else(|| forms.first()))
+                        .and_then(|j| j["reading"].as_str())
                         .unwrap_or(word)
                         .to_string();
 
                     let mut defs = Vec::new();
                     if let Some(senses) = data["senses"].as_array() {
-                        let filtered_senses: Vec<_> = senses
-                            .iter()
-                            .filter(|s| {
-                                let pos_first = s["parts_of_speech"]
-                                    .as_array()
-                                    .and_then(|a| a.first())
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-                                pos_first != "Wikipedia definition"
-                            })
-                            .collect();
+                        let mut num = 1;
+                        for sense in senses {
+                            let pos_str = sense["parts_of_speech"]
+                                .as_array()
+                                .and_then(|a| a.first())
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Vocab");
 
-                        let active_senses = if filtered_senses.is_empty() {
-                            senses.iter().collect::<Vec<_>>()
-                        } else {
-                            filtered_senses
-                        };
+                            if pos_str == "Wikipedia definition" {
+                                continue;
+                            }
 
-                        for (i, sense) in active_senses.iter().take(5).enumerate() {
-                            if let Some(english) = sense["english_definitions"].as_array() {
-                                let items: Vec<&str> = english.iter().filter_map(|v| v.as_str()).collect();
-                                let pos_str = sense["parts_of_speech"]
-                                    .as_array()
-                                    .and_then(|a| a.first())
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("def");
-                                if !items.is_empty() {
-                                    defs.push(format!("{}. [{}] {}", i + 1, pos_str, items.join(", ")));
+                            if let Some(defs_arr) = sense["english_definitions"].as_array() {
+                                let def_list: Vec<&str> = defs_arr
+                                    .iter()
+                                    .filter_map(|d| d.as_str())
+                                    .collect();
+                                if !def_list.is_empty() {
+                                    defs.push(format!("{}. [{}] {}", num, pos_str, def_list.join(", ")));
+                                    num += 1;
                                 }
                             }
                         }
                     }
 
-                    let definition = if defs.is_empty() {
-                        "1. [def] vocabulary word".to_string()
-                    } else {
-                        defs.join("\n│                 ")
-                    };
+                    let definition = defs.join("\n│                 ");
+
+                    if definition.is_empty() {
+                        return Ok(LookupResult {
+                            expression: word.to_string(),
+                            reading,
+                            definition: "No dictionary definition found".to_string(),
+                            pitch_accent: "LH".to_string(),
+                        });
+                    }
 
                     return Ok(LookupResult {
                         expression: word.to_string(),
@@ -263,7 +288,7 @@ impl DictionaryService {
         Ok(LookupResult {
             expression: word.to_string(),
             reading: word.to_string(),
-            definition: "1. [def] vocabulary word".to_string(),
+            definition: "No dictionary definition found".to_string(),
             pitch_accent: "LH".to_string(),
         })
     }
@@ -272,6 +297,12 @@ impl DictionaryService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn placeholder_definition_is_detected() {
+        assert!(is_placeholder_definition("1. [def] vocabulary word"));
+        assert!(!is_placeholder_definition("1. [Noun] Monday"));
+    }
 
     #[tokio::test]
     async fn test_serif_lookup() {

@@ -179,7 +179,15 @@ impl Database {
             let reading: String = row.get(0)?;
             let definition: String = row.get(1)?;
             let pitch: String = row.get(2)?;
-            Ok(Some((reading, definition, pitch)))
+            // A previous version cached this sentinel when Jisho returned no
+            // usable result. Treat it as a miss so the dictionary is retried.
+            if definition.trim() == "1. [def] vocabulary word"
+                || definition.trim() == "No dictionary definition found"
+            {
+                Ok(None)
+            } else {
+                Ok(Some((reading, definition, pitch)))
+            }
         } else {
             Ok(None)
         }

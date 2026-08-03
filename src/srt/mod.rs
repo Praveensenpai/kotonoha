@@ -7,7 +7,6 @@ pub struct SubtitleSentence {
     pub index: usize,
     pub start_ms: u64,
     pub end_ms: u64,
-    pub raw_timestamp: String,
     pub text: String,
 }
 
@@ -76,7 +75,6 @@ fn parse_srt(content: &str) -> Result<Vec<SubtitleSentence>> {
                 index,
                 start_ms,
                 end_ms,
-                raw_timestamp: format!("{} --> {}", start_str, end_str),
                 text,
             });
         }
@@ -105,7 +103,6 @@ fn parse_ass(content: &str) -> Result<Vec<SubtitleSentence>> {
                     index: idx,
                     start_ms,
                     end_ms,
-                    raw_timestamp: format!("{} --> {}", start_str, end_str),
                     text,
                 });
                 idx += 1;

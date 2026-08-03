@@ -49,7 +49,4 @@ impl JpdbVocabList {
         Ok(map)
     }
 
-    pub fn get_rank(&self, word: &str) -> Option<u32> {
-        self.ranks.get(word).copied()
-    }
 }
