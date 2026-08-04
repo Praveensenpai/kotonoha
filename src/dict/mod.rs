@@ -79,6 +79,17 @@ pub fn has_contextual_sense(definition: &str, hint: ContextHint) -> bool {
 
 /// Returns true for the legacy value used when a dictionary lookup failed.
 /// This value must never be persisted as if it were a real definition.
+/// Splits a raw multi-sense definition into individual sense lines.
+pub fn parse_senses(def: &str) -> Vec<String> {
+    def.lines()
+        .map(|line| {
+            let t = line.trim();
+            t.strip_prefix('│').unwrap_or(t).trim().to_string()
+        })
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
 pub fn is_placeholder_definition(definition: &str) -> bool {
     definition.trim() == "1. [def] vocabulary word"
 }

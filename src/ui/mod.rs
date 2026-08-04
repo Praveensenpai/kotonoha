@@ -380,6 +380,20 @@ impl TerminalUi {
         Ok(candidates[selected_index].clone())
     }
 
+    /// Ask the user to pick a sense. Auto-selects if only one sense exists.
+    pub fn select_sense(senses: &[String], word: &str) -> Result<String> {
+        if senses.len() == 1 {
+            return Ok(senses[0].clone());
+        }
+        let selected = Select::new(
+            &format!("Which sense for 【{}】?", word),
+            senses.to_vec(),
+        )
+        .with_page_size(10)
+        .prompt()?;
+        Ok(selected)
+    }
+
     /// Show all known words in DB with their readings and let the user multiselect which ones to remove/forget.
     pub fn manage_known_words(words: &[(String, String)]) -> Result<Vec<String>> {
         if words.is_empty() {
