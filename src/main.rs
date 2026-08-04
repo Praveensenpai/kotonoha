@@ -150,14 +150,30 @@ fn escape_html(text: &str) -> String {
 }
 
 fn format_definition_for_anki(def: &str) -> String {
-    def.lines()
+    // Take the first non-empty sense line only
+    let first_line = def
+        .lines()
         .map(|line| {
             let trimmed = line.trim();
             trimmed.strip_prefix('│').unwrap_or(trimmed).trim()
         })
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("<br>")
+        .find(|line| !line.is_empty())
+        .unwrap_or(def.trim());
+
+    // Strip leading "N. " numbering
+    let after_num = first_line
+        .find(". ")
+        .map(|i| first_line[i + 2..].trim())
+        .unwrap_or(first_line);
+
+    // Strip leading "[Grammar Tag] " part
+    if after_num.starts_with('[') {
+        if let Some(close) = after_num.find(']') {
+            return after_num[close + 1..].trim().to_string();
+        }
+    }
+
+    after_num.to_string()
 }
 
 fn sentence_with_furigana(tokenizer: &JapaneseTokenizer, sentence: &str, target_word: &str) -> String {
@@ -912,11 +928,13 @@ mod tests {
     #[test]
     fn test_format_definition_for_anki() {
         let raw = "1. [Pre-noun adjectival (rentaishi)] such, that sort of, that kind of, like that\n│                 2. [Vocab] no way!, never!";
-        let formatted = format_definition_for_anki(raw);
-        assert_eq!(
-            formatted,
-            "1. [Pre-noun adjectival (rentaishi)] such, that sort of, that kind of, like that<br>2. [Vocab] no way!, never!"
-        );
+        assert_eq!(format_definition_for_anki(raw), "such, that sort of, that kind of, like that");
+
+        let raw2 = "1. [Noun] I, me (a neutral pronoun)\n│                 2. [Noun] some other sense";
+        assert_eq!(format_definition_for_anki(raw2), "I, me (a neutral pronoun)");
+
+        let raw3 = "1. [Godan verb with 'ru' ending] to do, to undertake, to perform, to play (a game)\n│                 2. [Godan verb with 'ru' ending] to send";
+        assert_eq!(format_definition_for_anki(raw3), "to do, to undertake, to perform, to play (a game)");
     }
 
     #[test]
