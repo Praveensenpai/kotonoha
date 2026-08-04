@@ -14,7 +14,6 @@ use config::AppConfig;
 use console::style;
 use db::Database;
 use dict::DictionaryService;
-use inquire::Text;
 use jpdb::JpdbVocabList;
 use media::MediaExtractor;
 use miner::MiningEngine;
@@ -363,75 +362,6 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     Ok(())
 }
 
-async fn add_test_card(cfg: &AppConfig) -> Result<()> {
-    if !anki_connected(&cfg.anki_connect_url).await {
-        anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
-    }
-    const TEST_DECK: &str = "kotonohatest";
-
-    let sentence = Text::new("Japanese sentence:").prompt()?;
-    let target_word = Text::new("Target word:").prompt()?;
-    let audio_path = Text::new("Audio file path (optional):").prompt()?;
-    let image_path = Text::new("Screenshot path (optional):").prompt()?;
-    let definition = Text::new("Definition (optional):").prompt()?;
-    let pitch = Text::new("Pitch number (0 = heiban, optional):").prompt()?;
-
-    if sentence.trim().is_empty() || target_word.trim().is_empty() {
-        anyhow::bail!("Sentence and target word are required.");
-    }
-
-    let client = reqwest::Client::new();
-    let tokenizer = JapaneseTokenizer::new()?;
-    anki_request(&client, &cfg.anki_connect_url, "version", serde_json::json!({})).await?;
-    anki_request(&client, &cfg.anki_connect_url, "createDeck", serde_json::json!({"deck": TEST_DECK})).await?;
-
-    let token = tokenizer
-        .tokenize(&sentence)?
-        .into_iter()
-        .find(|token| token.surface == target_word || token.dictionary_form == target_word);
-    let reading = token.map(|token| token.reading).unwrap_or_else(|| target_word.clone());
-    let test_id = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_millis() as i64;
-    let audio = if audio_path.trim().is_empty() {
-        None
-    } else {
-        upload_anki_media(&client, &cfg.anki_connect_url, test_id, audio_path.trim(), "opus").await?
-    };
-    let image = if image_path.trim().is_empty() {
-        None
-    } else {
-        upload_anki_media(&client, &cfg.anki_connect_url, test_id, image_path.trim(), "jpg").await?
-    };
-
-    let note_id = anki_request(&client, &cfg.anki_connect_url, "addNote", serde_json::json!({
-        "note": {
-            "deckName": TEST_DECK,
-            "modelName": cfg.anki_model_name,
-            "fields": {
-                "SentKanji": sentence,
-                "SentFurigana": sentence_with_furigana(&tokenizer, &sentence, &target_word),
-                "SentEng": "",
-                "SentAudio": audio.map(|filename| format!("[sound:{filename}]")).unwrap_or_default(),
-                "VocabKanji": target_word,
-                "VocabFurigana": reading,
-                "VocabPitchPattern": pitch_pattern(&reading, &pitch).0,
-                "VocabPitchNum": pitch_pattern(&reading, &pitch).1,
-                "VocabDef": format_definition_for_anki(&definition),
-                "VocabAudio": "",
-                "Image": image.map(|filename| format!("<img src=\"{filename}\">")),
-                "Notes": "Test card created with kotonoha --test-add.",
-                "MakeProductionCard": "",
-                "Focus": ""
-            },
-            "tags": ["jp1k", "kotonoha", "test"]
-        }
-    })).await?;
-    let note_id = note_id.as_i64().ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?;
-    println!(" ✔ Test card added to {TEST_DECK} (note ID: {note_id}).");
-    Ok(())
-}
-
 fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
     let ext = input_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
@@ -510,7 +440,6 @@ async fn main() -> Result<()> {
             println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
             println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
             println!("  kotonoha --sync                Push locally mined cards to Anki");
-            println!("  kotonoha --test-add            Add a test card to the kotonohatest deck");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h | --h  Show help information");
             return Ok(());
@@ -519,11 +448,6 @@ async fn main() -> Result<()> {
             let cfg = AppConfig::load()?;
             let db = Database::open(&cfg.db_path)?;
             sync_to_anki(&cfg, &db).await?;
-            return Ok(());
-        }
-        if arg == "--test-add" {
-            let cfg = AppConfig::load()?;
-            add_test_card(&cfg).await?;
             return Ok(());
         }
         if arg == "--inspect" {
