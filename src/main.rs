@@ -24,6 +24,26 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use ui::TerminalUi;
 
+fn words_with_readings(tokenizer: &JapaneseTokenizer, words: Vec<String>) -> Vec<(String, String)> {
+    words
+        .into_iter()
+        .map(|word| {
+            let reading = tokenizer
+                .tokenize(&word)
+                .ok()
+                .and_then(|tokens| {
+                    tokens
+                        .iter()
+                        .find(|token| token.dictionary_form == word)
+                        .or_else(|| (tokens.len() == 1).then(|| &tokens[0]))
+                        .map(|token| token.reading.clone())
+                })
+                .unwrap_or_else(|| word.clone());
+            (word, reading)
+        })
+        .collect()
+}
+
 async fn anki_connected(url: &str) -> bool {
     let body = serde_json::json!({"action": "version", "version": 6});
     reqwest::Client::new()
@@ -530,7 +550,8 @@ async fn main() -> Result<()> {
         if arg == "--manage-ignored" {
             let cfg = AppConfig::load()?;
             let db = Database::open(&cfg.db_path)?;
-            let words = db.get_ignored_words_sorted()?;
+            let tokenizer = JapaneseTokenizer::new()?;
+            let words = words_with_readings(&tokenizer, db.get_ignored_words_sorted()?);
             let to_remove = TerminalUi::manage_ignored_words(&words)?;
             if !to_remove.is_empty() {
                 let count = db.remove_ignored_words(&to_remove)?;
@@ -543,7 +564,8 @@ async fn main() -> Result<()> {
         if arg == "--manage-known" {
             let cfg = AppConfig::load()?;
             let db = Database::open(&cfg.db_path)?;
-            let words = db.get_known_words_sorted()?;
+            let tokenizer = JapaneseTokenizer::new()?;
+            let words = words_with_readings(&tokenizer, db.get_known_words_sorted()?);
             let to_remove = TerminalUi::manage_known_words(&words)?;
             if !to_remove.is_empty() {
                 let count = db.remove_known_words(&to_remove)?;
@@ -670,6 +692,7 @@ async fn main() -> Result<()> {
     let candidates_to_process: Vec<_> = candidates.into_iter().take(cfg.default_card_limit).collect();
 
     if !candidates_to_process.is_empty() {
+        const RAW_SENSE_LIMIT: usize = 12;
         let total = candidates_to_process.len() as u64;
         let http_client = std::sync::Arc::new(reqwest::Client::new());
 
@@ -700,7 +723,7 @@ async fn main() -> Result<()> {
                 let client = std::sync::Arc::clone(&http_client);
                 let tx = tx.clone();
 
-                let max_senses = cfg.max_definition_senses;
+                let max_senses = cfg.max_definition_senses.max(RAW_SENSE_LIMIT);
                 let max_glosses = cfg.max_glosses_per_sense;
                 tokio::spawn(async move {
                     let _permit = sem.acquire().await;
@@ -769,22 +792,39 @@ async fn main() -> Result<()> {
     for (idx, cand) in candidates_to_process.iter().enumerate() {
         TerminalUi::render_progress(idx + 1, total_cards, mined_count, skipped_count, ignored_count);
 
-        let mut dict_info = match db.get_cached_definition(&cand.target_word)? {
-            Some(res) => dict::LookupResult {
-                expression: cand.target_word.clone(),
-                reading: res.0,
-                definition: dict::truncate_definition(&res.1, cfg.max_definition_senses, cfg.max_glosses_per_sense),
-                pitch_accent: res.2,
-            },
-            None => {
-                let res = DictionaryService::lookup_with_limits(&http_client, &cand.target_word, cfg.max_definition_senses, cfg.max_glosses_per_sense).await?;
+        const RAW_SENSE_LIMIT: usize = 12;
+        let context_hint = dict::context_hint(&cand.sentence.text, &cand.target_word);
+        let cached = db.get_cached_definition(&cand.target_word)?;
+        let needs_context_refresh = context_hint
+            .is_some_and(|hint| cached.as_ref().is_some_and(|res| !dict::has_contextual_sense(&res.1, hint)));
+        let (reading, raw_definition, pitch_accent) = match (cached, needs_context_refresh) {
+            (Some(res), false) => res,
+            (_, true) | (None, false) => {
+                let res = DictionaryService::lookup_with_limits(
+                    &http_client,
+                    &cand.target_word,
+                    cfg.max_definition_senses.max(RAW_SENSE_LIMIT),
+                    cfg.max_glosses_per_sense,
+                )
+                .await?;
                 if !dict::is_placeholder_definition(&res.definition)
                     && res.definition != "No dictionary definition found"
                 {
                     db.cache_definition(&res.expression, &res.reading, &res.definition, &res.pitch_accent)?;
                 }
-                res
+                (res.reading, res.definition, res.pitch_accent)
             }
+        };
+        let mut dict_info = dict::LookupResult {
+            expression: cand.target_word.clone(),
+            reading,
+            definition: dict::format_contextual_definition(
+                &raw_definition,
+                context_hint,
+                cfg.max_definition_senses,
+                cfg.max_glosses_per_sense,
+            ),
+            pitch_accent,
         };
 
         TerminalUi::render_card(
@@ -820,37 +860,42 @@ async fn main() -> Result<()> {
 
             if action == 'c' {
                 println!(" 🔍 Fetching dictionary candidates...");
-                if let Ok(candidates) = DictionaryService::lookup_all_candidates(
+                let candidates = DictionaryService::lookup_all_candidates(
                     &http_client,
                     &cand.target_word,
                     cfg.max_definition_senses,
                     cfg.max_glosses_per_sense,
                 )
                 .await
-                {
-                    if candidates.is_empty() {
-                        println!(" ⚠️  No alternative dictionary definitions found.");
-                    } else if let Ok(chosen) = TerminalUi::select_candidate(&candidates) {
-                        dict_info = chosen;
-                        let _ = db.cache_definition(
-                            &dict_info.expression,
-                            &dict_info.reading,
-                            &dict_info.definition,
-                            &dict_info.pitch_accent,
-                        );
-                        println!(" ✨ Updated candidate: 【{} ({})】", dict_info.expression, dict_info.reading);
-                        TerminalUi::render_card(
-                            idx + 1,
-                            &cand.sentence.text,
-                            &cand.target_word,
-                            &dict_info.reading,
-                            &dict_info.pitch_accent,
-                            cand.jpdb_rank,
-                            &dict_info.definition,
-                            &cand.known_context_words,
-                            &cand.unknown_context_words,
-                        );
-                    }
+                .unwrap_or_default();
+                if candidates.is_empty() {
+                    println!(" ⚠️  No dictionary candidates found — custom definition is available.");
+                }
+                if let Ok(chosen) = TerminalUi::select_candidate_or_custom(
+                    &candidates,
+                    &cand.target_word,
+                    &dict_info.reading,
+                    &dict_info.pitch_accent,
+                ) {
+                    dict_info = chosen;
+                    let _ = db.cache_definition(
+                        &dict_info.expression,
+                        &dict_info.reading,
+                        &dict_info.definition,
+                        &dict_info.pitch_accent,
+                    );
+                    println!(" ✨ Updated candidate: 【{} ({})】", dict_info.expression, dict_info.reading);
+                    TerminalUi::render_card(
+                        idx + 1,
+                        &cand.sentence.text,
+                        &cand.target_word,
+                        &dict_info.reading,
+                        &dict_info.pitch_accent,
+                        cand.jpdb_rank,
+                        &dict_info.definition,
+                        &cand.known_context_words,
+                        &cand.unknown_context_words,
+                    );
                 }
                 continue;
             }

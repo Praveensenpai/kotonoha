@@ -9,6 +9,74 @@ pub struct LookupResult {
     pub pitch_accent: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContextHint {
+    AsStated,
+}
+
+const AS_STATED_PATTERNS: &[&str] = &[
+    "言うとおり", "言う通り", "言ったとおり", "言った通り", "いうとおり", "いう通り",
+    "いったとおり", "いった通り", "思うとおり", "思う通り", "思ったとおり", "思った通り",
+    "おもうとおり", "おもう通り", "おもったとおり", "おもった通り", "見るとおり",
+    "見る通り", "見たとおり", "見た通り", "そのとおり", "その通り", "予定どおり",
+    "予定通り", "説明どおり", "説明通り",
+];
+
+pub fn context_hint(sentence: &str, target_word: &str) -> Option<ContextHint> {
+    if !matches!(target_word, "とおり" | "通り" | "どおり") {
+        return None;
+    }
+    AS_STATED_PATTERNS
+        .iter()
+        .any(|pattern| sentence.contains(pattern))
+        .then_some(ContextHint::AsStated)
+}
+
+fn sense_line_score(line: &str, hint: ContextHint) -> i32 {
+    let line = line.to_ascii_lowercase();
+    match hint {
+        ContextHint::AsStated => {
+            let positive = [
+                "according to",
+                "in accordance",
+                "just as",
+                "exactly as",
+                "as ",
+                "following",
+                "manner",
+            ];
+            let negative = ["street", "road", "avenue", "thoroughfare", "traffic", "flow of"];
+            positive.iter().map(|term| if line.contains(term) { 100 } else { 0 }).sum::<i32>()
+                - negative.iter().map(|term| if line.contains(term) { 25 } else { 0 }).sum::<i32>()
+        }
+    }
+}
+
+pub fn format_contextual_definition(
+    definition: &str,
+    hint: Option<ContextHint>,
+    max_senses: usize,
+    max_glosses: usize,
+) -> String {
+    let Some(hint) = hint else {
+        return truncate_definition(definition, max_senses, max_glosses);
+    };
+
+    let mut lines: Vec<&str> = definition.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
+    if lines.is_empty() {
+        return definition.to_string();
+    }
+
+    if lines.iter().any(|line| sense_line_score(line, hint) > 0) {
+        lines.sort_by_key(|line| -sense_line_score(line, hint));
+    }
+    truncate_definition(&lines.join("\n"), max_senses, max_glosses)
+}
+
+pub fn has_contextual_sense(definition: &str, hint: ContextHint) -> bool {
+    definition.lines().any(|line| sense_line_score(line, hint) >= 100)
+}
+
 /// Returns true for the legacy value used when a dictionary lookup failed.
 /// This value must never be persisted as if it were a real definition.
 pub fn is_placeholder_definition(definition: &str) -> bool {
@@ -493,6 +561,24 @@ mod tests {
             truncated,
             "1. [Adverb] word1, word2, word3\n│                 2. [Adverb] wordA, wordB, wordC"
         );
+    }
+
+    #[test]
+    fn detects_as_stated_context() {
+        assert_eq!(context_hint("ひまわりの言うとおり、僕は用事があった", "とおり"), Some(ContextHint::AsStated));
+        assert_eq!(context_hint("この通りは広い", "通り"), None);
+    }
+
+    #[test]
+    fn prioritizes_contextual_toori_sense() {
+        let raw = "1. [Noun] street, road, avenue\n│                 2. [Noun] traffic, coming and going\n│                 3. [Noun] in accordance with, according to, just as";
+        let result = format_contextual_definition(
+            raw,
+            Some(ContextHint::AsStated),
+            3,
+            4,
+        );
+        assert!(result.starts_with("1. [Noun] in accordance with"));
     }
 
     #[tokio::test]

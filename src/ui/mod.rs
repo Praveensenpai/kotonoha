@@ -64,6 +64,14 @@ fn box_empty(inner_w: usize) -> String {
     format!("│ {} │", " ".repeat(inner_w))
 }
 
+fn format_word_with_reading(word: &str, reading: &str) -> String {
+    if reading.is_empty() || reading == word {
+        word.to_string()
+    } else {
+        format!("{} ({})", word, reading)
+    }
+}
+
 pub struct TerminalUi;
 
 impl TerminalUi {
@@ -334,8 +342,13 @@ impl TerminalUi {
         }
     }
 
-    pub fn select_candidate(candidates: &[crate::dict::LookupResult]) -> Result<crate::dict::LookupResult> {
-        let options: Vec<String> = candidates
+    pub fn select_candidate_or_custom(
+        candidates: &[crate::dict::LookupResult],
+        expression: &str,
+        reading: &str,
+        pitch_accent: &str,
+    ) -> Result<crate::dict::LookupResult> {
+        let mut options: Vec<String> = candidates
             .iter()
             .enumerate()
             .map(|(idx, res)| {
@@ -344,21 +357,31 @@ impl TerminalUi {
                 format!("#{} 【{} ({})】 {}", idx + 1, res.expression, res.reading, clean_line)
             })
             .collect();
+        options.push("✍ Enter custom definition".to_string());
 
         let selected = Select::new("Select dictionary definition:", options.clone())
             .with_page_size(10)
             .prompt()?;
-
-        for (idx, opt) in options.iter().enumerate() {
-            if opt == &selected {
-                return Ok(candidates[idx].clone());
+        let custom_index = options.len() - 1;
+        if options[custom_index] == selected {
+            let definition = Text::new(&format!("Definition for {expression} (context:):")).prompt()?;
+            if definition.trim().is_empty() {
+                anyhow::bail!("Custom definition cannot be empty.");
             }
+            return Ok(crate::dict::LookupResult {
+                expression: expression.to_string(),
+                reading: reading.to_string(),
+                definition,
+                pitch_accent: pitch_accent.to_string(),
+            });
         }
-        Ok(candidates[0].clone())
+
+        let selected_index = options.iter().position(|option| option == &selected).unwrap_or(0);
+        Ok(candidates[selected_index].clone())
     }
 
-    /// Show all known words in DB and let the user multiselect which ones to remove/forget.
-    pub fn manage_known_words(words: &[String]) -> Result<Vec<String>> {
+    /// Show all known words in DB with their readings and let the user multiselect which ones to remove/forget.
+    pub fn manage_known_words(words: &[(String, String)]) -> Result<Vec<String>> {
         if words.is_empty() {
             println!("\n 📭 No known words in database yet.\n");
             return Ok(Vec::new());
@@ -369,28 +392,44 @@ impl TerminalUi {
             words.len()
         );
 
-        let selected = MultiSelect::new(&prompt_msg, words.to_vec())
+        let options: Vec<String> = words
+            .iter()
+            .map(|(word, reading)| format_word_with_reading(word, reading))
+            .collect();
+        let selected = MultiSelect::new(&prompt_msg, options.clone())
             .with_page_size(18)
             .prompt()?;
 
-        Ok(selected)
+        Ok(selected
+            .into_iter()
+            .filter_map(|selected| options.iter().position(|option| option == &selected))
+            .map(|index| words[index].0.clone())
+            .collect())
     }
 
     /// Show all ignored words and let the user multiselect which ones to un-ignore.
     /// Returns the words that were selected for removal.
-    pub fn manage_ignored_words(words: &[String]) -> Result<Vec<String>> {
+    pub fn manage_ignored_words(words: &[(String, String)]) -> Result<Vec<String>> {
         if words.is_empty() {
             println!("\n 📭 No ignored words yet.\n");
             return Ok(Vec::new());
         }
 
+        let options: Vec<String> = words
+            .iter()
+            .map(|(word, reading)| format_word_with_reading(word, reading))
+            .collect();
         let selected = MultiSelect::new(
             "Select words to UN-IGNORE (Space to toggle, Enter to confirm):",
-            words.to_vec(),
+            options.clone(),
         )
         .prompt()?;
 
-        Ok(selected)
+        Ok(selected
+            .into_iter()
+            .filter_map(|selected| options.iter().position(|option| option == &selected))
+            .map(|index| words[index].0.clone())
+            .collect())
     }
 
     /// Prints all subtitle sentences sorted by timestamp with known words in Blue and unknown words in Red.
