@@ -180,9 +180,30 @@ fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<Sp
             end_index += 1;
         }
 
-        if surface == expression {
+        let is_exact_match = surface == expression;
+        let is_prefix_match = surface.chars().count() >= expression.chars().count()
+            && surface.starts_with(expression);
+
+        if is_exact_match || is_prefix_match {
             let first = &tokens[index];
             let last = &tokens[end_index];
+            let expression_end = if is_exact_match {
+                last.end
+            } else {
+                let preceding_chars: usize = tokens[index..end_index]
+                    .iter()
+                    .map(|token| token.token.surface.chars().count())
+                    .sum();
+                let chars_in_last = expression.chars().count() - preceding_chars;
+                let split_bytes = last
+                    .token
+                    .surface
+                    .char_indices()
+                    .nth(chars_in_last)
+                    .map(|(offset, _)| offset)
+                    .unwrap_or_else(|| last.token.surface.len());
+                last.begin + split_bytes
+            };
             merged.push(SpannedToken {
                 token: TokenInfo {
                     surface: expression.to_string(),
@@ -191,8 +212,25 @@ fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<Sp
                     is_content_word: true,
                 },
                 begin: first.begin,
-                end: last.end,
+                end: expression_end,
             });
+
+            if is_prefix_match && !is_exact_match {
+                let split_offset = expression_end - last.begin;
+                let remainder = &last.token.surface[split_offset..];
+                if !remainder.is_empty() {
+                    merged.push(SpannedToken {
+                        token: TokenInfo {
+                            surface: remainder.to_string(),
+                            dictionary_form: remainder.to_string(),
+                            reading: kata_to_hira(remainder),
+                            is_content_word: false,
+                        },
+                        begin: expression_end,
+                        end: last.end,
+                    });
+                }
+            }
             index = end_index + 1;
         } else {
             merged.push(tokens[index].clone());
@@ -396,6 +434,7 @@ impl JapaneseTokenizer {
         normalize_ambiguous_imperatives(&mut normalized_tokens, text);
         normalize_explanatory_nan(&mut normalized_tokens, text);
         let normalized_tokens = merge_fixed_expression(normalized_tokens, "よりにもよって");
+        let normalized_tokens = merge_fixed_expression(normalized_tokens, "もしかして");
         let normalized_tokens = merge_adverb_naru(normalized_tokens);
         Ok(merge_colloquial_small_tsu(normalized_tokens))
     }
@@ -515,5 +554,21 @@ mod tests {
         let token = tokens.iter().find(|token| token.surface == "なん").unwrap();
 
         assert!(!token.is_content_word);
+    }
+
+    #[test]
+    fn keeps_moshikashite_expression_together() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer
+            .tokenize("だから もしかしてって 思ってたけど―")
+            .unwrap();
+        let token = tokens
+            .iter()
+            .find(|token| token.dictionary_form == "もしかして")
+            .unwrap();
+
+        assert_eq!(token.surface, "もしかして");
+        assert_eq!(token.reading, "もしかして");
+        assert!(!tokens.iter().any(|token| token.dictionary_form == "もし"));
     }
 }
