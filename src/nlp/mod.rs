@@ -119,6 +119,40 @@ fn merge_colloquial_small_tsu(tokens: Vec<SpannedToken>) -> Vec<TokenInfo> {
     merged.into_iter().map(|token| token.token).collect()
 }
 
+fn is_imperative_following_text(text: &str) -> bool {
+    let following = text.trim_start();
+    following.is_empty()
+        || following.starts_with(['よ', 'ね', 'ぞ', 'ぜ', 'な', '！', '!', '？', '?', '。', '…', '♪'])
+}
+
+fn imperative_reading_stem(reading: &str) -> Option<&str> {
+    ["れよ", "れね", "れぞ", "れぜ", "れな", "れ！", "れ!", "れ？", "れ?", "れ。", "れ…"]
+        .iter()
+        .find_map(|suffix| reading.strip_suffix(suffix))
+        .or_else(|| reading.strip_suffix('れ'))
+}
+
+/// Sudachi can resolve an imperative such as 頑張れ as the ambiguous
+/// potential-form lemma 頑張れる. Sentence-final context strongly favors the
+/// godan imperative reading, so prefer the corresponding る-form there.
+fn normalize_ambiguous_imperatives(tokens: &mut [SpannedToken], text: &str) {
+    for token in tokens {
+        if imperative_reading_stem(&token.token.reading).is_none()
+            || !token.token.dictionary_form.ends_with("れる")
+            || !is_imperative_following_text(text.get(token.end..).unwrap_or_default())
+        {
+            continue;
+        }
+
+        if let Some(stem) = token.token.dictionary_form.strip_suffix("れる") {
+            token.token.dictionary_form = format!("{stem}る");
+        }
+        if let Some(reading_stem) = imperative_reading_stem(&token.token.reading) {
+            token.token.reading = format!("{reading_stem}る");
+        }
+    }
+}
+
 pub struct JapaneseTokenizer {
     dict: JapaneseDictionary,
 }
@@ -258,6 +292,7 @@ impl JapaneseTokenizer {
             }
         }
 
+        normalize_ambiguous_imperatives(&mut normalized_tokens, text);
         Ok(merge_colloquial_small_tsu(normalized_tokens))
     }
 }
@@ -321,5 +356,24 @@ mod tests {
 
         assert_eq!(surfaces, "ササササ サンちゃん");
         assert!(!tokens.iter().any(|token| token.dictionary_form == "キモッ"));
+    }
+
+    #[test]
+    fn resolves_sentence_final_imperative() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("ジョーロも生徒会 頑張れよ").unwrap();
+        let token = tokens.iter().find(|token| token.surface == "頑張れよ").unwrap();
+
+        assert_eq!(token.dictionary_form, "頑張る");
+        assert_eq!(token.reading, "がんばる");
+    }
+
+    #[test]
+    fn preserves_non_imperative_potential_form() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("彼は頑張れる").unwrap();
+        let token = tokens.iter().find(|token| token.surface == "頑張れる").unwrap();
+
+        assert_eq!(token.dictionary_form, "頑張れる");
     }
 }
