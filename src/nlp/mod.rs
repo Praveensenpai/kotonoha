@@ -237,6 +237,23 @@ fn normalize_ambiguous_imperatives(tokens: &mut [SpannedToken], text: &str) {
     }
 }
 
+fn normalize_explanatory_nan(tokens: &mut [SpannedToken], text: &str) {
+    for token in tokens {
+        if token.token.surface != "なん" {
+            continue;
+        }
+
+        let before = text.get(..token.begin).unwrap_or_default().trim_end();
+        let after = text.get(token.end..).unwrap_or_default().trim_start();
+        let follows_explanatory_connector = before.ends_with("から") || before.ends_with('の');
+        let starts_copula = after.starts_with('だ') || after.starts_with("です");
+
+        if follows_explanatory_connector && starts_copula {
+            token.token.is_content_word = false;
+        }
+    }
+}
+
 pub struct JapaneseTokenizer {
     dict: JapaneseDictionary,
 }
@@ -377,6 +394,7 @@ impl JapaneseTokenizer {
         }
 
         normalize_ambiguous_imperatives(&mut normalized_tokens, text);
+        normalize_explanatory_nan(&mut normalized_tokens, text);
         let normalized_tokens = merge_fixed_expression(normalized_tokens, "よりにもよって");
         let normalized_tokens = merge_adverb_naru(normalized_tokens);
         Ok(merge_colloquial_small_tsu(normalized_tokens))
@@ -486,5 +504,16 @@ mod tests {
         assert_eq!(token.surface, "よりにもよって");
         assert_eq!(token.reading, "よりにもよって");
         assert!(!tokens.iter().any(|token| token.dictionary_form == "よりにもよっ"));
+    }
+
+    #[test]
+    fn filters_explanatory_nan() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer
+            .tokenize("君に伝えたいことが あるからなんだ")
+            .unwrap();
+        let token = tokens.iter().find(|token| token.surface == "なん").unwrap();
+
+        assert!(!token.is_content_word);
     }
 }
