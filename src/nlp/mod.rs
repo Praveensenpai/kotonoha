@@ -89,9 +89,17 @@ fn ends_in_small_tsu(surface: &str) -> bool {
 /// this preserves ordinary boundaries while keeping slang as one lookup word.
 fn merge_colloquial_small_tsu(tokens: Vec<SpannedToken>) -> Vec<TokenInfo> {
     let mut merged: Vec<SpannedToken> = Vec::with_capacity(tokens.len());
+    let mut tokens = tokens.into_iter().peekable();
 
-    for mut token in tokens {
-        if ends_in_small_tsu(&token.token.surface) && is_kana_word(&token.token.surface) {
+    while let Some(mut token) = tokens.next() {
+        let has_kana_continuation = tokens.peek().is_some_and(|next| {
+            next.begin == token.end && is_kana_word(&next.token.surface)
+        });
+
+        if ends_in_small_tsu(&token.token.surface)
+            && is_kana_word(&token.token.surface)
+            && !has_kana_continuation
+        {
             while let Some(previous) = merged.last() {
                 if previous.end != token.begin || !is_kana_word(&previous.token.surface) {
                     break;
@@ -117,6 +125,82 @@ fn merge_colloquial_small_tsu(tokens: Vec<SpannedToken>) -> Vec<TokenInfo> {
     }
 
     merged.into_iter().map(|token| token.token).collect()
+}
+
+fn merge_adverb_naru(tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
+    let adverbs = ["こう", "そう", "ああ", "どう"];
+    let mut merged = Vec::with_capacity(tokens.len());
+
+    for token in tokens {
+        let should_merge = token.token.dictionary_form == "なる"
+            && merged.last().is_some_and(|previous: &SpannedToken| {
+                previous.end == token.begin
+                    && adverbs.contains(&previous.token.surface.as_str())
+            });
+
+        if should_merge {
+            let previous = merged.pop().expect("merge candidate exists");
+            let dictionary_form = format!("{}なる", previous.token.surface);
+            let reading = format!("{}なる", previous.token.reading);
+            merged.push(SpannedToken {
+                token: TokenInfo {
+                    surface: format!("{}{}", previous.token.surface, token.token.surface),
+                    dictionary_form,
+                    reading,
+                    is_content_word: true,
+                },
+                begin: previous.begin,
+                end: token.end,
+            });
+        } else {
+            merged.push(token);
+        }
+    }
+
+    merged
+}
+
+fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<SpannedToken> {
+    let mut merged = Vec::with_capacity(tokens.len());
+    let mut index = 0;
+
+    while index < tokens.len() {
+        let mut surface = String::new();
+        let mut end_index = index;
+
+        while end_index < tokens.len() {
+            let token = &tokens[end_index];
+            if end_index > index && tokens[end_index - 1].end != token.begin {
+                break;
+            }
+            surface.push_str(&token.token.surface);
+            if surface.chars().count() >= expression.chars().count() {
+                break;
+            }
+            end_index += 1;
+        }
+
+        if surface == expression {
+            let first = &tokens[index];
+            let last = &tokens[end_index];
+            merged.push(SpannedToken {
+                token: TokenInfo {
+                    surface: expression.to_string(),
+                    dictionary_form: expression.to_string(),
+                    reading: expression.to_string(),
+                    is_content_word: true,
+                },
+                begin: first.begin,
+                end: last.end,
+            });
+            index = end_index + 1;
+        } else {
+            merged.push(tokens[index].clone());
+            index += 1;
+        }
+    }
+
+    merged
 }
 
 fn is_imperative_following_text(text: &str) -> bool {
@@ -293,6 +377,8 @@ impl JapaneseTokenizer {
         }
 
         normalize_ambiguous_imperatives(&mut normalized_tokens, text);
+        let normalized_tokens = merge_fixed_expression(normalized_tokens, "よりにもよって");
+        let normalized_tokens = merge_adverb_naru(normalized_tokens);
         Ok(merge_colloquial_small_tsu(normalized_tokens))
     }
 }
@@ -375,5 +461,30 @@ mod tests {
         let token = tokens.iter().find(|token| token.surface == "頑張れる").unwrap();
 
         assert_eq!(token.dictionary_form, "頑張れる");
+    }
+
+    #[test]
+    fn keeps_adverb_naru_phrase_together() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("何がどうして こうなった!? ").unwrap();
+        let token = tokens.iter().find(|token| token.dictionary_form == "こうなる").unwrap();
+
+        assert_eq!(token.surface, "こうなっ");
+        assert_eq!(token.reading, "こうなる");
+        assert!(!tokens.iter().any(|token| token.dictionary_form == "こうなっ"));
+    }
+
+    #[test]
+    fn keeps_yori_ni_mo_yotte_expression_together() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("よりにもよって こいつだけ！").unwrap();
+        let token = tokens
+            .iter()
+            .find(|token| token.dictionary_form == "よりにもよって")
+            .unwrap();
+
+        assert_eq!(token.surface, "よりにもよって");
+        assert_eq!(token.reading, "よりにもよって");
+        assert!(!tokens.iter().any(|token| token.dictionary_form == "よりにもよっ"));
     }
 }
