@@ -655,21 +655,37 @@ async fn main() -> Result<()> {
             let max_senses = cfg.max_definition_senses;
             let max_glosses = cfg.max_glosses_per_sense;
 
-            let mut batch_inputs_owned = Vec::new();
-            for (idx, cand) in candidates_to_process.iter().enumerate() {
-                let candidates = DictionaryService::lookup_all_candidates(
-                    &client,
-                    &cand.target_word,
-                    max_senses,
-                    max_glosses,
-                )
-                .await
-                .unwrap_or_default();
-
-                batch_inputs_owned.push((idx, cand.sentence.text.clone(), cand.target_word.clone(), candidates));
-            }
+            let card_targets: Vec<(usize, String, String)> = candidates_to_process
+                .iter()
+                .enumerate()
+                .map(|(idx, cand)| (idx, cand.sentence.text.clone(), cand.target_word.clone()))
+                .collect();
 
             Some(tokio::spawn(async move {
+                let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+                let mut batch_inputs_owned = Vec::new();
+
+                for (idx, sentence_text, target_word) in card_targets {
+                    let sem = std::sync::Arc::clone(&semaphore);
+                    let client = std::sync::Arc::clone(&client);
+                    let target = target_word.clone();
+
+                    let candidates = match tokio::time::timeout(
+                        std::time::Duration::from_secs(3),
+                        async move {
+                            let _permit = sem.acquire().await;
+                            DictionaryService::lookup_all_candidates(&client, &target, max_senses, max_glosses).await
+                        },
+                    )
+                    .await
+                    {
+                        Ok(Ok(res)) => res,
+                        _ => Vec::new(),
+                    };
+
+                    batch_inputs_owned.push((idx, sentence_text, target_word, candidates));
+                }
+
                 let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
                     .iter()
                     .map(|(idx, sentence, target_word, candidates)| ai::CardBatchInput {
