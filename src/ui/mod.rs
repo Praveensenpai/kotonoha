@@ -402,7 +402,14 @@ impl TerminalUi {
 
         options.push("✍ Enter custom definition".to_string());
 
-        let default_selection_idx = rec_idx.unwrap_or(0).min(options.len().saturating_sub(1));
+        // Prefer the contextual AI gloss when one is available. A generic
+        // dictionary recommendation should not override a sentence-specific
+        // definition supplied by the model.
+        let default_selection_idx = if ai_suggested_def.is_some() {
+            options.len().saturating_sub(2)
+        } else {
+            rec_idx.unwrap_or(0).min(options.len().saturating_sub(1))
+        };
         let selected = Select::new("Select dictionary definition:", options.clone())
             .with_starting_cursor(default_selection_idx)
             .with_page_size(10)

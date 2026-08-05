@@ -1041,7 +1041,12 @@ async fn main() -> Result<()> {
         let ai_analysis = ai_results_map.get(&idx);
 
         if let Some(res) = ai_analysis {
-            if let Some(cand_idx) = res.recommended_candidate_index {
+            // A contextual AI gloss is more useful on the card than the raw,
+            // multi-sense dictionary entry. Keep the dictionary candidate for
+            // reading/base-word data, but let the custom gloss win for meaning.
+            if let Some(ref custom_sug) = res.custom_definition_suggestion {
+                dict_info.definition = format!("1. [AI Suggestion] {}", custom_sug);
+            } else if let Some(cand_idx) = res.recommended_candidate_index {
                 let candidates = DictionaryService::lookup_all_candidates(
                     &http_client,
                     &cand.target_word,
@@ -1060,8 +1065,6 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-            } else if let Some(ref custom_sug) = res.custom_definition_suggestion {
-                dict_info.definition = format!("1. [AI Suggestion] {}", custom_sug);
             }
         }
 
