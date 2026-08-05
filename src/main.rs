@@ -811,32 +811,43 @@ async fn main() -> Result<()> {
                 .collect();
 
             Some(tokio::spawn(async move {
-                let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
+                let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(10));
                 let mut all_results = Vec::new();
                 const AI_BATCH_CHUNK: usize = 25;
 
                 for chunk in card_targets.chunks(AI_BATCH_CHUNK) {
-                    let mut batch_inputs_owned = Vec::new();
+                    let mut lookup_futures = Vec::new();
 
                     for (idx, sentence_text, target_word) in chunk {
                         let sem = std::sync::Arc::clone(&semaphore);
                         let client = std::sync::Arc::clone(&client);
                         let target = target_word.clone();
+                        let sentence = sentence_text.clone();
+                        let idx = *idx;
 
-                        let candidates = match tokio::time::timeout(
-                            std::time::Duration::from_secs(3),
-                            async move {
-                                let _permit = sem.acquire().await;
-                                DictionaryService::lookup_all_candidates(&client, &target, max_senses, max_glosses).await
-                            },
-                        )
-                        .await
-                        {
-                            Ok(Ok(res)) => res,
-                            _ => Vec::new(),
-                        };
+                        lookup_futures.push(tokio::spawn(async move {
+                            let target_for_lookup = target.clone();
+                            let candidates = match tokio::time::timeout(
+                                std::time::Duration::from_secs(4),
+                                async move {
+                                    let _permit = sem.acquire().await;
+                                    DictionaryService::lookup_all_candidates(&client, &target_for_lookup, max_senses, max_glosses).await
+                                },
+                            )
+                            .await
+                            {
+                                Ok(Ok(res)) => res,
+                                _ => Vec::new(),
+                            };
+                            (idx, sentence, target, candidates)
+                        }));
+                    }
 
-                        batch_inputs_owned.push((*idx, sentence_text.clone(), target_word.clone(), candidates));
+                    let mut batch_inputs_owned = Vec::new();
+                    for fut in lookup_futures {
+                        if let Ok(item) = fut.await {
+                            batch_inputs_owned.push(item);
+                        }
                     }
 
                     let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
@@ -849,8 +860,13 @@ async fn main() -> Result<()> {
                         })
                         .collect();
 
-                    if let Ok(mut chunk_res) = ai::GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await {
-                        all_results.append(&mut chunk_res);
+                    match ai::GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await {
+                        Ok(mut chunk_res) => {
+                            all_results.append(&mut chunk_res);
+                        }
+                        Err(e) => {
+                            eprintln!(" ⚠️ Gemini AI batch request error: {e}");
+                        }
                     }
                 }
 

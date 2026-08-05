@@ -268,7 +268,7 @@ impl DictionaryService {
         max_glosses: usize,
     ) -> Result<LookupResult> {
         let url = format!("https://jisho.org/api/v1/search/words?keyword={}", urlencoding::encode(word));
-        let resp = client.get(&url).send().await?;
+        let resp = client.get(&url).header("User-Agent", "kotonoha/0.0.1").send().await?;
 
         if resp.status().is_success() {
             let json: serde_json::Value = resp.json().await?;
@@ -509,7 +509,7 @@ impl DictionaryService {
             "https://jisho.org/api/v1/search/words?keyword={}",
             urlencoding::encode(word)
         );
-        let resp = client.get(&url).send().await?;
+        let resp = client.get(&url).header("User-Agent", "kotonoha/0.0.1").send().await?;
 
         let mut results = Vec::new();
         if resp.status().is_success() {
