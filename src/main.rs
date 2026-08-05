@@ -412,9 +412,92 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             }
         };
         db.mark_mined_card_synced(card.id, note_id)?;
+
+        // Update existing Anki note fields if SentEng was empty/outdated
+        let sent_eng = format_translations_for_anki(
+            card.english_natural.as_deref(),
+            card.english_literal.as_deref(),
+            card.kannada_natural.as_deref(),
+            card.kannada_literal.as_deref(),
+        );
+        if !sent_eng.is_empty() {
+            let _ = anki_request(
+                &client,
+                &cfg.anki_connect_url,
+                "updateNoteFields",
+                serde_json::json!({
+                    "note": {
+                        "id": note_id,
+                        "fields": {
+                            "SentEng": sent_eng
+                        }
+                    }
+                }),
+            )
+            .await;
+        }
+
         synced += 1;
     }
     println!(" ✔ Synced {synced} card(s) to Anki deck: {}", cfg.anki_deck_name);
+    Ok(())
+}
+
+pub async fn backfill_translations(cfg: &AppConfig, db: &Database) -> Result<()> {
+    if !cfg.enable_ai {
+        return Ok(());
+    }
+
+    let api_key = match cfg.gemini_api_key.as_deref() {
+        Some(k) if !k.trim().is_empty() => k,
+        _ => return Ok(()),
+    };
+
+    let missing = db.get_cards_missing_translations()?;
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    println!(" 🤖 Backfilling English & Kannada translations for {} past mined card(s)...", missing.len());
+
+    let client = reqwest::Client::new();
+    let empty_lookup: Vec<crate::dict::LookupResult> = Vec::new();
+
+    let batch_inputs: Vec<ai::CardBatchInput<'_>> = missing
+        .iter()
+        .enumerate()
+        .map(|(idx, card)| ai::CardBatchInput {
+            card_index: idx,
+            sentence: card.sentence.as_str(),
+            target_word: card.target_word.as_str(),
+            candidates: empty_lookup.as_slice(),
+        })
+        .collect();
+
+    match ai::GeminiAiService::analyze_batch(&client, api_key, &cfg.gemini_model, &batch_inputs).await {
+        Ok(results) => {
+            let mut count = 0;
+            for res in results {
+                if let Some(card) = missing.get(res.card_index) {
+                    if res.english_natural.is_some() || res.kannada_natural.is_some() {
+                        let _ = db.update_card_translations(
+                            card.id,
+                            res.english_natural.as_deref(),
+                            res.english_literal.as_deref(),
+                            res.kannada_natural.as_deref(),
+                            res.kannada_literal.as_deref(),
+                        );
+                        count += 1;
+                    }
+                }
+            }
+            println!(" ✔ Successfully backfilled translations for {count} mined card(s)!\n");
+        }
+        Err(e) => {
+            eprintln!(" ⚠️ Backfill translation attempt failed: {e}\n");
+        }
+    }
+
     Ok(())
 }
 
@@ -497,6 +580,7 @@ async fn main() -> Result<()> {
             println!("  kotonoha --manage-known        View & remove words from the known database");
             println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
             println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
+            println!("  kotonoha --backfill-translations Generate missing translations for mined cards");
             println!("  kotonoha --sync                Push locally mined cards to Anki");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h | --h  Show help information");
@@ -512,9 +596,16 @@ async fn main() -> Result<()> {
             TerminalUi::show_config(&cfg);
             return Ok(());
         }
+        if arg == "--backfill-translations" {
+            let cfg = AppConfig::load()?;
+            let db = Database::open(&cfg.db_path)?;
+            backfill_translations(&cfg, &db).await?;
+            return Ok(());
+        }
         if arg == "--sync" {
             let cfg = AppConfig::load()?;
             let db = Database::open(&cfg.db_path)?;
+            backfill_translations(&cfg, &db).await?;
             sync_to_anki(&cfg, &db).await?;
             return Ok(());
         }

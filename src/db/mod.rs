@@ -267,6 +267,71 @@ impl Database {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    pub fn get_cards_missing_translations(&self) -> Result<Vec<MinedCard>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal
+             FROM mined_cards WHERE english_natural IS NULL OR kannada_natural IS NULL ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(MinedCard {
+                id: row.get(0)?,
+                sentence: row.get(1)?,
+                target_word: row.get(2)?,
+                reading: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                pitch_accent: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                definition: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                audio_path: row.get(6)?,
+                image_path: row.get(7)?,
+                english_natural: row.get(8)?,
+                english_literal: row.get(9)?,
+                kannada_natural: row.get(10)?,
+                kannada_literal: row.get(11)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn get_all_mined_cards(&self) -> Result<Vec<(MinedCard, Option<i64>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal, anki_note_id
+             FROM mined_cards ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let card = MinedCard {
+                id: row.get(0)?,
+                sentence: row.get(1)?,
+                target_word: row.get(2)?,
+                reading: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                pitch_accent: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                definition: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                audio_path: row.get(6)?,
+                image_path: row.get(7)?,
+                english_natural: row.get(8)?,
+                english_literal: row.get(9)?,
+                kannada_natural: row.get(10)?,
+                kannada_literal: row.get(11)?,
+            };
+            let note_id: Option<i64> = row.get(12)?;
+            Ok((card, note_id))
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn update_card_translations(
+        &self,
+        card_id: i64,
+        eng_nat: Option<&str>,
+        eng_lit: Option<&str>,
+        kan_nat: Option<&str>,
+        kan_lit: Option<&str>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE mined_cards SET english_natural = ?, english_literal = ?, kannada_natural = ?, kannada_literal = ? WHERE id = ?",
+            params![eng_nat, eng_lit, kan_nat, kan_lit, card_id],
+        )?;
+        Ok(())
+    }
+
     pub fn mark_mined_card_synced(&self, card_id: i64, anki_note_id: i64) -> Result<()> {
         self.conn.execute(
             "UPDATE mined_cards SET anki_note_id = ? WHERE id = ?",
