@@ -812,40 +812,49 @@ async fn main() -> Result<()> {
 
             Some(tokio::spawn(async move {
                 let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
-                let mut batch_inputs_owned = Vec::new();
+                let mut all_results = Vec::new();
+                const AI_BATCH_CHUNK: usize = 25;
 
-                for (idx, sentence_text, target_word) in card_targets {
-                    let sem = std::sync::Arc::clone(&semaphore);
-                    let client = std::sync::Arc::clone(&client);
-                    let target = target_word.clone();
+                for chunk in card_targets.chunks(AI_BATCH_CHUNK) {
+                    let mut batch_inputs_owned = Vec::new();
 
-                    let candidates = match tokio::time::timeout(
-                        std::time::Duration::from_secs(3),
-                        async move {
-                            let _permit = sem.acquire().await;
-                            DictionaryService::lookup_all_candidates(&client, &target, max_senses, max_glosses).await
-                        },
-                    )
-                    .await
-                    {
-                        Ok(Ok(res)) => res,
-                        _ => Vec::new(),
-                    };
+                    for (idx, sentence_text, target_word) in chunk {
+                        let sem = std::sync::Arc::clone(&semaphore);
+                        let client = std::sync::Arc::clone(&client);
+                        let target = target_word.clone();
 
-                    batch_inputs_owned.push((idx, sentence_text, target_word, candidates));
+                        let candidates = match tokio::time::timeout(
+                            std::time::Duration::from_secs(3),
+                            async move {
+                                let _permit = sem.acquire().await;
+                                DictionaryService::lookup_all_candidates(&client, &target, max_senses, max_glosses).await
+                            },
+                        )
+                        .await
+                        {
+                            Ok(Ok(res)) => res,
+                            _ => Vec::new(),
+                        };
+
+                        batch_inputs_owned.push((*idx, sentence_text.clone(), target_word.clone(), candidates));
+                    }
+
+                    let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
+                        .iter()
+                        .map(|(idx, sentence, target_word, candidates)| ai::CardBatchInput {
+                            card_index: *idx,
+                            sentence: sentence.as_str(),
+                            target_word: target_word.as_str(),
+                            candidates: candidates.as_slice(),
+                        })
+                        .collect();
+
+                    if let Ok(mut chunk_res) = ai::GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await {
+                        all_results.append(&mut chunk_res);
+                    }
                 }
 
-                let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
-                    .iter()
-                    .map(|(idx, sentence, target_word, candidates)| ai::CardBatchInput {
-                        card_index: *idx,
-                        sentence: sentence.as_str(),
-                        target_word: target_word.as_str(),
-                        candidates: candidates.as_slice(),
-                    })
-                    .collect();
-
-                ai::GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await
+                Ok::<Vec<ai::AiAnalysisResult>, anyhow::Error>(all_results)
             }))
         } else {
             None

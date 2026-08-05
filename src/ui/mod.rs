@@ -47,6 +47,23 @@ fn natural_cmp(left: &str, right: &str) -> Ordering {
     }
 }
 
+fn visual_width(s: &str) -> usize {
+    use unicode_width::UnicodeWidthChar;
+    let mut w = 0;
+    for c in s.chars() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+        // Indic virama and combining vowel signs do not advance terminal cursor
+        if matches!(c as u32, 0x0C80..=0x0CFF) && cw > 0 {
+            // Kannada block combining marks: virama (0x0CCD), vowel signs (0x0CBE-0x0CCC)
+            if matches!(c as u32, 0x0CBE..=0x0CCD | 0x0D00..=0x0D7F) {
+                continue;
+            }
+        }
+        w += cw;
+    }
+    w
+}
+
 /// Returns terminal width capped at 110, minimum 60.
 fn box_width() -> usize {
     terminal::size().map(|(w, _)| w as usize).unwrap_or(80).min(110).max(60)
@@ -54,7 +71,7 @@ fn box_width() -> usize {
 
 /// Wraps content in a full-width box row: "│ <content><padding> │"
 fn box_row(content: &str, inner_w: usize) -> String {
-    let vis = measure_text_width(content);
+    let vis = visual_width(content);
     let pad = inner_w.saturating_sub(vis);
     format!("│ {}{} │", content, " ".repeat(pad))
 }
@@ -243,7 +260,7 @@ impl TerminalUi {
 
         // Helper: label row  e.g. "Sentence:       <value>"
         let lrow = |label: &str, value: &str| -> String {
-            let label_pad = LABEL.saturating_sub(measure_text_width(label));
+            let label_pad = LABEL.saturating_sub(visual_width(label));
             let content = format!("{}{}{}", label, " ".repeat(label_pad), value);
             box_row(&content, iw)
         };
@@ -251,18 +268,20 @@ impl TerminalUi {
         let max_val_w = iw.saturating_sub(LABEL);
 
         let format_val = |val: &str| -> String {
-            let vis = measure_text_width(val);
+            let vis = visual_width(val);
             if vis > max_val_w && max_val_w > 3 {
                 let mut truncated = String::new();
                 let mut current_w = 0;
+                use unicode_width::UnicodeWidthChar;
                 for c in val.chars() {
-                    let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
-                    if current_w + cw + 3 > max_val_w {
+                    let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+                    let effective_w = if matches!(c as u32, 0x0CBE..=0x0CCD) { 0 } else { cw };
+                    if current_w + effective_w + 3 > max_val_w {
                         truncated.push_str("...");
                         break;
                     }
                     truncated.push(c);
-                    current_w += cw;
+                    current_w += effective_w;
                 }
                 truncated
             } else {
