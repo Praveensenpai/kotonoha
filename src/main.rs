@@ -201,33 +201,12 @@ fn sentence_with_furigana(tokenizer: &JapaneseTokenizer, sentence: &str, target_
 }
 
 fn format_translations_for_anki(
-    eng_nat: Option<&str>,
-    eng_lit: Option<&str>,
-    kan_nat: Option<&str>,
-    kan_lit: Option<&str>,
+    _eng_nat: Option<&str>,
+    _eng_lit: Option<&str>,
+    _kan_nat: Option<&str>,
+    _kan_lit: Option<&str>,
 ) -> String {
-    if eng_nat.is_none() && eng_lit.is_none() && kan_nat.is_none() && kan_lit.is_none() {
-        return String::new();
-    }
-
-    let mut body = String::new();
-    if let Some(en) = eng_nat {
-        body.push_str(&format!("<div style=\"margin-bottom: 4px;\">{}</div>", escape_html(en)));
-    }
-    if let Some(el) = eng_lit {
-        body.push_str(&format!("<div style=\"margin-bottom: 6px; opacity: 0.8;\">{}</div>", escape_html(el)));
-    }
-    if let Some(kn) = kan_nat {
-        body.push_str(&format!("<div style=\"margin-bottom: 4px;\">{}</div>", escape_html(kn)));
-    }
-    if let Some(kl) = kan_lit {
-        body.push_str(&format!("<div style=\"margin-bottom: 4px; opacity: 0.8;\">{}</div>", escape_html(kl)));
-    }
-
-    format!(
-        "<details class=\"kotonoha-translations\" style=\"margin-top: 12px; text-align: center;\"><summary style=\"cursor: pointer; font-weight: bold; font-size: 1.05em; display: inline-block; padding: 4px 12px; border: 1px solid currentColor; border-radius: 4px; user-select: none;\">Reveal Translations</summary><div style=\"margin-top: 10px; text-align: center; line-height: 1.5;\">{}</div></details>",
-        body
-    )
+    String::new()
 }
 
 fn to_katakana(text: &str) -> String {
@@ -1068,12 +1047,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        let translations_tuple = ai_analysis.map(|r| (
-            &r.english_natural,
-            &r.english_literal,
-            &r.kannada_natural,
-            &r.kannada_literal,
-        ));
+        let translations_tuple = None;
 
         TerminalUi::render_card(
             idx + 1,

@@ -31,12 +31,8 @@ pub struct GeminiAiService;
 
 fn build_prompt(cards_summary: &str) -> String {
     format!(
-        r#"You are an expert Japanese, English, and Kannada linguist and lexicographer.
-Analyze ALL Japanese cards in this batch. Match each target word in its sentence context against its dictionary candidates, AND provide 4 sentence translations:
-1. `english_natural`: Fluent, natural English translation of the sentence.
-2. `english_literal`: Direct/literal English translation matching Japanese word order and nuances closely.
-3. `kannada_natural`: Natural Kannada (ಕನ್ನಡ) translation of the sentence.
-4. `kannada_literal`: Literal Kannada (ಕನ್ನಡ) translation matching Japanese nuances closely.
+        r#"You are an expert Japanese linguist and lexicographer.
+Analyze ALL Japanese cards in this batch. Match each target word in its sentence context against its dictionary candidates:
 
 Cards Batch:
 {cards_summary}
@@ -45,7 +41,6 @@ For EACH card index:
 1. Check if the target word has any tokenizer/segmentation misparse in the sentence. If so, provide a short `parsing_warning`. Otherwise null.
 2. Always provide a concise, custom English `custom_definition_suggestion` for the target word's meaning in THIS sentence. Prefer the contextual meaning over a broad dictionary list. It must be a short gloss, not a sentence translation. For example, for `私のせいですか？`, return exactly `fault; blame; cause of a bad result`.
 3. Set `recommended_candidate_index` and `recommended_sense_index` to null when the custom gloss is the best display definition. Use candidate/sense indexes only when the dictionary entry itself is already an ideal contextual definition and no custom gloss is needed.
-4. Provide the 4 translations (`english_natural`, `english_literal`, `kannada_natural`, `kannada_literal`).
 
 Return ONLY a valid JSON object matching this exact schema:
 {{
@@ -56,11 +51,7 @@ Return ONLY a valid JSON object matching this exact schema:
       "recommended_sense_index": number or null,
       "parsing_warning": string or null,
       "custom_definition_suggestion": string or null,
-      "explanation": string or null,
-      "english_natural": string or null,
-      "english_literal": string or null,
-      "kannada_natural": string or null,
-      "kannada_literal": string or null
+      "explanation": string or null
     }}
   ]
 }}"#
