@@ -23,6 +23,8 @@ pub struct AppConfig {
     pub gemini_api_key: Option<String>,
     #[serde(default = "default_gemini_model")]
     pub gemini_model: String,
+    #[serde(default = "default_ai_batch_size")]
+    pub ai_batch_size: usize,
 }
 
 fn default_anki_model_name() -> String {
@@ -43,6 +45,10 @@ fn default_enable_ai() -> bool {
 
 fn default_gemini_model() -> String {
     "gemini-3.5-flash-lite".to_string()
+}
+
+fn default_ai_batch_size() -> usize {
+    10
 }
 
 /// Expands a leading `~/` using the home directory of the user running Kotonoha.
@@ -83,6 +89,7 @@ impl Default for AppConfig {
             enable_ai: true,
             gemini_api_key: api_key,
             gemini_model: default_gemini_model(),
+            ai_batch_size: default_ai_batch_size(),
         }
     }
 }

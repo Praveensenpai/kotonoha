@@ -633,6 +633,7 @@ impl TerminalUi {
         println!("  • Anki Model Name:       {}", dim.apply_to(&cfg.anki_model_name));
         println!("  • Max Definition Senses: {}", cyan.apply_to(cfg.max_definition_senses));
         println!("  • Max Glosses / Sense:   {}", cyan.apply_to(cfg.max_glosses_per_sense));
+        println!("  • AI Batch Size:         {}", cyan.apply_to(cfg.ai_batch_size));
         println!();
     }
 
@@ -657,6 +658,7 @@ impl TerminalUi {
                 format!("🔌  AnkiConnect URL            [Current: {}]", cfg.anki_connect_url),
                 format!("📖  Max Definition Senses      [Current: {}]", cfg.max_definition_senses),
                 format!("📝  Max Glosses per Sense      [Current: {}]", cfg.max_glosses_per_sense),
+                format!("🔢  AI Batch Size              [Current: {}]", cfg.ai_batch_size),
                 "🔄  Reset to Default Values".to_string(),
                 "💾  Save & Exit".to_string(),
             ];
@@ -731,6 +733,14 @@ impl TerminalUi {
                     .prompt()?;
                 if let Ok(num) = input.trim().parse::<usize>() {
                     cfg.max_glosses_per_sense = num;
+                }
+            } else if choice.contains("AI Batch Size") {
+                let input = Text::new("Enter AI batch size (cards per Gemini request):")
+                    .with_default(&cfg.ai_batch_size.to_string())
+                    .prompt()?;
+                if let Ok(num) = input.trim().parse::<usize>() {
+                    cfg.ai_batch_size = num.max(1);
+                    println!(" ✔ AI batch size set to {}", cyan.apply_to(cfg.ai_batch_size));
                 }
             } else if choice.contains("Reset to Default Values") {
                 *cfg = crate::config::AppConfig::default();

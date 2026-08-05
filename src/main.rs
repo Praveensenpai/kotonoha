@@ -471,10 +471,10 @@ pub async fn backfill_translations(cfg: &AppConfig, db: &Database) -> Result<()>
 
     let client = reqwest::Client::new();
     let empty_lookup: Vec<crate::dict::LookupResult> = Vec::new();
-    const BATCH_SIZE: usize = 20;
+    let batch_size = cfg.ai_batch_size.max(1);
 
     let mut total_backfilled = 0;
-    let chunks: Vec<_> = missing.chunks(BATCH_SIZE).collect();
+    let chunks: Vec<_> = missing.chunks(batch_size).collect();
     let total_chunks = chunks.len();
 
     for (chunk_idx, chunk) in chunks.iter().enumerate() {
@@ -809,13 +809,14 @@ async fn main() -> Result<()> {
                 .enumerate()
                 .map(|(idx, cand)| (idx, cand.sentence.text.clone(), cand.target_word.clone()))
                 .collect();
+            let cfg_ai_batch_size = cfg.ai_batch_size;
 
             Some(tokio::spawn(async move {
                 let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(10));
                 let mut all_results = Vec::new();
-                const AI_BATCH_CHUNK: usize = 25;
+                let ai_batch_size = cfg_ai_batch_size.max(1);
 
-                for chunk in card_targets.chunks(AI_BATCH_CHUNK) {
+                for chunk in card_targets.chunks(ai_batch_size) {
                     let mut lookup_futures = Vec::new();
 
                     for (idx, sentence_text, target_word) in chunk {
