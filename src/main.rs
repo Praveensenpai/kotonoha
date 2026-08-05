@@ -212,23 +212,20 @@ fn format_translations_for_anki(
 
     let mut body = String::new();
     if let Some(en) = eng_nat {
-        body.push_str(&format!("<div style=\"margin-bottom: 4px;\"><b>🇬🇧 Natural:</b> {}</div>", escape_html(en)));
+        body.push_str(&format!("<div style=\"margin-bottom: 4px;\">{}</div>", escape_html(en)));
     }
     if let Some(el) = eng_lit {
-        body.push_str(&format!("<div style=\"margin-bottom: 6px; opacity: 0.85; font-size: 0.95em;\"><b>🇬🇧 Literal:</b> {}</div>", escape_html(el)));
-    }
-    if (eng_nat.is_some() || eng_lit.is_some()) && (kan_nat.is_some() || kan_lit.is_some()) {
-        body.push_str("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin: 6px 0;\">");
+        body.push_str(&format!("<div style=\"margin-bottom: 6px; opacity: 0.8;\">{}</div>", escape_html(el)));
     }
     if let Some(kn) = kan_nat {
-        body.push_str(&format!("<div style=\"margin-bottom: 4px;\"><b>🇮🇳 Kannada (ನೈಸರ್ಗಿಕ):</b> {}</div>", escape_html(kn)));
+        body.push_str(&format!("<div style=\"margin-bottom: 4px;\">{}</div>", escape_html(kn)));
     }
     if let Some(kl) = kan_lit {
-        body.push_str(&format!("<div style=\"margin-bottom: 4px; opacity: 0.85; font-size: 0.95em;\"><b>🇮🇳 Kannada (ನಿಕಟ):</b> {}</div>", escape_html(kl)));
+        body.push_str(&format!("<div style=\"margin-bottom: 4px; opacity: 0.8;\">{}</div>", escape_html(kl)));
     }
 
     format!(
-        "<details class=\"kotonoha-translations\" style=\"margin-top: 10px; font-size: 0.92em; text-align: left;\"><summary style=\"cursor: pointer; font-weight: bold; color: #4A90E2; padding: 4px 10px; border: 1px solid #4A90E2; border-radius: 4px; display: inline-block; user-select: none;\">Reveal Sentence Translations</summary><div style=\"margin-top: 8px; background: rgba(0,0,0,0.2); padding: 10px 12px; border-radius: 6px; border-left: 3px solid #4A90E2;\">{}</div></details>",
+        "<details class=\"kotonoha-translations\" style=\"margin-top: 12px; text-align: center;\"><summary style=\"cursor: pointer; font-weight: bold; font-size: 1.05em; display: inline-block; padding: 4px 12px; border: 1px solid currentColor; border-radius: 4px; user-select: none;\">Reveal Translations</summary><div style=\"margin-top: 10px; text-align: center; line-height: 1.5;\">{}</div></details>",
         body
     )
 }
@@ -294,9 +291,9 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
         anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
     }
 
-    let cards = db.get_unsynced_mined_cards()?;
-    if cards.is_empty() {
-        println!(" ✔ No locally mined cards are waiting to sync.");
+    let all_cards = db.get_all_mined_cards()?;
+    if all_cards.is_empty() {
+        println!(" ✔ No locally mined cards in database.");
         return Ok(());
     }
 
@@ -321,99 +318,108 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
         anyhow::bail!("Anki note type '{}' does not have the required Japanese sentences+ fields", cfg.anki_model_name);
     }
 
-    let mut synced = 0;
-    for card in cards {
-        // Sync is intentionally idempotent. This also repairs local rows that
-        // were left unsynced after a previous addNote succeeded but the
-        // process exited before mark_mined_card_synced ran.
-        let existing_note_id = find_existing_anki_note(
-            &client,
-            &cfg.anki_connect_url,
-            &cfg.anki_model_name,
-            &card.sentence,
-        )
-        .await?;
-        let note_id = if let Some(note_id) = existing_note_id {
-            note_id
+    let mut synced_new = 0;
+    let mut updated_translations = 0;
+
+    for (card, existing_anki_id) in all_cards {
+        let note_id = if let Some(id) = existing_anki_id {
+            id
         } else {
-            let sentence_furigana =
-                sentence_with_furigana(&tokenizer, &card.sentence, &card.target_word);
-            let (pitch_pattern, pitch_number) = pitch_pattern(&card.reading, &card.pitch_accent);
-            let audio = match card.audio_path.as_deref() {
-                Some(path) => {
-                    upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus")
-                        .await?
-                }
-                None => None,
-            };
-            let image = match card.image_path.as_deref() {
-                Some(path) => {
-                    upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg")
-                        .await?
-                }
-                None => None,
-            };
-            let sentence_audio = audio
-                .map(|filename| format!("[sound:{filename}]"))
-                .unwrap_or_default();
-            let image = image
-                .map(|filename| format!("<img src=\"{filename}\">"))
-                .unwrap_or_default();
-            let sent_eng = format_translations_for_anki(
-                card.english_natural.as_deref(),
-                card.english_literal.as_deref(),
-                card.kannada_natural.as_deref(),
-                card.kannada_literal.as_deref(),
-            );
-            match anki_request(
+            let existing_note_id = find_existing_anki_note(
                 &client,
                 &cfg.anki_connect_url,
-                "addNote",
-                serde_json::json!({
-                    "note": {
-                        "deckName": cfg.anki_deck_name,
-                        "modelName": cfg.anki_model_name,
-                        "fields": {
-                            "SentKanji": card.sentence,
-                            "SentFurigana": sentence_furigana,
-                            "SentEng": sent_eng,
-                            "SentAudio": sentence_audio,
-                            "VocabKanji": card.target_word,
-                            "VocabFurigana": card.reading,
-                            "VocabPitchPattern": pitch_pattern,
-                            "VocabPitchNum": pitch_number,
-                            "VocabDef": format_definition_for_anki(&card.definition),
-                            "VocabAudio": "",
-                            "Image": image,
-                            "Notes": "",
-                            "MakeProductionCard": "",
-                            "Focus": ""
-                        },
-                        "tags": ["jp1k", "kotonoha", "mined"]
-                    }
-                }),
+                &cfg.anki_model_name,
+                &card.sentence,
             )
-            .await
-            {
-                Ok(note_id) => note_id
-                    .as_i64()
-                    .ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?,
-                Err(error) if error.to_string().to_ascii_lowercase().contains("duplicate") => {
-                    find_existing_anki_note(
-                        &client,
-                        &cfg.anki_connect_url,
-                        &cfg.anki_model_name,
-                        &card.sentence,
-                    )
-                    .await?
-                    .ok_or(error)?
-                }
-                Err(error) => return Err(error),
+            .await?;
+
+            if let Some(note_id) = existing_note_id {
+                db.mark_mined_card_synced(card.id, note_id)?;
+                note_id
+            } else {
+                let sentence_furigana =
+                    sentence_with_furigana(&tokenizer, &card.sentence, &card.target_word);
+                let (pitch_pattern, pitch_number) = pitch_pattern(&card.reading, &card.pitch_accent);
+                let audio = match card.audio_path.as_deref() {
+                    Some(path) => {
+                        upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus")
+                            .await?
+                    }
+                    None => None,
+                };
+                let image = match card.image_path.as_deref() {
+                    Some(path) => {
+                        upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg")
+                            .await?
+                    }
+                    None => None,
+                };
+                let sentence_audio = audio
+                    .map(|filename| format!("[sound:{filename}]"))
+                    .unwrap_or_default();
+                let image = image
+                    .map(|filename| format!("<img src=\"{filename}\">"))
+                    .unwrap_or_default();
+                let sent_eng = format_translations_for_anki(
+                    card.english_natural.as_deref(),
+                    card.english_literal.as_deref(),
+                    card.kannada_natural.as_deref(),
+                    card.kannada_literal.as_deref(),
+                );
+
+                let note_id = match anki_request(
+                    &client,
+                    &cfg.anki_connect_url,
+                    "addNote",
+                    serde_json::json!({
+                        "note": {
+                            "deckName": cfg.anki_deck_name,
+                            "modelName": cfg.anki_model_name,
+                            "fields": {
+                                "SentKanji": card.sentence,
+                                "SentFurigana": sentence_furigana,
+                                "SentEng": sent_eng,
+                                "SentAudio": sentence_audio,
+                                "VocabKanji": card.target_word,
+                                "VocabFurigana": card.reading,
+                                "VocabPitchPattern": pitch_pattern,
+                                "VocabPitchNum": pitch_number,
+                                "VocabDef": format_definition_for_anki(&card.definition),
+                                "VocabAudio": "",
+                                "Image": image,
+                                "Notes": "",
+                                "MakeProductionCard": "",
+                                "Focus": ""
+                            },
+                            "tags": ["jp1k", "kotonoha", "mined"]
+                        }
+                    }),
+                )
+                .await
+                {
+                    Ok(res) => res
+                        .as_i64()
+                        .ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?,
+                    Err(error) if error.to_string().to_ascii_lowercase().contains("duplicate") => {
+                        find_existing_anki_note(
+                            &client,
+                            &cfg.anki_connect_url,
+                            &cfg.anki_model_name,
+                            &card.sentence,
+                        )
+                        .await?
+                        .ok_or(error)?
+                    }
+                    Err(error) => return Err(error),
+                };
+
+                db.mark_mined_card_synced(card.id, note_id)?;
+                synced_new += 1;
+                note_id
             }
         };
-        db.mark_mined_card_synced(card.id, note_id)?;
 
-        // Update existing Anki note fields if SentEng was empty/outdated
+        // Update existing Anki note fields if translations exist
         let sent_eng = format_translations_for_anki(
             card.english_natural.as_deref(),
             card.english_literal.as_deref(),
@@ -421,7 +427,7 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             card.kannada_literal.as_deref(),
         );
         if !sent_eng.is_empty() {
-            let _ = anki_request(
+            if anki_request(
                 &client,
                 &cfg.anki_connect_url,
                 "updateNoteFields",
@@ -434,12 +440,15 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                     }
                 }),
             )
-            .await;
+            .await
+            .is_ok()
+            {
+                updated_translations += 1;
+            }
         }
-
-        synced += 1;
     }
-    println!(" ✔ Synced {synced} card(s) to Anki deck: {}", cfg.anki_deck_name);
+
+    println!(" ✔ Anki Sync Complete! ({synced_new} new cards synced, {updated_translations} cards updated with Reveal Translations)");
     Ok(())
 }
 
@@ -462,42 +471,50 @@ pub async fn backfill_translations(cfg: &AppConfig, db: &Database) -> Result<()>
 
     let client = reqwest::Client::new();
     let empty_lookup: Vec<crate::dict::LookupResult> = Vec::new();
+    const BATCH_SIZE: usize = 20;
 
-    let batch_inputs: Vec<ai::CardBatchInput<'_>> = missing
-        .iter()
-        .enumerate()
-        .map(|(idx, card)| ai::CardBatchInput {
-            card_index: idx,
-            sentence: card.sentence.as_str(),
-            target_word: card.target_word.as_str(),
-            candidates: empty_lookup.as_slice(),
-        })
-        .collect();
+    let mut total_backfilled = 0;
+    let chunks: Vec<_> = missing.chunks(BATCH_SIZE).collect();
+    let total_chunks = chunks.len();
 
-    match ai::GeminiAiService::analyze_batch(&client, api_key, &cfg.gemini_model, &batch_inputs).await {
-        Ok(results) => {
-            let mut count = 0;
-            for res in results {
-                if let Some(card) = missing.get(res.card_index) {
-                    if res.english_natural.is_some() || res.kannada_natural.is_some() {
-                        let _ = db.update_card_translations(
-                            card.id,
-                            res.english_natural.as_deref(),
-                            res.english_literal.as_deref(),
-                            res.kannada_natural.as_deref(),
-                            res.kannada_literal.as_deref(),
-                        );
-                        count += 1;
+    for (chunk_idx, chunk) in chunks.iter().enumerate() {
+        println!("   ↳ Processing batch {}/{} ({} card(s))...", chunk_idx + 1, total_chunks, chunk.len());
+
+        let batch_inputs: Vec<ai::CardBatchInput<'_>> = chunk
+            .iter()
+            .enumerate()
+            .map(|(idx, card)| ai::CardBatchInput {
+                card_index: idx,
+                sentence: card.sentence.as_str(),
+                target_word: card.target_word.as_str(),
+                candidates: empty_lookup.as_slice(),
+            })
+            .collect();
+
+        match ai::GeminiAiService::analyze_batch(&client, api_key, &cfg.gemini_model, &batch_inputs).await {
+            Ok(results) => {
+                for res in results {
+                    if let Some(card) = chunk.get(res.card_index) {
+                        if res.english_natural.is_some() || res.kannada_natural.is_some() {
+                            let _ = db.update_card_translations(
+                                card.id,
+                                res.english_natural.as_deref(),
+                                res.english_literal.as_deref(),
+                                res.kannada_natural.as_deref(),
+                                res.kannada_literal.as_deref(),
+                            );
+                            total_backfilled += 1;
+                        }
                     }
                 }
             }
-            println!(" ✔ Successfully backfilled translations for {count} mined card(s)!\n");
-        }
-        Err(e) => {
-            eprintln!(" ⚠️ Backfill translation attempt failed: {e}\n");
+            Err(e) => {
+                eprintln!(" ⚠️ Backfill batch {}/{} failed: {e}", chunk_idx + 1, total_chunks);
+            }
         }
     }
 
+    println!(" ✔ Backfilled translations for {}/{} card(s)!\n", total_backfilled, missing.len());
     Ok(())
 }
 
