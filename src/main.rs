@@ -1,3 +1,4 @@
+mod ai;
 mod config;
 mod db;
 mod dict;
@@ -708,7 +709,7 @@ async fn main() -> Result<()> {
         let pb3 = indicatif::ProgressBar::new(total);
         pb3.set_style(
             indicatif::ProgressStyle::default_bar()
-                .template(" ℹ [3/3] Screenshots 360p (.jpg)       [{bar:35.yellow/blue}] {pos}/{len} ({percent}%)")
+                .template(" ℹ [3/4] Screenshots 360p (.jpg)       [{bar:35.yellow/blue}] {pos}/{len} ({percent}%)")
                 .unwrap()
                 .progress_chars("█▓▒░"),
         );
@@ -724,6 +725,52 @@ async fn main() -> Result<()> {
     }
 
     let http_client = reqwest::Client::new();
+
+    // Step 4: Batch Gemini AI Context Analysis (Single API Request for all cards)
+    let ai_results_map: HashMap<usize, ai::AiAnalysisResult> = if cfg.enable_ai {
+        if let Some(ref api_key) = cfg.gemini_api_key {
+            println!(" 🤖 [4/4] Analyzing cards batch via Gemini AI ({}) ...", cfg.gemini_model);
+            let mut batch_inputs = Vec::new();
+            let mut candidates_cache = Vec::new();
+
+            for (_idx, cand) in candidates_to_process.iter().enumerate() {
+                let candidates = DictionaryService::lookup_all_candidates(
+                    &http_client,
+                    &cand.target_word,
+                    cfg.max_definition_senses,
+                    cfg.max_glosses_per_sense,
+                )
+                .await
+                .unwrap_or_default();
+                candidates_cache.push(candidates);
+            }
+
+            for (idx, cand) in candidates_to_process.iter().enumerate() {
+                batch_inputs.push(ai::CardBatchInput {
+                    card_index: idx,
+                    sentence: &cand.sentence.text,
+                    target_word: &cand.target_word,
+                    candidates: &candidates_cache[idx],
+                });
+            }
+
+            match ai::GeminiAiService::analyze_batch(&http_client, api_key, &cfg.gemini_model, &batch_inputs).await {
+                Ok(results) => {
+                    println!(" ✔ Gemini AI analysis completed for {} card(s).\n", results.len());
+                    results.into_iter().map(|r| (r.card_index, r)).collect()
+                }
+                Err(e) => {
+                    eprintln!(" ⚠️ Gemini AI batch analysis failed: {e}\n");
+                    HashMap::new()
+                }
+            }
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
     let mut mined_count = 0;
     let mut skipped_count = 0;
     let mut ignored_count = 0;
@@ -767,6 +814,33 @@ async fn main() -> Result<()> {
             pitch_accent,
         };
 
+        let ai_analysis = ai_results_map.get(&idx);
+
+        if let Some(res) = ai_analysis {
+            if let Some(cand_idx) = res.recommended_candidate_index {
+                let candidates = DictionaryService::lookup_all_candidates(
+                    &http_client,
+                    &cand.target_word,
+                    cfg.max_definition_senses,
+                    cfg.max_glosses_per_sense,
+                )
+                .await
+                .unwrap_or_default();
+
+                if let Some(rec_cand) = candidates.get(cand_idx) {
+                    dict_info = rec_cand.clone();
+                    if let Some(sense_idx) = res.recommended_sense_index {
+                        let senses = dict::parse_senses(&dict_info.definition);
+                        if let Some(s) = senses.get(sense_idx) {
+                            dict_info.definition = s.clone();
+                        }
+                    }
+                }
+            } else if let Some(ref custom_sug) = res.custom_definition_suggestion {
+                dict_info.definition = format!("1. [AI Suggestion] {}", custom_sug);
+            }
+        }
+
         TerminalUi::render_card(
             idx + 1,
             &cand.sentence.text,
@@ -777,6 +851,7 @@ async fn main() -> Result<()> {
             &dict_info.definition,
             &cand.known_context_words,
             &cand.unknown_context_words,
+            ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
         );
 
         let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
@@ -816,6 +891,7 @@ async fn main() -> Result<()> {
                     &cand.target_word,
                     &dict_info.reading,
                     &dict_info.pitch_accent,
+                    ai_analysis,
                 ) {
                     dict_info = chosen;
                     let _ = db.cache_definition(
@@ -835,6 +911,7 @@ async fn main() -> Result<()> {
                         &dict_info.definition,
                         &cand.known_context_words,
                         &cand.unknown_context_words,
+                        ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
                     );
                 }
                 continue;

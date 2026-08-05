@@ -17,6 +17,12 @@ pub struct AppConfig {
     pub max_definition_senses: usize,
     #[serde(default = "default_max_glosses_per_sense")]
     pub max_glosses_per_sense: usize,
+    #[serde(default = "default_enable_ai")]
+    pub enable_ai: bool,
+    #[serde(default)]
+    pub gemini_api_key: Option<String>,
+    #[serde(default = "default_gemini_model")]
+    pub gemini_model: String,
 }
 
 fn default_anki_model_name() -> String {
@@ -29,6 +35,14 @@ fn default_max_definition_senses() -> usize {
 
 fn default_max_glosses_per_sense() -> usize {
     4
+}
+
+fn default_enable_ai() -> bool {
+    true
+}
+
+fn default_gemini_model() -> String {
+    "gemini-3.5-flash-lite".to_string()
 }
 
 /// Expands a leading `~/` using the home directory of the user running Kotonoha.
@@ -53,6 +67,8 @@ impl Default for AppConfig {
 
         let media_dir = home.join(".local/share/kotonoha/media");
 
+        let api_key = std::env::var("GEMINI_API_KEY").ok();
+
         Self {
             default_card_limit: 25,
             media_dir,
@@ -64,6 +80,9 @@ impl Default for AppConfig {
             anki_model_name: default_anki_model_name(),
             max_definition_senses: 3,
             max_glosses_per_sense: 4,
+            enable_ai: true,
+            gemini_api_key: api_key,
+            gemini_model: default_gemini_model(),
         }
     }
 }
@@ -83,6 +102,9 @@ impl AppConfig {
             let mut cfg: AppConfig = toml::from_str(&content).unwrap_or_default();
             cfg.media_dir = expand_home_path(cfg.media_dir, &home);
             cfg.db_path = expand_home_path(cfg.db_path, &home);
+            if cfg.gemini_api_key.is_none() {
+                cfg.gemini_api_key = std::env::var("GEMINI_API_KEY").ok();
+            }
             Ok(cfg)
         } else {
             let cfg = AppConfig::default();

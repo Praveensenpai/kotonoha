@@ -214,6 +214,7 @@ impl TerminalUi {
         definition: &str,
         known_context: &[String],
         unknown_context: &[String],
+        ai_warning: Option<&str>,
     ) {
         let cyan = Style::new().cyan().bold();
         let yellow = Style::new().yellow().bold();
@@ -294,6 +295,11 @@ impl TerminalUi {
             println!("{}", lrow("JPDB Rank:", &format!("#{}", r)));
         }
 
+        if let Some(warn) = ai_warning {
+            let warn_styled = format!("⚠️  AI Parsing Warning: {}", warn);
+            println!("{}", lrow("AI Notice:", &red.apply_to(&format_val(&warn_styled)).to_string()));
+        }
+
         let def_lines: Vec<&str> = definition.lines().collect();
         if def_lines.is_empty() {
             println!("{}", lrow("Definitions:", "No definition"));
@@ -347,21 +353,44 @@ impl TerminalUi {
         expression: &str,
         reading: &str,
         pitch_accent: &str,
+        ai_res: Option<&crate::ai::AiAnalysisResult>,
     ) -> Result<crate::dict::LookupResult> {
+        let rec_idx = ai_res.and_then(|r| r.recommended_candidate_index);
         let mut options: Vec<String> = candidates
             .iter()
             .enumerate()
             .map(|(idx, res)| {
                 let first_line = res.definition.lines().next().unwrap_or("");
                 let clean_line = first_line.trim().strip_prefix('│').unwrap_or(first_line).trim();
-                format!("#{} 【{} ({})】 {}", idx + 1, res.expression, res.reading, clean_line)
+                let badge = if rec_idx == Some(idx) { " ✨ [AI Recommended]" } else { "" };
+                format!("#{} 【{} ({})】 {}{}", idx + 1, res.expression, res.reading, clean_line, badge)
             })
             .collect();
+
+        let ai_suggested_def = ai_res.and_then(|r| r.custom_definition_suggestion.as_deref());
+        if let Some(sug) = ai_suggested_def {
+            options.push(format!("✨ Use AI Suggested Definition: \"{}\"", sug));
+        }
+
         options.push("✍ Enter custom definition".to_string());
 
+        let default_selection_idx = rec_idx.unwrap_or(0).min(options.len().saturating_sub(1));
         let selected = Select::new("Select dictionary definition:", options.clone())
+            .with_starting_cursor(default_selection_idx)
             .with_page_size(10)
             .prompt()?;
+
+        if let Some(sug) = ai_suggested_def {
+            if selected.starts_with("✨ Use AI Suggested Definition:") {
+                return Ok(crate::dict::LookupResult {
+                    expression: expression.to_string(),
+                    reading: reading.to_string(),
+                    definition: format!("1. [AI Suggestion] {}", sug),
+                    pitch_accent: pitch_accent.to_string(),
+                });
+            }
+        }
+
         let custom_index = options.len() - 1;
         if options[custom_index] == selected {
             let definition = Text::new(&format!("Definition for {expression} (context:):")).prompt()?;
