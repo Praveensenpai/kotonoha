@@ -644,16 +644,60 @@ async fn main() -> Result<()> {
 
     let candidates_to_process: Vec<_> = candidates.into_iter().take(cfg.default_card_limit).collect();
 
+    let http_client = std::sync::Arc::new(reqwest::Client::new());
+
+    // Spawn Gemini AI Context Analysis in the background upfront
+    let ai_task_handle = if cfg.enable_ai {
+        if let Some(ref api_key) = cfg.gemini_api_key {
+            let api_key = api_key.clone();
+            let model = cfg.gemini_model.clone();
+            let client = std::sync::Arc::clone(&http_client);
+            let max_senses = cfg.max_definition_senses;
+            let max_glosses = cfg.max_glosses_per_sense;
+
+            let mut batch_inputs_owned = Vec::new();
+            for (idx, cand) in candidates_to_process.iter().enumerate() {
+                let candidates = DictionaryService::lookup_all_candidates(
+                    &client,
+                    &cand.target_word,
+                    max_senses,
+                    max_glosses,
+                )
+                .await
+                .unwrap_or_default();
+
+                batch_inputs_owned.push((idx, cand.sentence.text.clone(), cand.target_word.clone(), candidates));
+            }
+
+            Some(tokio::spawn(async move {
+                let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
+                    .iter()
+                    .map(|(idx, sentence, target_word, candidates)| ai::CardBatchInput {
+                        card_index: *idx,
+                        sentence: sentence.as_str(),
+                        target_word: target_word.as_str(),
+                        candidates: candidates.as_slice(),
+                    })
+                    .collect();
+
+                ai::GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await
+            }))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     if !candidates_to_process.is_empty() {
         const RAW_SENSE_LIMIT: usize = 12;
         let total = candidates_to_process.len() as u64;
-        let http_client = std::sync::Arc::new(reqwest::Client::new());
 
         // Step 1: Definitions & Pitch Accents (Concurrent 5 at a time with HTTP connection pooling)
         let pb1 = indicatif::ProgressBar::new(total);
         pb1.set_style(
             indicatif::ProgressStyle::default_bar()
-                .template(" ℹ [1/3] Definitions & Pitch Accents  [{bar:35.cyan/blue}] {pos}/{len} ({percent}%)")
+                .template(" ℹ [1/4] Definitions & Pitch Accents  [{bar:35.cyan/blue}] {pos}/{len} ({percent}%)")
                 .unwrap()
                 .progress_chars("█▓▒░"),
         );
@@ -703,7 +747,7 @@ async fn main() -> Result<()> {
         let pb2 = indicatif::ProgressBar::new(total);
         pb2.set_style(
             indicatif::ProgressStyle::default_bar()
-                .template(" ℹ [2/3] Audio Preview Clips (.opus)   [{bar:35.magenta/blue}] {pos}/{len} ({percent}%)")
+                .template(" ℹ [2/4] Audio Preview Clips (.opus)   [{bar:35.magenta/blue}] {pos}/{len} ({percent}%)")
                 .unwrap()
                 .progress_chars("█▓▒░"),
         );
@@ -736,51 +780,26 @@ async fn main() -> Result<()> {
         println!("\n");
     }
 
-    let http_client = reqwest::Client::new();
-
-    // Step 4: Batch Gemini AI Context Analysis (Single API Request for all cards)
-    let ai_results_map: HashMap<usize, ai::AiAnalysisResult> = if cfg.enable_ai {
-        if let Some(ref api_key) = cfg.gemini_api_key {
-            println!(" 🤖 [4/4] Analyzing cards batch via Gemini AI ({}) ...", cfg.gemini_model);
-            let mut batch_inputs = Vec::new();
-            let mut candidates_cache = Vec::new();
-
-            for (_idx, cand) in candidates_to_process.iter().enumerate() {
-                let candidates = DictionaryService::lookup_all_candidates(
-                    &http_client,
-                    &cand.target_word,
-                    cfg.max_definition_senses,
-                    cfg.max_glosses_per_sense,
-                )
-                .await
-                .unwrap_or_default();
-                candidates_cache.push(candidates);
-            }
-
-            for (idx, cand) in candidates_to_process.iter().enumerate() {
-                batch_inputs.push(ai::CardBatchInput {
-                    card_index: idx,
-                    sentence: &cand.sentence.text,
-                    target_word: &cand.target_word,
-                    candidates: &candidates_cache[idx],
-                });
-            }
-
-            match ai::GeminiAiService::analyze_batch(&http_client, api_key, &cfg.gemini_model, &batch_inputs).await {
-                Ok(results) => {
-                    println!(" ✔ Gemini AI analysis completed for {} card(s).\n", results.len());
+    // Step 4: Collect / Await Background Gemini AI Results
+    let ai_results_map: HashMap<usize, ai::AiAnalysisResult> = match ai_task_handle {
+        Some(handle) => {
+            println!(" 🤖 [4/4] Gemini AI Context Analysis ({}) ...", cfg.gemini_model);
+            match handle.await {
+                Ok(Ok(results)) => {
+                    println!(" ✔ Gemini AI analysis ready ({} card(s) processed).\n", results.len());
                     results.into_iter().map(|r| (r.card_index, r)).collect()
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     eprintln!(" ⚠️ Gemini AI batch analysis failed: {e}\n");
                     HashMap::new()
                 }
+                Err(e) => {
+                    eprintln!(" ⚠️ Gemini AI task join error: {e}\n");
+                    HashMap::new()
+                }
             }
-        } else {
-            HashMap::new()
         }
-    } else {
-        HashMap::new()
+        None => HashMap::new(),
     };
 
     let mut mined_count = 0;
