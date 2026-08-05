@@ -217,14 +217,12 @@ pub fn pitch_number(pitch_accent: &str, mora_count: usize) -> usize {
     let pattern = pitch_accent.trim().to_ascii_uppercase();
     if pattern.starts_with('H') {
         1
-    } else if let Some(drop) = pattern
-        .chars()
-        .position(|level| level == 'L')
-        .filter(|drop| *drop > 1)
-    {
-        drop
     } else {
-        0
+        pattern
+            .chars()
+            .position(|level| level == 'L')
+            .filter(|drop| *drop > 1)
+            .unwrap_or_default()
     }
 }
 
@@ -451,8 +449,8 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             card.kannada_natural.as_deref(),
             card.kannada_literal.as_deref(),
         );
-        if !sent_eng.is_empty() {
-            if anki_request(
+        if !sent_eng.is_empty()
+            && anki_request(
                 &client,
                 &cfg.anki_connect_url,
                 "updateNoteFields",
@@ -467,9 +465,8 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             )
             .await
             .is_ok()
-            {
-                updated_translations += 1;
-            }
+        {
+            updated_translations += 1;
         }
     }
 

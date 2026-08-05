@@ -163,12 +163,12 @@ pub fn format_pitch_accent(reading: &str, pitch_num: usize) -> (String, String, 
     if k == 1 {
         pattern[0] = 1;
     } else if k == 0 || k >= total_morae {
-        for i in 1..total_morae {
-            pattern[i] = 1;
+        for val in pattern.iter_mut().take(total_morae).skip(1) {
+            *val = 1;
         }
     } else {
-        for i in 1..k.min(total_morae) {
-            pattern[i] = 1;
+        for val in pattern.iter_mut().take(k.min(total_morae)).skip(1) {
+            *val = 1;
         }
     }
 
@@ -229,8 +229,8 @@ impl DictionaryService {
         ];
 
         for (stem_end, verb_end) in stem_fallbacks {
-            if word.ends_with(stem_end) {
-                let verb_form = format!("{}{}", &word[..word.len() - stem_end.len()], verb_end);
+            if let Some(stem) = word.strip_suffix(stem_end) {
+                let verb_form = format!("{}{}", stem, verb_end);
                 if let Ok(fallback_res) = Self::lookup_internal(client, &verb_form, true, max_senses, max_glosses).await {
                     if !is_placeholder_definition(&fallback_res.definition)
                         && fallback_res.definition != "No dictionary definition found"
@@ -274,7 +274,7 @@ impl DictionaryService {
             let json: serde_json::Value = resp.json().await?;
             if let Some(items) = json["data"].as_array() {
                 let exact_entries: Vec<&serde_json::Value> = items.iter().filter(|entry| {
-                    entry["japanese"].as_array().map_or(false, |forms| {
+                    entry["japanese"].as_array().is_some_and(|forms| {
                         forms.iter().any(|j| {
                             j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
                         })

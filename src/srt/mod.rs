@@ -36,8 +36,7 @@ fn clean_text(text: &str) -> String {
         .replace("\\N", " ")
         .replace("\\n", " ")
         .replace("\r\n", " ")
-        .replace('\n', " ")
-        .replace('\r', " ");
+        .replace(['\n', '\r'], " ");
 
     let re_spaces = Regex::new(r"\s+").unwrap();
     re_spaces.replace_all(flattened.trim(), " ").to_string()

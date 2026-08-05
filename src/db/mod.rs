@@ -221,24 +221,27 @@ impl Database {
         let count = self.conn.execute("DELETE FROM dictionary_cache", [])?;
         Ok(count)
     }
+}
 
-    pub fn save_mined_card(
-        &self,
-        sentence: &str,
-        target_word: &str,
-        reading: &str,
-        pitch_accent: &str,
-        definition: &str,
-        audio_path: Option<&str>,
-        image_path: Option<&str>,
-        english_natural: Option<&str>,
-        english_literal: Option<&str>,
-        kannada_natural: Option<&str>,
-        kannada_literal: Option<&str>,
-    ) -> Result<()> {
+pub struct SaveMinedCardParams<'a> {
+    pub sentence: &'a str,
+    pub target_word: &'a str,
+    pub reading: &'a str,
+    pub pitch_accent: &'a str,
+    pub definition: &'a str,
+    pub audio_path: Option<&'a str>,
+    pub image_path: Option<&'a str>,
+    pub english_natural: Option<&'a str>,
+    pub english_literal: Option<&'a str>,
+    pub kannada_natural: Option<&'a str>,
+    pub kannada_literal: Option<&'a str>,
+}
+
+impl Database {
+    pub fn save_mined_card(&self, p: SaveMinedCardParams<'_>) -> Result<()> {
         self.conn.execute(
             "INSERT INTO mined_cards (sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal],
+            params![p.sentence, p.target_word, p.reading, p.pitch_accent, p.definition, p.audio_path, p.image_path, p.english_natural, p.english_literal, p.kannada_natural, p.kannada_literal],
         )?;
         Ok(())
     }
