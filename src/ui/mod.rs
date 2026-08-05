@@ -215,6 +215,7 @@ impl TerminalUi {
         known_context: &[String],
         unknown_context: &[String],
         ai_warning: Option<&str>,
+        translations: Option<(&Option<String>, &Option<String>, &Option<String>, &Option<String>)>,
     ) {
         let cyan = Style::new().cyan().bold();
         let yellow = Style::new().yellow().bold();
@@ -298,6 +299,21 @@ impl TerminalUi {
         if let Some(warn) = ai_warning {
             let warn_styled = format!("⚠️  AI Parsing Warning: {}", warn);
             println!("{}", lrow("AI Notice:", &red.apply_to(&format_val(&warn_styled)).to_string()));
+        }
+
+        if let Some(trans) = translations {
+            if let Some(ref eng_nat) = trans.0 {
+                println!("{}", lrow("English (Nat):", &cyan.apply_to(&format_val(eng_nat)).to_string()));
+            }
+            if let Some(ref eng_lit) = trans.1 {
+                println!("{}", lrow("English (Lit):", &Style::new().dim().apply_to(&format_val(eng_lit)).to_string()));
+            }
+            if let Some(ref kan_nat) = trans.2 {
+                println!("{}", lrow("Kannada (Nat):", &green.apply_to(&format_val(kan_nat)).to_string()));
+            }
+            if let Some(ref kan_lit) = trans.3 {
+                println!("{}", lrow("Kannada (Lit):", &Style::new().dim().apply_to(&format_val(kan_lit)).to_string()));
+            }
         }
 
         let def_lines: Vec<&str> = definition.lines().collect();

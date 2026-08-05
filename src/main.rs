@@ -200,6 +200,39 @@ fn sentence_with_furigana(tokenizer: &JapaneseTokenizer, sentence: &str, target_
         .unwrap_or_else(|_| escape_html(sentence))
 }
 
+fn format_translations_for_anki(
+    eng_nat: Option<&str>,
+    eng_lit: Option<&str>,
+    kan_nat: Option<&str>,
+    kan_lit: Option<&str>,
+) -> String {
+    if eng_nat.is_none() && eng_lit.is_none() && kan_nat.is_none() && kan_lit.is_none() {
+        return String::new();
+    }
+
+    let mut body = String::new();
+    if let Some(en) = eng_nat {
+        body.push_str(&format!("<div style=\"margin-bottom: 4px;\"><b>🇬🇧 Natural:</b> {}</div>", escape_html(en)));
+    }
+    if let Some(el) = eng_lit {
+        body.push_str(&format!("<div style=\"margin-bottom: 6px; opacity: 0.85; font-size: 0.95em;\"><b>🇬🇧 Literal:</b> {}</div>", escape_html(el)));
+    }
+    if (eng_nat.is_some() || eng_lit.is_some()) && (kan_nat.is_some() || kan_lit.is_some()) {
+        body.push_str("<hr style=\"border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin: 6px 0;\">");
+    }
+    if let Some(kn) = kan_nat {
+        body.push_str(&format!("<div style=\"margin-bottom: 4px;\"><b>🇮🇳 Kannada (ನೈಸರ್ಗಿಕ):</b> {}</div>", escape_html(kn)));
+    }
+    if let Some(kl) = kan_lit {
+        body.push_str(&format!("<div style=\"margin-bottom: 4px; opacity: 0.85; font-size: 0.95em;\"><b>🇮🇳 Kannada (ನಿಕಟ):</b> {}</div>", escape_html(kl)));
+    }
+
+    format!(
+        "<details class=\"kotonoha-translations\" style=\"margin-top: 10px; font-size: 0.92em; text-align: left;\"><summary style=\"cursor: pointer; font-weight: bold; color: #4A90E2; padding: 4px 10px; border: 1px solid #4A90E2; border-radius: 4px; display: inline-block; user-select: none;\">Reveal Sentence Translations</summary><div style=\"margin-top: 8px; background: rgba(0,0,0,0.2); padding: 10px 12px; border-radius: 6px; border-left: 3px solid #4A90E2;\">{}</div></details>",
+        body
+    )
+}
+
 fn to_katakana(text: &str) -> String {
     text.chars()
         .map(|character| match character {
@@ -326,6 +359,12 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             let image = image
                 .map(|filename| format!("<img src=\"{filename}\">"))
                 .unwrap_or_default();
+            let sent_eng = format_translations_for_anki(
+                card.english_natural.as_deref(),
+                card.english_literal.as_deref(),
+                card.kannada_natural.as_deref(),
+                card.kannada_literal.as_deref(),
+            );
             match anki_request(
                 &client,
                 &cfg.anki_connect_url,
@@ -337,7 +376,7 @@ async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                         "fields": {
                             "SentKanji": card.sentence,
                             "SentFurigana": sentence_furigana,
-                            "SentEng": "",
+                            "SentEng": sent_eng,
                             "SentAudio": sentence_audio,
                             "VocabKanji": card.target_word,
                             "VocabFurigana": card.reading,
@@ -892,6 +931,13 @@ async fn main() -> Result<()> {
             }
         }
 
+        let translations_tuple = ai_analysis.map(|r| (
+            &r.english_natural,
+            &r.english_literal,
+            &r.kannada_natural,
+            &r.kannada_literal,
+        ));
+
         TerminalUi::render_card(
             idx + 1,
             &cand.sentence.text,
@@ -903,6 +949,7 @@ async fn main() -> Result<()> {
             &cand.known_context_words,
             &cand.unknown_context_words,
             ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
+            translations_tuple,
         );
 
         let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
@@ -963,6 +1010,7 @@ async fn main() -> Result<()> {
                         &cand.known_context_words,
                         &cand.unknown_context_words,
                         ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
+                        translations_tuple,
                     );
                 }
                 continue;
@@ -981,6 +1029,11 @@ async fn main() -> Result<()> {
                     let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
                     let _ = MediaExtractor::extract_screenshot(&video_path, cand.sentence.start_ms, &image_path);
 
+                    let eng_nat = ai_analysis.and_then(|r| r.english_natural.as_deref());
+                    let eng_lit = ai_analysis.and_then(|r| r.english_literal.as_deref());
+                    let kan_nat = ai_analysis.and_then(|r| r.kannada_natural.as_deref());
+                    let kan_lit = ai_analysis.and_then(|r| r.kannada_literal.as_deref());
+
                     db.save_mined_card(
                         &cand.sentence.text,
                         &cand.target_word,
@@ -989,6 +1042,10 @@ async fn main() -> Result<()> {
                         &dict_info.definition,
                         Some(&audio_path.to_string_lossy()),
                         Some(&image_path.to_string_lossy()),
+                        eng_nat,
+                        eng_lit,
+                        kan_nat,
+                        kan_lit,
                     )?;
 
                     let _ = db.add_known_words(&[cand.target_word.clone()]);

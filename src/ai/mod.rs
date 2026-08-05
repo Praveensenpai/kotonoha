@@ -9,6 +9,10 @@ pub struct AiAnalysisResult {
     pub parsing_warning: Option<String>,
     pub custom_definition_suggestion: Option<String>,
     pub explanation: Option<String>,
+    pub english_natural: Option<String>,
+    pub english_literal: Option<String>,
+    pub kannada_natural: Option<String>,
+    pub kannada_literal: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,8 +74,12 @@ impl GeminiAiService {
             .join("\n\n--------------------\n\n");
 
         let prompt = format!(
-            r#"You are an expert Japanese linguist and lexicographer.
-Analyze ALL Japanese cards in this batch. Match each target word in its sentence context against its dictionary candidates.
+            r#"You are an expert Japanese, English, and Kannada linguist and lexicographer.
+Analyze ALL Japanese cards in this batch. Match each target word in its sentence context against its dictionary candidates, AND provide 4 sentence translations:
+1. `english_natural`: Fluent, natural English translation of the sentence.
+2. `english_literal`: Direct/literal English translation matching Japanese word order and nuances closely.
+3. `kannada_natural`: Natural Kannada (ಕನ್ನಡ) translation of the sentence.
+4. `kannada_literal`: Literal Kannada (ಕನ್ನಡ) translation matching Japanese nuances closely.
 
 Cards Batch:
 {cards_summary}
@@ -80,6 +88,7 @@ For EACH card index:
 1. Check if the target word has any tokenizer/segmentation misparse in the sentence. If so, provide a short `parsing_warning`. Otherwise null.
 2. Select 0-based `recommended_candidate_index` and `recommended_sense_index` matching sentence context. If none fit, set `recommended_candidate_index` to null.
 3. If no candidate fits or candidates are empty, provide a clean English `custom_definition_suggestion`. Otherwise null.
+4. Provide the 4 translations (`english_natural`, `english_literal`, `kannada_natural`, `kannada_literal`).
 
 Return ONLY a valid JSON object matching this exact schema:
 {{
@@ -90,7 +99,11 @@ Return ONLY a valid JSON object matching this exact schema:
       "recommended_sense_index": number or null,
       "parsing_warning": string or null,
       "custom_definition_suggestion": string or null,
-      "explanation": string or null
+      "explanation": string or null,
+      "english_natural": string or null,
+      "english_literal": string or null,
+      "kannada_natural": string or null,
+      "kannada_literal": string or null
     }}
   ]
 }}"#

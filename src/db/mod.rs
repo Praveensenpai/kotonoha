@@ -16,6 +16,10 @@ pub struct MinedCard {
     pub definition: String,
     pub audio_path: Option<String>,
     pub image_path: Option<String>,
+    pub english_natural: Option<String>,
+    pub english_literal: Option<String>,
+    pub kannada_natural: Option<String>,
+    pub kannada_literal: Option<String>,
 }
 
 impl Database {
@@ -77,6 +81,18 @@ impl Database {
         }
         if !columns.iter().any(|column| column == "pitch_accent") {
             self.conn.execute("ALTER TABLE mined_cards ADD COLUMN pitch_accent TEXT", [])?;
+        }
+        if !columns.iter().any(|column| column == "english_natural") {
+            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN english_natural TEXT", [])?;
+        }
+        if !columns.iter().any(|column| column == "english_literal") {
+            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN english_literal TEXT", [])?;
+        }
+        if !columns.iter().any(|column| column == "kannada_natural") {
+            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN kannada_natural TEXT", [])?;
+        }
+        if !columns.iter().any(|column| column == "kannada_literal") {
+            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT", [])?;
         }
         Ok(())
     }
@@ -206,17 +222,30 @@ impl Database {
         Ok(count)
     }
 
-    pub fn save_mined_card(&self, sentence: &str, target_word: &str, reading: &str, pitch_accent: &str, definition: &str, audio_path: Option<&str>, image_path: Option<&str>) -> Result<()> {
+    pub fn save_mined_card(
+        &self,
+        sentence: &str,
+        target_word: &str,
+        reading: &str,
+        pitch_accent: &str,
+        definition: &str,
+        audio_path: Option<&str>,
+        image_path: Option<&str>,
+        english_natural: Option<&str>,
+        english_literal: Option<&str>,
+        kannada_natural: Option<&str>,
+        kannada_literal: Option<&str>,
+    ) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO mined_cards (sentence, target_word, reading, pitch_accent, definition, audio_path, image_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            params![sentence, target_word, reading, pitch_accent, definition, audio_path, image_path],
+            "INSERT INTO mined_cards (sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal],
         )?;
         Ok(())
     }
 
     pub fn get_unsynced_mined_cards(&self) -> Result<Vec<MinedCard>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path
+            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal
              FROM mined_cards WHERE anki_note_id IS NULL ORDER BY id",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -229,6 +258,10 @@ impl Database {
                 definition: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
                 audio_path: row.get(6)?,
                 image_path: row.get(7)?,
+                english_natural: row.get(8)?,
+                english_literal: row.get(9)?,
+                kannada_natural: row.get(10)?,
+                kannada_literal: row.get(11)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
