@@ -108,9 +108,22 @@ impl AppConfig {
             Ok(cfg)
         } else {
             let cfg = AppConfig::default();
-            let content = toml::to_string_pretty(&cfg)?;
-            std::fs::write(&config_file, content)?;
+            cfg.save()?;
             Ok(cfg)
         }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let config_dir = dirs::config_dir()
+            .map(|p| p.join("kotonoha"))
+            .unwrap_or_else(|| home.join(".config/kotonoha"));
+
+        std::fs::create_dir_all(&config_dir)?;
+        let config_file = config_dir.join("config.toml");
+
+        let content = toml::to_string_pretty(self)?;
+        std::fs::write(&config_file, content)?;
+        Ok(())
     }
 }

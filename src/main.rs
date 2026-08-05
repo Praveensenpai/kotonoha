@@ -452,6 +452,8 @@ async fn main() -> Result<()> {
             println!("\nUSAGE:");
             println!("  kotonoha                       Launch interactive TUI file picker");
             println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
+            println!("  kotonoha --config              Interactive TUI configuration manager");
+            println!("  kotonoha --show-config         Display active configuration settings");
             println!("  kotonoha --inspect [FILE]      Inspect sentences (Blue=Known, Red=Unknown, ★=i+1)");
             println!("  kotonoha --manage-known        View & remove words from the known database");
             println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
@@ -459,6 +461,16 @@ async fn main() -> Result<()> {
             println!("  kotonoha --sync                Push locally mined cards to Anki");
             println!("  kotonoha --version | -v        Print version information");
             println!("  kotonoha --help    | -h | --h  Show help information");
+            return Ok(());
+        }
+        if arg == "--config" {
+            let mut cfg = AppConfig::load()?;
+            TerminalUi::configure_interactive(&mut cfg)?;
+            return Ok(());
+        }
+        if arg == "--show-config" {
+            let cfg = AppConfig::load()?;
+            TerminalUi::show_config(&cfg);
             return Ok(());
         }
         if arg == "--sync" {
