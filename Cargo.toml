@@ -32,3 +32,4 @@ futures = "0.3"
 sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git" }
 crossterm = "0.25"
 unicode-width = "0.1"
+unicode-segmentation = "1.11"

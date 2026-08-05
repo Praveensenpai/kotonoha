@@ -47,21 +47,19 @@ fn natural_cmp(left: &str, right: &str) -> Ordering {
     }
 }
 
+use unicode_segmentation::UnicodeSegmentation;
+
 fn visual_width(s: &str) -> usize {
-    use unicode_width::UnicodeWidthChar;
-    let mut w = 0;
-    for c in s.chars() {
-        let cw = UnicodeWidthChar::width(c).unwrap_or(1);
-        // Indic virama and combining vowel signs do not advance terminal cursor
-        if matches!(c as u32, 0x0C80..=0x0CFF) && cw > 0 {
-            // Kannada block combining marks: virama (0x0CCD), vowel signs (0x0CBE-0x0CCC)
-            if matches!(c as u32, 0x0CBE..=0x0CCD | 0x0D00..=0x0D7F) {
-                continue;
-            }
-        }
-        w += cw;
-    }
-    w
+    use unicode_width::UnicodeWidthStr;
+    // Strip ANSI escape sequences first (console crate colors etc.)
+    let plain = console::strip_ansi_codes(s);
+    // Count each grapheme cluster's terminal display width.
+    // This correctly handles Indic conjuncts (e.g. ಕ್ಷ → 1 cell, not 3).
+    plain
+        .as_ref()
+        .graphemes(true)
+        .map(|g| UnicodeWidthStr::width(g).max(1).min(2))
+        .sum()
 }
 
 /// Returns terminal width capped at 110, minimum 60.
@@ -272,16 +270,15 @@ impl TerminalUi {
             if vis > max_val_w && max_val_w > 3 {
                 let mut truncated = String::new();
                 let mut current_w = 0;
-                use unicode_width::UnicodeWidthChar;
-                for c in val.chars() {
-                    let cw = UnicodeWidthChar::width(c).unwrap_or(1);
-                    let effective_w = if matches!(c as u32, 0x0CBE..=0x0CCD) { 0 } else { cw };
-                    if current_w + effective_w + 3 > max_val_w {
+                use unicode_width::UnicodeWidthStr;
+                for g in val.graphemes(true) {
+                    let gw = UnicodeWidthStr::width(g).max(1).min(2);
+                    if current_w + gw + 3 > max_val_w {
                         truncated.push_str("...");
                         break;
                     }
-                    truncated.push(c);
-                    current_w += effective_w;
+                    truncated.push_str(g);
+                    current_w += gw;
                 }
                 truncated
             } else {
@@ -327,12 +324,8 @@ impl TerminalUi {
             if let Some(ref eng_lit) = trans.1 {
                 println!("{}", lrow("English (Lit):", &Style::new().dim().apply_to(&format_val(eng_lit)).to_string()));
             }
-            if let Some(ref kan_nat) = trans.2 {
-                println!("{}", lrow("Kannada (Nat):", &green.apply_to(&format_val(kan_nat)).to_string()));
-            }
-            if let Some(ref kan_lit) = trans.3 {
-                println!("{}", lrow("Kannada (Lit):", &Style::new().dim().apply_to(&format_val(kan_lit)).to_string()));
-            }
+            // Kannada is omitted from terminal preview — Alacritty cannot render Indic scripts.
+            // Both Kannada translations are still written to the Anki SentEng field.
         }
 
         let def_lines: Vec<&str> = definition.lines().collect();

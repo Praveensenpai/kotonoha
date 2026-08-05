@@ -810,6 +810,7 @@ dependencies = [
  "sudachi",
  "tokio",
  "toml",
+ "unicode-segmentation",
  "unicode-width 0.1.14",
  "urlencoding",
  "walkdir",
