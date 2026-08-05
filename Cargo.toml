@@ -1,6 +1,6 @@
 [package]
 name = "kotonoha"
-version = "0.1.66"
+version = "0.0.1"
 edition = "2021"
 description = "言の葉 — Blazing-fast CLI Japanese $i+1$ sentence miner & card generator"
 authors = ["Praveensenpai"]
