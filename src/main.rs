@@ -646,6 +646,8 @@ async fn main() -> Result<()> {
 
     let http_client = std::sync::Arc::new(reqwest::Client::new());
 
+    let ai_start = std::time::Instant::now();
+
     // Spawn Gemini AI Context Analysis in the background upfront
     let ai_task_handle = if cfg.enable_ai {
         if let Some(ref api_key) = cfg.gemini_api_key {
@@ -802,11 +804,13 @@ async fn main() -> Result<()> {
             println!(" 🤖 [4/4] Gemini AI Context Analysis ({}) ...", cfg.gemini_model);
             match handle.await {
                 Ok(Ok(results)) => {
-                    println!(" ✔ Gemini AI analysis ready ({} card(s) processed).\n", results.len());
+                    let elapsed = ai_start.elapsed().as_secs_f64();
+                    println!(" ✔ Gemini AI analysis ready ({} card(s) processed in {:.2}s).\n", results.len(), elapsed);
                     results.into_iter().map(|r| (r.card_index, r)).collect()
                 }
                 Ok(Err(e)) => {
-                    eprintln!(" ⚠️ Gemini AI batch analysis failed: {e}\n");
+                    let elapsed = ai_start.elapsed().as_secs_f64();
+                    eprintln!(" ⚠️ Gemini AI batch analysis failed after {:.2}s: {e}\n", elapsed);
                     HashMap::new()
                 }
                 Err(e) => {
