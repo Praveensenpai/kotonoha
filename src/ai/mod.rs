@@ -133,7 +133,11 @@ Return ONLY a valid JSON object matching this exact schema:
                         .as_str()
                         .ok_or_else(|| anyhow::anyhow!("Invalid response structure from Gemini"))?;
 
-                    let parsed: BatchAiAnalysisResponse = serde_json::from_str(text)?;
+                    // Parse via serde_json::Value first — this silently keeps the last
+                    // value for any duplicate keys that Gemini occasionally emits,
+                    // avoiding hard "duplicate field" deserialization errors.
+                    let value: serde_json::Value = serde_json::from_str(text)?;
+                    let parsed: BatchAiAnalysisResponse = serde_json::from_value(value)?;
                     return Ok(parsed.results);
                 }
                 Ok(response) => {
