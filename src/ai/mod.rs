@@ -108,18 +108,40 @@ Return ONLY a valid JSON object matching this exact schema:
             }
         });
 
-        let resp = client.post(&url).json(&payload).send().await?;
-        if !resp.status().is_success() {
-            let err_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Gemini API error: {}", err_text);
+        let max_attempts = 5;
+        let mut last_error = String::new();
+
+        for attempt in 1..=max_attempts {
+            let resp = client.post(&url).json(&payload).send().await;
+            match resp {
+                Ok(response) if response.status().is_success() => {
+                    let body: serde_json::Value = response.json().await?;
+                    let text = body["candidates"][0]["content"]["parts"][0]["text"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("Invalid response structure from Gemini"))?;
+
+                    let parsed: BatchAiAnalysisResponse = serde_json::from_str(text)?;
+                    return Ok(parsed.results);
+                }
+                Ok(response) => {
+                    let err_text = response.text().await.unwrap_or_default();
+                    last_error = format!("Gemini API error: {}", err_text);
+                }
+                Err(e) => {
+                    last_error = e.to_string();
+                }
+            }
+
+            if attempt < max_attempts {
+                let delay = attempt as u64; // 1s, 2s, 3s, 4s, 5s
+                eprintln!(
+                    " ⚠️  Gemini API busy (attempt {}/{}). Retrying in {}s...",
+                    attempt, max_attempts, delay
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            }
         }
 
-        let body: serde_json::Value = resp.json().await?;
-        let text = body["candidates"][0]["content"]["parts"][0]["text"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid response structure from Gemini"))?;
-
-        let parsed: BatchAiAnalysisResponse = serde_json::from_str(text)?;
-        Ok(parsed.results)
+        anyhow::bail!(last_error)
     }
 }
