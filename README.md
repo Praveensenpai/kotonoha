@@ -40,6 +40,7 @@ git clone https://github.com/Praveensenpai/kotonoha.git
 cd kotonoha
 cargo build --release
 install -Dm 755 target/release/kotonoha ~/.local/bin/kotonoha
+install -Dm 644 completions/kotonoha.bash ~/.local/share/bash-completion/completions/kotonoha
 ```
 
 ---

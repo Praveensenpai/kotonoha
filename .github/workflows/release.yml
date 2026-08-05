@@ -29,9 +29,10 @@ jobs:
 
       - name: Create Release Package
         run: |
-          mkdir -p staging
+          mkdir -p staging/completions
           cp target/release/kotonoha staging/
           cp README.md LICENSE config.toml.example staging/ 2>/dev/null || true
+          cp completions/* staging/completions/ 2>/dev/null || true
           tar -czvf kotonoha-x86_64-unknown-linux-gnu.tar.gz -C staging .
 
       - name: Generate Dynamic Changelog

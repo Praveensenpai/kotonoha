@@ -53,6 +53,19 @@ curl -sSL "$DOWNLOAD_URL" | tar -xz -C "$TMP_DIR"
 
 install -m 755 "$TMP_DIR/kotonoha" "$INSTALL_DIR/kotonoha"
 
+# Install Bash completion to XDG standard user directory
+COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
+mkdir -p "$COMPLETION_DIR"
+if [ -f "$TMP_DIR/completions/kotonoha.bash" ]; then
+    install -m 644 "$TMP_DIR/completions/kotonoha.bash" "$COMPLETION_DIR/kotonoha"
+    echo "✨ Installed Bash completion to $COMPLETION_DIR/kotonoha"
+else
+    curl -sSL "https://raw.githubusercontent.com/$REPO/main/completions/kotonoha.bash" -o "$COMPLETION_DIR/kotonoha" || true
+    if [ -f "$COMPLETION_DIR/kotonoha" ]; then
+        echo "✨ Installed Bash completion to $COMPLETION_DIR/kotonoha"
+    fi
+fi
+
 echo "✔ Successfully installed kotonoha to $INSTALL_DIR/kotonoha!"
 
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
