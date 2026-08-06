@@ -417,6 +417,8 @@ async fn main() -> Result<()> {
             } else {
                 dict_info.reading = cand.target_reading.clone();
             }
+
+            let _ = db.cache_definition(&dict_info.expression, &dict_info.reading, &dict_info.definition, &dict_info.pitch_accent);
         }
 
         let ai_analysis = ai_results_map.get(&idx);

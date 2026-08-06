@@ -439,17 +439,21 @@ impl DictionaryService {
         max_senses: usize,
         max_glosses: usize,
     ) -> LookupResult {
-        let kanji_expr = data["japanese"]
-            .as_array()
-            .and_then(|a| a.first())
+        let matching_form = data["japanese"].as_array().and_then(|forms| {
+            forms.iter().find(|j| {
+                j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
+            })
+        });
+
+        let kanji_expr = matching_form
             .and_then(|v| v["word"].as_str())
+            .or_else(|| data["japanese"].as_array().and_then(|a| a.first()).and_then(|v| v["word"].as_str()))
             .unwrap_or(word)
             .to_string();
 
-        let reading = data["japanese"]
-            .as_array()
-            .and_then(|a| a.first())
+        let reading = matching_form
             .and_then(|v| v["reading"].as_str())
+            .or_else(|| data["japanese"].as_array().and_then(|a| a.first()).and_then(|v| v["reading"].as_str()))
             .unwrap_or(word)
             .to_string();
 
@@ -525,6 +529,15 @@ impl DictionaryService {
                 }
             }
         }
+
+        results.sort_by_key(|res| {
+            let is_exact = res.expression == word || res.reading == word;
+            (
+                !is_exact,
+                (res.expression.chars().count() as i32 - word.chars().count() as i32).abs(),
+            )
+        });
+
         Ok(results)
     }
 }
