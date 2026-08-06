@@ -184,7 +184,7 @@ async fn main() -> Result<()> {
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
     let total_mined_cards = db.get_all_mined_cards().map(|v| v.len()).unwrap_or(0);
     println!(
-        " 📊 Subtitle Line Comprehension Stats:\n   • Lines Known: {} / {} ({:.1}% comprehension ratio)\n   • i+1 Candidate Lines: {}\n   • Hard Lines (2+ Unknowns): {}\n   • Vocab Stats: {} | {} | {}\n",
+        " 📊 Subtitle Line Comprehension Stats:\n   • Lines Known: {} / {} ({} comprehension ratio)\n   • i+1 Candidate Lines: {}\n   • Hard Lines (2+ Unknowns): {}\n   • Vocab Stats: {} | {} | {}\n",
         style(known_lines_count).green().bold(),
         style(total_lines).cyan().bold(),
         style(format!("{:.1}%", comp_ratio)).yellow().bold(),
