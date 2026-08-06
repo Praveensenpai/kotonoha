@@ -1,6 +1,6 @@
 _kotonoha_completions() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local flags="--config --show-config --backfill-translations --inspect --manage-known --manage-ignored --clear-cache --sync --version --help"
+    local flags="--config --show-config --inspect --manage-known --manage-ignored --clear-cache --sync --version --help"
 
     if [[ "${cur}" == --* ]]; then
         COMPREPLY=($(compgen -W "${flags}" -- "${cur}"))
