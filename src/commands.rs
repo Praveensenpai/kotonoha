@@ -31,6 +31,7 @@ pub fn words_with_readings(
         .collect()
 }
 
+#[allow(dead_code)]
 pub async fn backfill_translations(cfg: &AppConfig, db: &Database) -> Result<()> {
     if !cfg.enable_ai {
         return Ok(());
@@ -212,7 +213,6 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --manage-mined        View & remove words from the mined list");
         println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
         println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
-        println!("  kotonoha --backfill-translations Generate missing translations for mined cards");
         println!("  kotonoha --sync                Push locally mined cards to Anki");
         println!("  kotonoha --version | -v        Print version information");
         println!("  kotonoha --help    | -h | --h  Show help information");
@@ -228,16 +228,9 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         TerminalUi::show_config(&cfg);
         return Ok(true);
     }
-    if arg == "--backfill-translations" {
-        let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
-        backfill_translations(&cfg, &db).await?;
-        return Ok(true);
-    }
     if arg == "--sync" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path)?;
-        backfill_translations(&cfg, &db).await?;
         anki::sync_to_anki(&cfg, &db).await?;
         return Ok(true);
     }
