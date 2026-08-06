@@ -12,6 +12,7 @@ pub struct TokenInfo {
     pub dictionary_form: String,
     pub reading: String,
     pub is_content_word: bool,
+    pub is_proper_noun: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +115,7 @@ fn merge_colloquial_small_tsu(tokens: Vec<SpannedToken>) -> Vec<TokenInfo> {
                         surface,
                         is_content_word: previous.token.is_content_word
                             || token.token.is_content_word,
+                        is_proper_noun: previous.token.is_proper_noun || token.token.is_proper_noun,
                     },
                     begin: previous.begin,
                     end: token.end,
@@ -148,6 +150,7 @@ fn merge_adverb_naru(tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
                     dictionary_form,
                     reading,
                     is_content_word: true,
+                    is_proper_noun: false,
                 },
                 begin: previous.begin,
                 end: token.end,
@@ -210,6 +213,7 @@ fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<Sp
                     dictionary_form: expression.to_string(),
                     reading: expression.to_string(),
                     is_content_word: true,
+                    is_proper_noun: false,
                 },
                 begin: first.begin,
                 end: expression_end,
@@ -225,6 +229,7 @@ fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<Sp
                             dictionary_form: remainder.to_string(),
                             reading: kata_to_hira(remainder),
                             is_content_word: false,
+                            is_proper_noun: false,
                         },
                         begin: expression_end,
                         end: last.end,
@@ -394,6 +399,12 @@ impl JapaneseTokenizer {
                 && has_japanese_char
                 && !is_single_kana;
 
+            let is_proper_noun_pos = pos.iter().any(|p| p.contains("固有名詞") || p.contains("人名") || p.contains("地名"));
+            let is_katakana_noun = pos_category == "名詞"
+                && dictionary_form.chars().count() >= 2
+                && dictionary_form.chars().all(|c| matches!(c, '\u{30A0}'..='\u{30FF}'));
+            let is_proper_noun = is_content_word && (is_proper_noun_pos || is_katakana_noun);
+
             let reading = kata_to_hira(node.reading_form());
             let (dictionary_form, reading) =
                 normalize_colloquial_negative(&surface, dictionary_form, reading);
@@ -404,6 +415,7 @@ impl JapaneseTokenizer {
                     dictionary_form,
                     reading,
                     is_content_word,
+                    is_proper_noun,
                 },
                 begin: node.begin(),
                 end: node.end(),

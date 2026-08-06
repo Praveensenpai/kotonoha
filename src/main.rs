@@ -79,35 +79,62 @@ async fn main() -> Result<()> {
     let ignored_words = db.get_ignored_words()?;
 
     // Bootstrap Vocabulary: Extract top unknown content words by frequency
-    let mut word_counts: HashMap<String, (usize, String)> = HashMap::new();
+    let mut word_counts: HashMap<String, (usize, String, bool)> = HashMap::new();
     for sub in &sentences {
         if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
             for t in tokens {
                 if t.is_content_word && !known_words.contains(&t.dictionary_form) && !ignored_words.contains(&t.dictionary_form) {
-                    let entry = word_counts.entry(t.dictionary_form.clone()).or_insert((0, t.reading.clone()));
+                    let entry = word_counts.entry(t.dictionary_form.clone()).or_insert((0, t.reading.clone(), t.is_proper_noun));
                     entry.0 += 1;
+                    if t.is_proper_noun {
+                        entry.2 = true;
+                    }
                 }
             }
         }
     }
 
-    let mut top_vocab: Vec<(String, usize, String)> = word_counts
+    let mut top_vocab: Vec<(String, usize, String, bool)> = word_counts
         .into_iter()
-        .map(|(word, (count, reading))| (word, count, reading))
-        .filter(|(_, count, _)| *count >= 2)
+        .map(|(word, (count, reading, is_pn))| (word, count, reading, is_pn))
+        .filter(|(_, count, _, _)| *count >= 2)
         .collect();
     top_vocab.sort_by_key(|b| std::cmp::Reverse(b.1));
-    let bootstrap_candidates: Vec<(String, usize, String)> = top_vocab.into_iter().take(100).collect();
 
-    if !bootstrap_candidates.is_empty() {
-        let newly_known = TerminalUi::bootstrap_known_words(&bootstrap_candidates)?;
+    let general_candidates: Vec<(String, usize, String)> = top_vocab
+        .iter()
+        .filter(|(_, _, _, is_pn)| !*is_pn)
+        .map(|(w, c, r, _)| (w.clone(), *c, r.clone()))
+        .take(100)
+        .collect();
+
+    let name_candidates: Vec<(String, usize, String)> = top_vocab
+        .iter()
+        .filter(|(_, _, _, is_pn)| *is_pn)
+        .map(|(w, c, r, _)| (w.clone(), *c, r.clone()))
+        .take(50)
+        .collect();
+
+    if !general_candidates.is_empty() {
+        let newly_known = TerminalUi::bootstrap_known_words(&general_candidates)?;
         if !newly_known.is_empty() {
             let count = db.add_known_words(&newly_known)?;
             println!(" ✔ Marked {} words as known!", count);
         }
     }
 
+    if !name_candidates.is_empty() {
+        let newly_ignored = TerminalUi::bootstrap_ignored_names(&name_candidates)?;
+        if !newly_ignored.is_empty() {
+            for w in &newly_ignored {
+                let _ = db.add_ignored_word(w);
+            }
+            println!(" 🚫 Marked {} character names/proper nouns as ignored!", newly_ignored.len());
+        }
+    }
+
     let known_words = db.get_known_words()?;
+    let ignored_words = db.get_ignored_words()?;
     let already_known_set = db.get_known_words_by_source("known")?;
     let mined_set = db.get_known_words_by_source("mined")?;
 

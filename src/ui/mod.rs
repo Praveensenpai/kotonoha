@@ -171,6 +171,52 @@ impl TerminalUi {
         Ok(checked_words)
     }
 
+    pub fn bootstrap_ignored_names(vocab_items: &[(String, usize, String)]) -> Result<Vec<String>> {
+        if vocab_items.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let options: Vec<String> = vocab_items
+            .iter()
+            .enumerate()
+            .map(|(idx, (word, count, reading))| {
+                let has_kanji = word.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'));
+                if has_kanji && word != reading && !reading.is_empty() {
+                    format!("#{:02}  {} ({}) — {} occurrences", idx + 1, word, reading, count)
+                } else {
+                    format!("#{:02}  {} — {} occurrences", idx + 1, word, count)
+                }
+            })
+            .collect();
+
+        let prompt_msg = format!(
+            "Select CHARACTER NAMES / PROPER NOUNS to IGNORE (Top {} frequent names — Space to toggle, Enter to confirm, type to filter):",
+            vocab_items.len()
+        );
+
+        let selected_indices = MultiSelect::new(&prompt_msg, options)
+            .with_page_size(18)
+            .prompt()?;
+
+        let mut checked_words = Vec::new();
+        for item in selected_indices {
+            let Some(index) = item
+                .split_whitespace()
+                .next()
+                .and_then(|rank| rank.strip_prefix('#'))
+                .and_then(|rank| rank.parse::<usize>().ok())
+                .and_then(|rank| rank.checked_sub(1))
+            else {
+                continue;
+            };
+            if let Some((word, _, _)) = vocab_items.get(index) {
+                checked_words.push(word.clone());
+            }
+        }
+
+        Ok(checked_words)
+    }
+
     pub fn render_progress(
         current: usize,
         total: usize,
