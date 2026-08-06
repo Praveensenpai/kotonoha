@@ -135,11 +135,12 @@ async fn main() -> Result<()> {
     let jpdb_list = JpdbVocabList::load_or_fetch("https://jpdb.io/vocabulary-list")?;
 
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
+    let total_mined_cards = db.get_all_mined_cards().map(|v| v.len()).unwrap_or(0);
     println!(
         " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {} | {} | {})\n",
         candidates.len(),
         style(format!("{} Already Known", file_already_known.len())).blue().bold(),
-        style(format!("{} Mined Cards", file_mined.len())).magenta().bold(),
+        style(format!("{} Mined Cards", total_mined_cards)).magenta().bold(),
         style(format!("{} Unknown Words", file_unknown.len())).red().bold(),
         style(format!("{} Eligible i+1 Sentences", candidates.len())).green().bold(),
     );
@@ -615,7 +616,7 @@ async fn main() -> Result<()> {
                         kannada_literal: kan_lit,
                     })?;
 
-                    let _ = db.add_known_words(std::slice::from_ref(&cand.target_word));
+                    let _ = db.add_known_words_with_source(std::slice::from_ref(&cand.target_word), "mined");
                     mined_count += 1;
                     println!(" ✔ Card mined successfully!");
                     break;

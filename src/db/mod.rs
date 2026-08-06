@@ -103,6 +103,10 @@ impl Database {
         if !kw_columns.iter().any(|column| column == "source") {
             self.conn.execute("ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'", [])?;
         }
+        self.conn.execute(
+            "UPDATE known_words SET source = 'mined' WHERE word IN (SELECT target_word FROM mined_cards)",
+            [],
+        )?;
         Ok(())
     }
 
