@@ -21,7 +21,7 @@ struct SpannedToken {
     end: usize,
 }
 
-fn kata_to_hira(s: &str) -> String {
+pub fn kata_to_hira(s: &str) -> String {
     s.chars()
         .map(|c| {
             if matches!(c, '\u{30A1}'..='\u{30F6}') {

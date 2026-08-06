@@ -159,10 +159,10 @@ async fn main() -> Result<()> {
             let max_senses = cfg.max_definition_senses;
             let max_glosses = cfg.max_glosses_per_sense;
 
-            let card_targets: Vec<(usize, String, String)> = candidates_to_process
+            let card_targets: Vec<(usize, String, String, String)> = candidates_to_process
                 .iter()
                 .enumerate()
-                .map(|(idx, cand)| (idx, cand.sentence.text.clone(), cand.target_word.clone()))
+                .map(|(idx, cand)| (idx, cand.sentence.text.clone(), cand.target_word.clone(), cand.target_reading.clone()))
                 .collect();
             let cfg_ai_batch_size = cfg.ai_batch_size;
 
@@ -174,16 +174,17 @@ async fn main() -> Result<()> {
                 for chunk in card_targets.chunks(ai_batch_size) {
                     let mut lookup_futures = Vec::new();
 
-                    for (idx, sentence_text, target_word) in chunk {
+                    for (idx, sentence_text, target_word, target_reading) in chunk {
                         let sem = std::sync::Arc::clone(&semaphore);
                         let client = std::sync::Arc::clone(&client);
                         let target = target_word.clone();
+                        let reading = target_reading.clone();
                         let sentence = sentence_text.clone();
                         let idx = *idx;
 
                         lookup_futures.push(tokio::spawn(async move {
                             let target_for_lookup = target.clone();
-                            let candidates = match tokio::time::timeout(
+                            let mut candidates = match tokio::time::timeout(
                                 std::time::Duration::from_secs(4),
                                 async move {
                                     let _permit = sem.acquire().await;
@@ -195,7 +196,16 @@ async fn main() -> Result<()> {
                                 Ok(Ok(res)) => res,
                                 _ => Vec::new(),
                             };
-                            (idx, sentence, target, candidates)
+
+                            if !reading.is_empty() {
+                                candidates.sort_by_key(|c| {
+                                    let is_reading_match = c.reading == reading;
+                                    let is_expr_match = c.expression == target;
+                                    (!is_reading_match, !is_expr_match)
+                                });
+                            }
+
+                            (idx, sentence, target, reading, candidates)
                         }));
                     }
 
@@ -208,10 +218,11 @@ async fn main() -> Result<()> {
 
                     let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
                         .iter()
-                        .map(|(idx, sentence, target_word, candidates)| ai::CardBatchInput {
+                        .map(|(idx, sentence, target_word, target_reading, candidates)| ai::CardBatchInput {
                             card_index: *idx,
                             sentence: sentence.as_str(),
                             target_word: target_word.as_str(),
+                            target_reading: target_reading.as_str(),
                             candidates: candidates.as_slice(),
                         })
                         .collect();

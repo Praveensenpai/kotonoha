@@ -67,6 +67,7 @@ pub async fn backfill_translations(cfg: &AppConfig, db: &Database) -> Result<()>
                 card_index: idx,
                 sentence: &card.sentence,
                 target_word: &card.target_word,
+                target_reading: &card.reading,
                 candidates: &empty_lookup,
             })
             .collect();

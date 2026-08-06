@@ -273,10 +273,13 @@ impl DictionaryService {
         if resp.status().is_success() {
             let json: serde_json::Value = resp.json().await?;
             if let Some(items) = json["data"].as_array() {
+                let word_hira = crate::nlp::kata_to_hira(word);
                 let exact_entries: Vec<&serde_json::Value> = items.iter().filter(|entry| {
                     entry["japanese"].as_array().is_some_and(|forms| {
                         forms.iter().any(|j| {
-                            j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
+                            let w_str = j["word"].as_str().unwrap_or("");
+                            let r_str = j["reading"].as_str().unwrap_or("");
+                            w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira
                         })
                     })
                 }).collect();
@@ -439,9 +442,12 @@ impl DictionaryService {
         max_senses: usize,
         max_glosses: usize,
     ) -> LookupResult {
+        let word_hira = crate::nlp::kata_to_hira(word);
         let matching_form = data["japanese"].as_array().and_then(|forms| {
             forms.iter().find(|j| {
-                j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
+                let w_str = j["word"].as_str().unwrap_or("");
+                let r_str = j["reading"].as_str().unwrap_or("");
+                w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira
             })
         });
 

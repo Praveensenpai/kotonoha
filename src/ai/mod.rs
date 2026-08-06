@@ -24,6 +24,7 @@ pub struct CardBatchInput<'a> {
     pub card_index: usize,
     pub sentence: &'a str,
     pub target_word: &'a str,
+    pub target_reading: &'a str,
     pub candidates: &'a [crate::dict::LookupResult],
 }
 
@@ -94,9 +95,15 @@ impl GeminiAiService {
                     .collect::<Vec<_>>()
                     .join("\n\n");
 
+                let reading_str = if c.target_reading.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nTarget Reading in Sentence: \"{}\"", c.target_reading)
+                };
+
                 format!(
-                    "Card Index #{}:\nSentence: \"{}\"\nTarget Word: \"{}\"\nCandidates:\n{}",
-                    c.card_index, c.sentence, c.target_word, candidates_str
+                    "Card Index #{}:\nSentence: \"{}\"\nTarget Word: \"{}\"{}\nCandidates:\n{}",
+                    c.card_index, c.sentence, c.target_word, reading_str, candidates_str
                 )
             })
             .collect::<Vec<_>>()
