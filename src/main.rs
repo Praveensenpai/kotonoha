@@ -394,33 +394,6 @@ async fn main() -> Result<()> {
             pitch_accent,
         };
 
-        // Automatic Contextual Reading Alignment:
-        // Prioritize dictionary candidates whose reading matches Sudachi's contextual sentence reading (e.g. "あさ" for "朝")
-        if !cand.target_reading.is_empty() && dict_info.reading != cand.target_reading {
-            let all_cands = DictionaryService::lookup_all_candidates(
-                &http_client,
-                &cand.target_word,
-                cfg.max_definition_senses,
-                cfg.max_glosses_per_sense,
-            )
-            .await
-            .unwrap_or_default();
-
-            if let Some(matched_cand) = all_cands.iter().find(|c| c.reading == cand.target_reading) {
-                dict_info = matched_cand.clone();
-                dict_info.definition = dict::format_contextual_definition(
-                    &dict_info.definition,
-                    context_hint,
-                    cfg.max_definition_senses,
-                    cfg.max_glosses_per_sense,
-                );
-            } else {
-                dict_info.reading = cand.target_reading.clone();
-            }
-
-            let _ = db.cache_definition(&dict_info.expression, &dict_info.reading, &dict_info.definition, &dict_info.pitch_accent);
-        }
-
         let ai_analysis = ai_results_map.get(&idx);
 
         if let Some(res) = ai_analysis {
@@ -440,15 +413,48 @@ async fn main() -> Result<()> {
                 .unwrap_or_default();
 
                 if let Some(rec_cand) = candidates.get(cand_idx) {
-                    dict_info = rec_cand.clone();
+                    let mut rec_def = rec_cand.definition.clone();
                     if let Some(sense_idx) = res.recommended_sense_index {
-                        let senses = dict::parse_senses(&dict_info.definition);
+                        let senses = dict::parse_senses(&rec_def);
                         if let Some(s) = senses.get(sense_idx) {
-                            dict_info.definition = s.clone();
+                            rec_def = s.clone();
                         }
                     }
+                    dict_info.definition = rec_def;
                 }
             }
+        }
+
+        // Automatic Contextual Reading Alignment:
+        // Prioritize dictionary candidates whose reading matches Sudachi's contextual sentence reading (e.g. "あさ" for "朝")
+        if !cand.target_reading.is_empty() {
+            let all_cands = DictionaryService::lookup_all_candidates(
+                &http_client,
+                &cand.target_word,
+                cfg.max_definition_senses,
+                cfg.max_glosses_per_sense,
+            )
+            .await
+            .unwrap_or_default();
+
+            if let Some(matched_cand) = all_cands.iter().find(|c| c.reading == cand.target_reading) {
+                let current_def = dict_info.definition.clone();
+                dict_info = matched_cand.clone();
+                if current_def.starts_with("1. [AI Suggestion]") {
+                    dict_info.definition = current_def;
+                } else {
+                    dict_info.definition = dict::format_contextual_definition(
+                        &dict_info.definition,
+                        context_hint,
+                        cfg.max_definition_senses,
+                        cfg.max_glosses_per_sense,
+                    );
+                }
+            } else {
+                dict_info.reading = cand.target_reading.clone();
+            }
+
+            let _ = db.cache_definition(&dict_info.expression, &dict_info.reading, &dict_info.definition, &dict_info.pitch_accent);
         }
 
         let translations_tuple = None;
