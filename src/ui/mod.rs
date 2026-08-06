@@ -259,10 +259,9 @@ impl TerminalUi {
             }
         }
 
-        if let Some(pos) = ans.find(": \"") {
-            let rest = &ans[pos + 4..];
-            if let Some(end_pos) = rest.find('"') {
-                return Ok(rest[..end_pos].to_string());
+        if let Some((_, rest)) = ans.split_once(": \"") {
+            if let Some(val) = rest.strip_suffix('"').or_else(|| rest.split('"').next()) {
+                return Ok(val.to_string());
             }
         }
 
