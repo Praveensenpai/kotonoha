@@ -6,6 +6,7 @@ use std::collections::HashSet;
 pub struct CandidateSentence {
     pub sentence: SubtitleSentence,
     pub target_word: String,
+    pub target_reading: String,
     pub known_context_words: Vec<String>,
     pub unknown_context_words: Vec<String>,
     pub jpdb_rank: Option<u32>,
@@ -40,12 +41,14 @@ impl MiningEngine {
             if let Ok(tokens) = self.tokenizer.tokenize(&sub.text) {
                 let mut unknown_words = Vec::new();
                 let mut known_context = Vec::new();
+                let mut token_readings = std::collections::HashMap::new();
 
                 for t in &tokens {
                     if !t.is_content_word {
                         continue;
                     }
                     let dict_form = &t.dictionary_form;
+                    token_readings.insert(dict_form.clone(), t.reading.clone());
                     if ignored_words.contains(dict_form) {
                         continue;
                     }
@@ -63,6 +66,7 @@ impl MiningEngine {
 
                 if unknown_words.len() == 1 {
                     let target_word = unknown_words[0].clone();
+                    let target_reading = token_readings.get(&target_word).cloned().unwrap_or_else(|| target_word.clone());
 
                     // Deduplicate target words so you only see the single best sentence per word
                     if seen_targets.contains(&target_word) {
@@ -79,6 +83,7 @@ impl MiningEngine {
                     candidates.push(CandidateSentence {
                         sentence: sub.clone(),
                         target_word,
+                        target_reading,
                         known_context_words: known_context,
                         unknown_context_words: unknown_words,
                         jpdb_rank: rank,

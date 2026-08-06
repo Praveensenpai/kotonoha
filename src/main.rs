@@ -394,6 +394,31 @@ async fn main() -> Result<()> {
             pitch_accent,
         };
 
+        // Automatic Contextual Reading Alignment:
+        // Prioritize dictionary candidates whose reading matches Sudachi's contextual sentence reading (e.g. "あさ" for "朝")
+        if !cand.target_reading.is_empty() && dict_info.reading != cand.target_reading {
+            let all_cands = DictionaryService::lookup_all_candidates(
+                &http_client,
+                &cand.target_word,
+                cfg.max_definition_senses,
+                cfg.max_glosses_per_sense,
+            )
+            .await
+            .unwrap_or_default();
+
+            if let Some(matched_cand) = all_cands.iter().find(|c| c.reading == cand.target_reading) {
+                dict_info = matched_cand.clone();
+                dict_info.definition = dict::format_contextual_definition(
+                    &dict_info.definition,
+                    context_hint,
+                    cfg.max_definition_senses,
+                    cfg.max_glosses_per_sense,
+                );
+            } else {
+                dict_info.reading = cand.target_reading.clone();
+            }
+        }
+
         let ai_analysis = ai_results_map.get(&idx);
 
         if let Some(res) = ai_analysis {
@@ -456,6 +481,41 @@ async fn main() -> Result<()> {
                     let _ = child.kill();
                 }
                 audio_child = MediaExtractor::play_preview_audio(&audio_path);
+                continue;
+            }
+
+            if action == 'f' {
+                println!(" ✍️ Fetching dictionary candidates for furigana reading selection...");
+                let candidates = DictionaryService::lookup_all_candidates(
+                    &http_client,
+                    &cand.target_word,
+                    cfg.max_definition_senses,
+                    cfg.max_glosses_per_sense,
+                )
+                .await
+                .unwrap_or_default();
+
+                if let Ok(new_reading) = TerminalUi::select_or_edit_reading(
+                    &dict_info.reading,
+                    &cand.target_reading,
+                    &candidates,
+                ) {
+                    dict_info.reading = new_reading;
+                    println!(" ✨ Updated furigana reading: 【{} ({})】", dict_info.expression, dict_info.reading);
+                    TerminalUi::render_card(ui::CardRenderParams {
+                        rank: idx + 1,
+                        sentence: &cand.sentence.text,
+                        target_word: &cand.target_word,
+                        reading: &dict_info.reading,
+                        pitch: &dict_info.pitch_accent,
+                        jpdb_rank: cand.jpdb_rank,
+                        definition: &dict_info.definition,
+                        known_context: &cand.known_context_words,
+                        unknown_context: &cand.unknown_context_words,
+                        ai_warning: ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
+                        translations: translations_tuple,
+                    });
+                }
                 continue;
             }
 

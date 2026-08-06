@@ -191,6 +191,7 @@ impl TerminalUi {
             "⏭️  Skip to next card (n)",
             "⛏️  Mine this card (y)",
             "🧠  Mark target word as known (k)",
+            "✍️  Edit target word reading / furigana (f)",
             "📖  Change dictionary candidate (c)",
             "🔊  Replay preview audio (r)",
             "🚫  Ignore target word (i)",
@@ -202,6 +203,8 @@ impl TerminalUi {
             Ok('y')
         } else if ans.contains("(k)") {
             Ok('k')
+        } else if ans.contains("(f)") {
+            Ok('f')
         } else if ans.contains("(c)") {
             Ok('c')
         } else if ans.contains("(r)") {
@@ -213,6 +216,57 @@ impl TerminalUi {
         } else {
             Ok('n')
         }
+    }
+
+    pub fn select_or_edit_reading(
+        current_reading: &str,
+        context_reading: &str,
+        candidates: &[crate::dict::LookupResult],
+    ) -> Result<String> {
+        let mut options = Vec::new();
+
+        if !context_reading.is_empty() && context_reading != current_reading {
+            options.push(format!("✨ Contextual Reading (Sudachi): \"{}\"", context_reading));
+        }
+
+        let mut seen_readings = std::collections::HashSet::new();
+        if !current_reading.is_empty() {
+            seen_readings.insert(current_reading.to_string());
+            options.push(format!("📌 Current Reading: \"{}\"", current_reading));
+        }
+        if !context_reading.is_empty() {
+            seen_readings.insert(context_reading.to_string());
+        }
+
+        for cand in candidates {
+            if !cand.reading.is_empty() && !seen_readings.contains(&cand.reading) {
+                seen_readings.insert(cand.reading.clone());
+                options.push(format!("📖 Dictionary Candidate: \"{}\"", cand.reading));
+            }
+        }
+
+        options.push("✍  Enter custom furigana reading text".to_string());
+
+        let ans = Select::new("Select or edit furigana reading:", options).prompt()?;
+
+        if ans.contains("custom furigana reading text") {
+            let custom_reading = Text::new("Enter custom furigana reading text:")
+                .with_initial_value(current_reading)
+                .prompt()?;
+            let trimmed = custom_reading.trim().to_string();
+            if !trimmed.is_empty() {
+                return Ok(trimmed);
+            }
+        }
+
+        if let Some(pos) = ans.find(": \"") {
+            let rest = &ans[pos + 4..];
+            if let Some(end_pos) = rest.find('"') {
+                return Ok(rest[..end_pos].to_string());
+            }
+        }
+
+        Ok(current_reading.to_string())
     }
 
     pub fn select_candidate_or_custom(
