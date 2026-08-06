@@ -396,6 +396,10 @@ impl TerminalUi {
     }
 
     pub fn select_sense(senses: &[String], target_word: &str) -> Result<String> {
+        if senses.len() <= 1 {
+            return Ok(senses.first().cloned().unwrap_or_default());
+        }
+
         let options: Vec<String> = senses
             .iter()
             .enumerate()

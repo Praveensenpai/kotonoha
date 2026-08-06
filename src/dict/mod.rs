@@ -279,7 +279,13 @@ impl DictionaryService {
                         forms.iter().any(|j| {
                             let w_str = j["word"].as_str().unwrap_or("");
                             let r_str = j["reading"].as_str().unwrap_or("");
-                            w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira
+                            let w_len = if !w_str.is_empty() { w_str.chars().count() } else { r_str.chars().count() };
+                            let word_len = word.chars().count();
+                            let is_same_len = w_len == word_len;
+                            w_str == word
+                                || r_str == word
+                                || crate::nlp::kata_to_hira(r_str) == word_hira
+                                || (is_same_len && w_len >= 2 && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>())
                         })
                     })
                 }).collect();
@@ -312,8 +318,10 @@ impl DictionaryService {
                             for j in jap_arr {
                                 let w_str = j["word"].as_str().unwrap_or("");
                                 let r_str = j["reading"].as_str().unwrap_or("");
+                                let w_len = if !w_str.is_empty() { w_str.chars().count() } else { r_str.chars().count() };
+                                let word_len = word.chars().count();
 
-                                if w_str == word || r_str == word {
+                                if w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira || (w_len == word_len && w_len >= 2 && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>()) {
                                     exact_match = true;
                                 }
 
