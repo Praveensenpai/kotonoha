@@ -115,14 +115,6 @@ async fn main() -> Result<()> {
         .take(50)
         .collect();
 
-    if !general_candidates.is_empty() {
-        let newly_known = TerminalUi::bootstrap_known_words(&general_candidates)?;
-        if !newly_known.is_empty() {
-            let count = db.add_known_words(&newly_known)?;
-            println!(" ✔ Marked {} words as known!", count);
-        }
-    }
-
     if !name_candidates.is_empty() {
         let newly_ignored = TerminalUi::bootstrap_ignored_names(&name_candidates)?;
         if !newly_ignored.is_empty() {
@@ -130,6 +122,14 @@ async fn main() -> Result<()> {
                 let _ = db.add_ignored_word(w);
             }
             println!(" 🚫 Marked {} character names/proper nouns as ignored!", newly_ignored.len());
+        }
+    }
+
+    if !general_candidates.is_empty() {
+        let newly_known = TerminalUi::bootstrap_known_words(&general_candidates)?;
+        if !newly_known.is_empty() {
+            let count = db.add_known_words(&newly_known)?;
+            println!(" ✔ Marked {} words as known!", count);
         }
     }
 
