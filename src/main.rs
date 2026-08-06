@@ -142,21 +142,41 @@ async fn main() -> Result<()> {
     let mut file_mined = std::collections::HashSet::new();
     let mut file_unknown = std::collections::HashSet::new();
 
+    let mut known_lines_count = 0usize;
+    let mut i1_lines_count = 0usize;
+    let mut i2_plus_lines_count = 0usize;
+
     for sub in &sentences {
+        let mut line_unknown_words = 0usize;
         if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
             for t in tokens {
                 if t.is_content_word && !ignored_words.contains(&t.dictionary_form) {
                     if already_known_set.contains(&t.dictionary_form) {
-                        file_already_known.insert(t.dictionary_form);
+                        file_already_known.insert(t.dictionary_form.clone());
                     } else if mined_set.contains(&t.dictionary_form) {
-                        file_mined.insert(t.dictionary_form);
+                        file_mined.insert(t.dictionary_form.clone());
                     } else {
-                        file_unknown.insert(t.dictionary_form);
+                        file_unknown.insert(t.dictionary_form.clone());
+                        line_unknown_words += 1;
                     }
                 }
             }
         }
+        if line_unknown_words == 0 {
+            known_lines_count += 1;
+        } else if line_unknown_words == 1 {
+            i1_lines_count += 1;
+        } else {
+            i2_plus_lines_count += 1;
+        }
     }
+
+    let total_lines = sentences.len();
+    let comp_ratio = if total_lines > 0 {
+        (known_lines_count as f64 / total_lines as f64) * 100.0
+    } else {
+        0.0
+    };
 
     let engine = MiningEngine::new(tokenizer);
     let jpdb_list = JpdbVocabList::load_or_fetch("https://jpdb.io/vocabulary-list")?;
@@ -164,12 +184,15 @@ async fn main() -> Result<()> {
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
     let total_mined_cards = db.get_all_mined_cards().map(|v| v.len()).unwrap_or(0);
     println!(
-        " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {} | {} | {})\n",
-        candidates.len(),
-        style(format!("{} Already Known", file_already_known.len())).blue().bold(),
+        " 📊 Subtitle Line Comprehension Stats:\n   • Lines Known: {} / {} ({:.1}% comprehension ratio)\n   • i+1 Candidate Lines: {}\n   • Hard Lines (2+ Unknowns): {}\n   • Vocab Stats: {} | {} | {}\n",
+        style(known_lines_count).green().bold(),
+        style(total_lines).cyan().bold(),
+        style(format!("{:.1}%", comp_ratio)).yellow().bold(),
+        style(format!("{} i+1 lines ({} eligible candidates)", i1_lines_count, candidates.len())).green().bold(),
+        style(format!("{} hard lines", i2_plus_lines_count)).red().bold(),
+        style(format!("{} Known Words", file_already_known.len())).blue().bold(),
         style(format!("{} Mined Cards", total_mined_cards)).magenta().bold(),
         style(format!("{} Unknown Words", file_unknown.len())).red().bold(),
-        style(format!("{} Eligible i+1 Sentences", candidates.len())).green().bold(),
     );
 
     let candidates_to_process: Vec<_> = candidates.into_iter().take(cfg.default_card_limit).collect();

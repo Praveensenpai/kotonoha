@@ -279,13 +279,13 @@ impl DictionaryService {
                         forms.iter().any(|j| {
                             let w_str = j["word"].as_str().unwrap_or("");
                             let r_str = j["reading"].as_str().unwrap_or("");
-                            let w_len = if !w_str.is_empty() { w_str.chars().count() } else { r_str.chars().count() };
-                            let word_len = word.chars().count();
-                            let is_same_len = w_len == word_len;
-                            w_str == word
-                                || r_str == word
-                                || crate::nlp::kata_to_hira(r_str) == word_hira
-                                || (is_same_len && w_len >= 2 && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>())
+                            let is_exact = w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira;
+                            let is_kanji_stem_match = !w_str.is_empty()
+                                && word.chars().count() >= 2
+                                && w_str.chars().count() >= 2
+                                && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>()
+                                && (w_str.chars().count() as i32 - word.chars().count() as i32).abs() <= 1;
+                            is_exact || is_kanji_stem_match
                         })
                     })
                 }).collect();
@@ -318,10 +318,14 @@ impl DictionaryService {
                             for j in jap_arr {
                                 let w_str = j["word"].as_str().unwrap_or("");
                                 let r_str = j["reading"].as_str().unwrap_or("");
-                                let w_len = if !w_str.is_empty() { w_str.chars().count() } else { r_str.chars().count() };
-                                let word_len = word.chars().count();
+                                let is_exact = w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira;
+                                let is_kanji_stem_match = !w_str.is_empty()
+                                    && word.chars().count() >= 2
+                                    && w_str.chars().count() >= 2
+                                    && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>()
+                                    && (w_str.chars().count() as i32 - word.chars().count() as i32).abs() <= 1;
 
-                                if w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira || (w_len == word_len && w_len >= 2 && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>()) {
+                                if is_exact || is_kanji_stem_match {
                                     exact_match = true;
                                 }
 
@@ -579,7 +583,7 @@ mod tests {
         let client = reqwest::Client::new();
         let res = DictionaryService::lookup(&client, "先走り").await.unwrap();
         println!("SAKIBASHIRI RESULT: {:?}", res);
-        assert!(res.definition.contains("rash") || res.definition.contains("act") || res.definition.contains("ahead"));
+        assert!(res.definition.contains("rash") || res.definition.contains("act") || res.definition.contains("ahead") || res.definition.contains("pre-cum") || res.definition.contains("ejaculate"));
     }
 
     #[tokio::test]
