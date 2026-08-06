@@ -304,6 +304,7 @@ impl Database {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    #[allow(dead_code)]
     pub fn get_cards_missing_translations(&self) -> Result<Vec<MinedCard>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal
@@ -354,6 +355,7 @@ impl Database {
         rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    #[allow(dead_code)]
     pub fn update_card_translations(
         &self,
         card_id: i64,
