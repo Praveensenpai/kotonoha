@@ -395,26 +395,37 @@ impl TerminalUi {
             }))
     }
 
-    pub fn select_sense(senses: &[String], target_word: &str) -> Result<String> {
+    pub fn select_sense(senses: &[String], target_word: &str) -> Result<Option<String>> {
         if senses.len() <= 1 {
-            return Ok(senses.first().cloned().unwrap_or_default());
+            return Ok(senses.first().cloned());
         }
 
-        let options: Vec<String> = senses
+        let mut options: Vec<String> = senses
             .iter()
             .enumerate()
             .map(|(idx, s)| format!("#{:<2} {}", idx + 1, s))
             .collect();
+        options.push("🔙 Cancel / Go back to card menu".to_string());
+
         let prompt = format!("Select sense for 【{}】:", target_word);
-        let ans = Select::new(&prompt, options).prompt()?;
-        if let Some(rank_str) = ans.split_whitespace().next() {
-            if let Some(num) = rank_str.strip_prefix('#').and_then(|s| s.parse::<usize>().ok()) {
-                if let Some(sense) = senses.get(num.saturating_sub(1)) {
-                    return Ok(sense.clone());
+        let ans = Select::new(&prompt, options).prompt();
+
+        match ans {
+            Ok(ans_str) => {
+                if ans_str.contains("Cancel / Go back") {
+                    return Ok(None);
                 }
+                if let Some(rank_str) = ans_str.split_whitespace().next() {
+                    if let Some(num) = rank_str.strip_prefix('#').and_then(|s| s.parse::<usize>().ok()) {
+                        if let Some(sense) = senses.get(num.saturating_sub(1)) {
+                            return Ok(Some(sense.clone()));
+                        }
+                    }
+                }
+                Ok(senses.first().cloned())
             }
+            Err(_) => Ok(None),
         }
-        Ok(senses.first().cloned().unwrap_or_default())
     }
 
     pub fn inspect_sentences(

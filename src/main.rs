@@ -641,7 +641,11 @@ async fn main() -> Result<()> {
             match action {
                 'y' => {
                     let senses = dict::parse_senses(&dict_info.definition);
-                    let chosen = TerminalUi::select_sense(&senses, &cand.target_word)?;
+                    let chosen_sense = TerminalUi::select_sense(&senses, &cand.target_word)?;
+                    let Some(chosen) = chosen_sense else {
+                        println!(" ℹ Mining canceled — returning to card menu.");
+                        continue;
+                    };
                     dict_info.definition = chosen;
 
                     let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
