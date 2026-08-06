@@ -208,6 +208,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --show-config         Display active configuration settings");
         println!("  kotonoha --inspect [FILE]      Inspect sentences (Blue=Known, Red=Unknown, ★=i+1)");
         println!("  kotonoha --manage-known        View & remove words from the known database");
+        println!("  kotonoha --manage-mined        View & remove words from the mined list");
         println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
         println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
         println!("  kotonoha --backfill-translations Generate missing translations for mined cards");
@@ -286,11 +287,25 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path)?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let words = words_with_readings(&tokenizer, db.get_known_words_sorted()?);
+        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("known")?);
         let to_remove = TerminalUi::manage_known_words(&words)?;
         if !to_remove.is_empty() {
             let count = db.remove_known_words(&to_remove)?;
             println!(" ✔ Removed {} word(s) from your known list.", count);
+        } else {
+            println!(" ℹ No changes made.");
+        }
+        return Ok(true);
+    }
+    if arg == "--manage-mined" {
+        let cfg = AppConfig::load()?;
+        let db = Database::open(&cfg.db_path)?;
+        let tokenizer = JapaneseTokenizer::new()?;
+        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("mined")?);
+        let to_remove = TerminalUi::manage_mined_words(&words)?;
+        if !to_remove.is_empty() {
+            let count = db.remove_known_words(&to_remove)?;
+            println!(" ✔ Removed {} word(s) from your mined list.", count);
         } else {
             println!(" ℹ No changes made.");
         }

@@ -108,16 +108,21 @@ async fn main() -> Result<()> {
     }
 
     let known_words = db.get_known_words()?;
+    let already_known_set = db.get_known_words_by_source("known")?;
+    let mined_set = db.get_known_words_by_source("mined")?;
 
-    let mut file_known = std::collections::HashSet::new();
+    let mut file_already_known = std::collections::HashSet::new();
+    let mut file_mined = std::collections::HashSet::new();
     let mut file_unknown = std::collections::HashSet::new();
 
     for sub in &sentences {
         if let Ok(tokens) = tokenizer.tokenize(&sub.text) {
             for t in tokens {
                 if t.is_content_word && !ignored_words.contains(&t.dictionary_form) {
-                    if known_words.contains(&t.dictionary_form) {
-                        file_known.insert(t.dictionary_form);
+                    if already_known_set.contains(&t.dictionary_form) {
+                        file_already_known.insert(t.dictionary_form);
+                    } else if mined_set.contains(&t.dictionary_form) {
+                        file_mined.insert(t.dictionary_form);
                     } else {
                         file_unknown.insert(t.dictionary_form);
                     }
@@ -131,9 +136,10 @@ async fn main() -> Result<()> {
 
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
     println!(
-        " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {} | {})\n",
+        " ✔ Found {} $i+1$ candidate sentences (Stats: {} | {} | {} | {})\n",
         candidates.len(),
-        style(format!("{} Known Words", file_known.len())).blue().bold(),
+        style(format!("{} Already Known", file_already_known.len())).blue().bold(),
+        style(format!("{} Mined Cards", file_mined.len())).magenta().bold(),
         style(format!("{} Unknown Words", file_unknown.len())).red().bold(),
         style(format!("{} Eligible i+1 Sentences", candidates.len())).green().bold(),
     );
@@ -345,12 +351,13 @@ async fn main() -> Result<()> {
     };
 
     let mut mined_count = 0;
+    let mut known_count = 0;
     let mut skipped_count = 0;
     let mut ignored_count = 0;
     let total_cards = candidates_to_process.len();
 
     for (idx, cand) in candidates_to_process.iter().enumerate() {
-        TerminalUi::render_progress(idx + 1, total_cards, mined_count, skipped_count, ignored_count);
+        TerminalUi::render_progress(idx + 1, total_cards, mined_count, known_count, skipped_count, ignored_count);
 
         const RAW_SENSE_LIMIT: usize = 12;
         let context_hint = dict::context_hint(&cand.sentence.text, &cand.target_word);
@@ -532,6 +539,12 @@ async fn main() -> Result<()> {
                     let _ = db.add_known_words(std::slice::from_ref(&cand.target_word));
                     mined_count += 1;
                     println!(" ✔ Card mined successfully!");
+                    break;
+                }
+                'k' => {
+                    let _ = db.add_known_words(std::slice::from_ref(&cand.target_word));
+                    known_count += 1;
+                    println!(" 🧠 Target word marked as known!");
                     break;
                 }
                 'i' => {

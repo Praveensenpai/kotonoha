@@ -94,6 +94,15 @@ impl Database {
         if !columns.iter().any(|column| column == "kannada_literal") {
             self.conn.execute("ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT", [])?;
         }
+
+        let kw_columns = self
+            .conn
+            .prepare("PRAGMA table_info(known_words)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if !kw_columns.iter().any(|column| column == "source") {
+            self.conn.execute("ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'", [])?;
+        }
         Ok(())
     }
 
@@ -107,14 +116,30 @@ impl Database {
         Ok(set)
     }
 
+    pub fn get_known_words_by_source(&self, source: &str) -> Result<HashSet<String>> {
+        let mut stmt = self.conn.prepare("SELECT word FROM known_words WHERE source = ?")?;
+        let rows = stmt.query_map(params![source], |row| row.get(0))?;
+        let mut set = HashSet::new();
+        for r in rows {
+            set.insert(r?);
+        }
+        Ok(set)
+    }
+
     pub fn add_known_words(&self, words: &[String]) -> Result<usize> {
+        self.add_known_words_with_source(words, "known")
+    }
+
+    pub fn add_known_words_with_source(&self, words: &[String], source: &str) -> Result<usize> {
         let tx = self.conn.unchecked_transaction()?;
         let mut added = 0;
         {
-            let mut stmt = tx.prepare("INSERT OR IGNORE INTO known_words (word) VALUES (?)")?;
+            let mut stmt = tx.prepare(
+                "INSERT INTO known_words (word, source) VALUES (?, ?) ON CONFLICT(word) DO UPDATE SET source = excluded.source",
+            )?;
             for w in words {
                 if !w.trim().is_empty() {
-                    added += stmt.execute(params![w.trim()])?;
+                    added += stmt.execute(params![w.trim(), source])?;
                 }
             }
         }
@@ -122,9 +147,14 @@ impl Database {
         Ok(added)
     }
 
+    #[allow(dead_code)]
     pub fn get_known_words_sorted(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare("SELECT word FROM known_words ORDER BY word ASC")?;
-        let rows = stmt.query_map([], |row| row.get(0))?;
+        self.get_known_words_sorted_by_source("known")
+    }
+
+    pub fn get_known_words_sorted_by_source(&self, source: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT word FROM known_words WHERE source = ? ORDER BY word ASC")?;
+        let rows = stmt.query_map(params![source], |row| row.get(0))?;
         let mut words = Vec::new();
         for r in rows {
             words.push(r?);

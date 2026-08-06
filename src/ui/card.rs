@@ -47,16 +47,25 @@ pub fn box_empty(inner_w: usize) -> String {
     format!("│ {} │", " ".repeat(inner_w))
 }
 
-pub fn render_progress(current: usize, total: usize, mined: usize, skipped: usize, ignored: usize) {
+pub fn render_progress(
+    current: usize,
+    total: usize,
+    mined: usize,
+    known: usize,
+    skipped: usize,
+    ignored: usize,
+) {
     let magenta = Style::new().magenta().bold();
     let yellow = Style::new().yellow().bold();
+    let cyan = Style::new().cyan().bold();
     let dim = Style::new().dim();
 
     println!(
-        "🌸 Progress [{}/{}]  ───  ✨ {} Mined  •  ⏭️ {} Skipped  •  🙈 {} Ignored",
+        "🌸 Progress [{}/{}]  ───  ✨ {} Mined  •  🧠 {} Known  •  ⏭️ {} Skipped  •  🙈 {}",
         magenta.apply_to(current),
         total,
         yellow.apply_to(mined),
+        cyan.apply_to(known),
         skipped,
         dim.apply_to(format!("{} Ignored", ignored)),
     );

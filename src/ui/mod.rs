@@ -175,10 +175,11 @@ impl TerminalUi {
         current: usize,
         total: usize,
         mined: usize,
+        known: usize,
         skipped: usize,
         ignored: usize,
     ) {
-        card::render_progress(current, total, mined, skipped, ignored);
+        card::render_progress(current, total, mined, known, skipped, ignored);
     }
 
     pub fn render_card(p: CardRenderParams<'_>) {
@@ -189,6 +190,7 @@ impl TerminalUi {
         let options = vec![
             "⏭️  Skip to next card (n)",
             "⛏️  Mine this card (y)",
+            "🧠  Mark target word as known (k)",
             "📖  Change dictionary candidate (c)",
             "🔊  Replay preview audio (r)",
             "🚫  Ignore target word (i)",
@@ -198,6 +200,8 @@ impl TerminalUi {
         let ans = Select::new("Action?", options).prompt()?;
         if ans.contains("(y)") {
             Ok('y')
+        } else if ans.contains("(k)") {
+            Ok('k')
         } else if ans.contains("(c)") {
             Ok('c')
         } else if ans.contains("(r)") {
@@ -407,6 +411,33 @@ impl TerminalUi {
 
         let selected = MultiSelect::new(
             "Manage Ignored Words (Select words to REMOVE from your ignore list — Space to toggle, Enter to confirm, type to filter):",
+            options,
+        )
+        .with_page_size(18)
+        .prompt()?;
+
+        let mut to_remove = Vec::new();
+        for sel in selected {
+            let word = sel.split_whitespace().next().unwrap_or(&sel);
+            to_remove.push(word.to_string());
+        }
+
+        Ok(to_remove)
+    }
+
+    pub fn manage_mined_words(words: &[(String, String)]) -> Result<Vec<String>> {
+        if words.is_empty() {
+            println!(" ℹ No words currently marked as mined.");
+            return Ok(Vec::new());
+        }
+
+        let options: Vec<String> = words
+            .iter()
+            .map(|(w, r)| format_word_with_reading(w, r))
+            .collect();
+
+        let selected = MultiSelect::new(
+            "Manage Mined Words (Select words to REMOVE from your mined list — Space to toggle, Enter to confirm, type to filter):",
             options,
         )
         .with_page_size(18)
