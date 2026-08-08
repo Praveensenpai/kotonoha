@@ -24,6 +24,7 @@
 - **🎯 Smart $i+1$ Candidate Filtering**: Automatically identifies sentences containing 1 unknown content word and ranks them by JPDB frequency and sentence length.
 - **🖥️ 100% Terminal TUI**: Fully keyboard-driven interactive card review using [`inquire`](https://crates.io/crates/inquire) (arrow keys `↑`/`↓` and `Enter`).
 - **🎧 Non-Blocking Preview Audio**: Background audio playback via `mpv` daemon—zero terminal freeze or input locking.
+- **🔎 Subtitle Inspector Playback**: In `kotonoha --inspect`, press `Space` to hear the selected subtitle line without leaving the inspector.
 - **🎬 Single-Pass Media Extraction**: Extracts precise audio snippets (`.mp3`) and screenshot thumbnails (`.jpg`) via `ffmpeg`.
 - **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.config/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
 
@@ -70,6 +71,16 @@ kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
 The subtitle file must be next to the video and have a matching filename. If
 you need to generate subtitles first, try [SubSink](https://github.com/Praveensenpai/subsink).
 
+### 3. Subtitle Inspector
+
+Inspect subtitle lines and hear the selected line without leaving the TUI:
+
+```bash
+kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.ja.srt"
+```
+
+`↑`/`↓` moves, `Space` plays or replays the selected subtitle, typing filters lines, and `Backspace` clears the filter. A matching video file enables playback.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
@@ -79,7 +90,7 @@ you need to generate subtitles first, try [SubSink](https://github.com/Praveense
 | **Language** | Rust 2021 | Native speed & memory safety |
 | **Japanese NLP** | [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) | WorksApplications Japanese tokenizer & POS analyzer |
 | **Database** | SQLite (`rusqlite`) | Local storage for known words & mined cards |
-| **TUI Engine** | `inquire` & `console` | Styled terminal prompts and card boxes |
+| **TUI Engine** | `ratatui`, `inquire` & `console` | Keyboard-driven subtitle inspector, prompts, and card boxes |
 | **Media Engine** | `ffmpeg` & `mpv` | Headless audio extraction and background preview |
 
 ---

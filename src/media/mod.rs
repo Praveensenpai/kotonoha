@@ -21,13 +21,19 @@ impl MediaExtractor {
         let status = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-ss", &format!("{:.3}", start_sec),
-                "-i", &video_path.to_string_lossy(),
-                "-t", &format!("{:.3}", duration_sec),
+                "-ss",
+                &format!("{:.3}", start_sec),
+                "-i",
+                &video_path.to_string_lossy(),
+                "-t",
+                &format!("{:.3}", duration_sec),
                 "-vn",
-                "-c:a", "libopus",
-                "-b:a", "64k",
-                "-ar", "48000",
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "64k",
+                "-ar",
+                "48000",
                 &output_path.to_string_lossy(),
             ])
             .stdout(Stdio::null())
@@ -56,11 +62,16 @@ impl MediaExtractor {
         let status = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-ss", &format!("{:.3}", sec),
-                "-i", &video_path.to_string_lossy(),
-                "-vf", "scale=-1:360",
-                "-vframes", "1",
-                "-q:v", "4",
+                "-ss",
+                &format!("{:.3}", sec),
+                "-i",
+                &video_path.to_string_lossy(),
+                "-vf",
+                "scale=-1:360",
+                "-vframes",
+                "1",
+                "-q:v",
+                "4",
                 &output_path.to_string_lossy(),
             ])
             .stdout(Stdio::null())
@@ -96,6 +107,48 @@ impl MediaExtractor {
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
 
+        cmd.spawn().ok()
+    }
+
+    /// Play just one subtitle interval directly from the source video.  This avoids
+    /// creating a cache file for the lightweight `--inspect` workflow.
+    pub fn play_subtitle_segment(
+        video_path: &Path,
+        start_ms: u64,
+        end_ms: u64,
+    ) -> Option<std::process::Child> {
+        let start_sec = (start_ms as f64 / 1000.0 - 0.25).max(0.0);
+        let duration_sec = ((end_ms.saturating_sub(start_ms)) as f64 / 1000.0 + 0.5).max(0.5);
+
+        let mut cmd = if which_exists("mpv") {
+            let mut cmd = Command::new("mpv");
+            cmd.args([
+                "--no-video",
+                "--really-quiet",
+                "--no-terminal",
+                &format!("--start={start_sec:.3}"),
+                &format!("--length={duration_sec:.3}"),
+            ]);
+            cmd
+        } else {
+            let mut cmd = Command::new("ffplay");
+            cmd.args([
+                "-nodisp",
+                "-autoexit",
+                "-loglevel",
+                "quiet",
+                "-ss",
+                &format!("{start_sec:.3}"),
+                "-t",
+                &format!("{duration_sec:.3}"),
+            ]);
+            cmd
+        };
+
+        cmd.arg(video_path);
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::null());
+        cmd.stderr(Stdio::null());
         cmd.spawn().ok()
     }
 }

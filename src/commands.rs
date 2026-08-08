@@ -31,8 +31,6 @@ pub fn words_with_readings(
         .collect()
 }
 
-
-
 pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
     let ext = input_path
@@ -44,7 +42,10 @@ pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let is_sub = matches!(ext.as_str(), "srt" | "ass" | "vtt");
     let is_vid = matches!(ext.as_str(), "mkv" | "mp4" | "webm" | "avi");
 
-    let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let stem = input_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
     let clean_stem = stem
         .trim_end_matches(".ja")
         .trim_end_matches(".jp")
@@ -120,13 +121,18 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         return Ok(true);
     }
     if arg == "--help" || arg == "-h" || arg == "--h" {
-        println!("🌸 kotonoha {} — Japanese i+1 Sentence Miner", env!("CARGO_PKG_VERSION"));
+        println!(
+            "🌸 kotonoha {} — Japanese i+1 Sentence Miner",
+            env!("CARGO_PKG_VERSION")
+        );
         println!("\nUSAGE:");
         println!("  kotonoha                       Launch interactive TUI file picker");
         println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
         println!("  kotonoha --config              Interactive TUI configuration manager");
         println!("  kotonoha --show-config         Display active configuration settings");
-        println!("  kotonoha --inspect [FILE]      Inspect sentences (Blue=Known, Red=Unknown, ★=i+1)");
+        println!(
+            "  kotonoha --inspect [FILE]      Inspect sentences (Space plays selected audio; ★=i+1)"
+        );
         println!("  kotonoha --manage-known        View & remove words from the known database");
         println!("  kotonoha --manage-mined        View & remove words from the mined list");
         println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
@@ -159,6 +165,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
             Some(p) => PathBuf::from(p),
             None => TerminalUi::select_media_file()?,
         };
+        let video_path = find_paired_media(&input_path).ok().map(|(_, video)| video);
         let ext = input_path
             .extension()
             .and_then(|s| s.to_str())
@@ -178,7 +185,13 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let tokenizer = JapaneseTokenizer::new()?;
         let known_words = db.get_known_words()?;
         let ignored_words = db.get_ignored_words()?;
-        TerminalUi::inspect_sentences(&sentences, &tokenizer, &known_words, &ignored_words);
+        TerminalUi::inspect_sentences(
+            &sentences,
+            &tokenizer,
+            &known_words,
+            &ignored_words,
+            video_path.as_deref(),
+        )?;
         return Ok(true);
     }
     if arg == "--manage-ignored" {
@@ -230,7 +243,10 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path)?;
         let count = db.clear_dictionary_cache()?;
-        println!(" ✔ Cleared dictionary cache ({} cached entries purged).", count);
+        println!(
+            " ✔ Cleared dictionary cache ({} cached entries purged).",
+            count
+        );
         return Ok(true);
     }
 
