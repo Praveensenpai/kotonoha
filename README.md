@@ -59,6 +59,9 @@ Pass a subtitle or video file path directly:
 kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
 ```
 
+The subtitle file must be next to the video and have a matching filename. If
+you need to generate subtitles first, try [SubSink](https://github.com/Praveensenpai/subsink).
+
 ---
 
 ## 🛠️ Architecture & Tech Stack

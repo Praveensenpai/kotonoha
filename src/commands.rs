@@ -106,7 +106,7 @@ pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
             }
         }
         anyhow::bail!(
-            "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   Place the subtitle file in the same folder to mine cards.",
+            "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   Place the subtitle file in the same folder to mine cards.\n\n   Need to generate an .srt subtitle? Try SubSink:\n   https://github.com/Praveensenpai/subsink",
             input_path.display()
         );
     } else {
