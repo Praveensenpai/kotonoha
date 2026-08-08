@@ -12,9 +12,9 @@
 
 ## ✅ Prerequisites
 
-- A matching Japanese subtitle file (`.srt` or `.ass`) alongside your anime video; this is required for mining cards.
-- `ffmpeg` and `mpv` for audio and screenshot previews.
-- **Optional:** [SubSink](https://github.com/Praveensenpai/subsink) can download, generate, or synchronize subtitles when you do not already have a matching Japanese subtitle file.
+- **Optional subtitle setup:** Use [SubSink](https://github.com/Praveensenpai/subsink) to download, generate, or synchronize a Japanese subtitle when you do not already have one.
+- A matching Japanese subtitle file (`.srt` or `.ass`) must be alongside your anime video for mining cards.
+- `ffmpeg` and `mpv` are required for audio and screenshot previews.
 
 ---
 
