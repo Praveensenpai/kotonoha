@@ -558,6 +558,31 @@ impl DictionaryService {
 
         Ok(results)
     }
+
+    pub async fn lookup_all_candidates_cached(
+        client: &reqwest::Client,
+        db: Option<&crate::db::Database>,
+        word: &str,
+        max_senses: usize,
+        max_glosses: usize,
+    ) -> Result<Vec<LookupResult>> {
+        if let Some(db_inst) = db {
+            if let Ok(Some(cached)) = db_inst.get_cached_candidates(word) {
+                if !cached.is_empty() {
+                    return Ok(cached);
+                }
+            }
+        }
+
+        let results = Self::lookup_all_candidates(client, word, max_senses, max_glosses).await?;
+        if let Some(db_inst) = db {
+            if !results.is_empty() {
+                let _ = db_inst.cache_candidates(word, &results);
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 #[cfg(test)]

@@ -57,6 +57,12 @@ impl Database {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS all_candidates_cache (
+                expression TEXT PRIMARY KEY,
+                candidates_json TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS mined_cards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sentence TEXT NOT NULL,
@@ -248,6 +254,28 @@ impl Database {
             "INSERT OR REPLACE INTO dictionary_cache (expression, reading, definition, pitch_accent) VALUES (?, ?, ?, ?)",
             params![expression, reading, definition, pitch],
         )?;
+        Ok(())
+    }
+
+    pub fn get_cached_candidates(&self, expression: &str) -> Result<Option<Vec<crate::dict::LookupResult>>> {
+        let mut stmt = self.conn.prepare("SELECT candidates_json FROM all_candidates_cache WHERE expression = ?")?;
+        let mut rows = stmt.query(params![expression])?;
+        if let Some(row) = rows.next()? {
+            let json_str: String = row.get(0)?;
+            if let Ok(cands) = serde_json::from_str::<Vec<crate::dict::LookupResult>>(&json_str) {
+                return Ok(Some(cands));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn cache_candidates(&self, expression: &str, candidates: &[crate::dict::LookupResult]) -> Result<()> {
+        if let Ok(json_str) = serde_json::to_string(candidates) {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO all_candidates_cache (expression, candidates_json) VALUES (?, ?)",
+                params![expression, json_str],
+            )?;
+        }
         Ok(())
     }
 

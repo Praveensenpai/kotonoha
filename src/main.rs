@@ -313,14 +313,14 @@ async fn main() -> Result<()> {
         let uncached_words: Vec<String> = candidates_to_process
             .iter()
             .map(|c| c.target_word.clone())
-            .filter(|w| db.get_cached_definition(w).unwrap_or(None).is_none())
+            .filter(|w| db.get_cached_definition(w).unwrap_or(None).is_none() || db.get_cached_candidates(w).unwrap_or(None).is_none())
             .collect();
 
         let cached_count = (candidates_to_process.len() - uncached_words.len()) as u64;
         pb1.set_position(cached_count);
 
         if !uncached_words.is_empty() {
-            let (tx, mut rx) = tokio::sync::mpsc::channel::<dict::LookupResult>(100);
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<(dict::LookupResult, Vec<dict::LookupResult>)>(100);
             let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(5));
 
             for word in uncached_words {
@@ -332,18 +332,23 @@ async fn main() -> Result<()> {
                 let max_glosses = cfg.max_glosses_per_sense;
                 tokio::spawn(async move {
                     let _permit = sem.acquire().await;
-                    if let Ok(dict_res) = DictionaryService::lookup_with_limits(&client, &word, max_senses, max_glosses).await {
-                        let _ = tx.send(dict_res).await;
+                    let dict_res = DictionaryService::lookup_with_limits(&client, &word, max_senses, max_glosses).await;
+                    let cands_res = DictionaryService::lookup_all_candidates(&client, &word, max_senses, max_glosses).await.unwrap_or_default();
+                    if let Ok(dict_res) = dict_res {
+                        let _ = tx.send((dict_res, cands_res)).await;
                     }
                 });
             }
             drop(tx);
 
-            while let Some(dict_res) = rx.recv().await {
+            while let Some((dict_res, cands_res)) = rx.recv().await {
                 if !dict::is_placeholder_definition(&dict_res.definition)
                     && dict_res.definition != "No dictionary definition found"
                 {
                     let _ = db.cache_definition(&dict_res.expression, &dict_res.reading, &dict_res.definition, &dict_res.pitch_accent);
+                }
+                if !cands_res.is_empty() {
+                    let _ = db.cache_candidates(&dict_res.expression, &cands_res);
                 }
                 pb1.inc(1);
             }
@@ -465,8 +470,9 @@ async fn main() -> Result<()> {
             if let Some(ref custom_sug) = res.custom_definition_suggestion {
                 dict_info.definition = format!("1. [AI Suggestion] {}", custom_sug);
             } else if let Some(cand_idx) = res.recommended_candidate_index {
-                let candidates = DictionaryService::lookup_all_candidates(
+                let candidates = DictionaryService::lookup_all_candidates_cached(
                     &http_client,
+                    Some(&db),
                     &cand.target_word,
                     cfg.max_definition_senses,
                     cfg.max_glosses_per_sense,
@@ -490,8 +496,9 @@ async fn main() -> Result<()> {
         // Automatic Contextual Reading Alignment:
         // Prioritize dictionary candidates whose reading matches Sudachi's contextual sentence reading (e.g. "あさ" for "朝")
         if !cand.target_reading.is_empty() {
-            let all_cands = DictionaryService::lookup_all_candidates(
+            let all_cands = DictionaryService::lookup_all_candidates_cached(
                 &http_client,
+                Some(&db),
                 &cand.target_word,
                 cfg.max_definition_senses,
                 cfg.max_glosses_per_sense,
@@ -556,8 +563,9 @@ async fn main() -> Result<()> {
 
             if action == 'f' {
                 println!(" ✍️ Fetching dictionary candidates for furigana reading selection...");
-                let candidates = DictionaryService::lookup_all_candidates(
+                let candidates = DictionaryService::lookup_all_candidates_cached(
                     &http_client,
+                    Some(&db),
                     &cand.target_word,
                     cfg.max_definition_senses,
                     cfg.max_glosses_per_sense,
@@ -591,8 +599,9 @@ async fn main() -> Result<()> {
 
             if action == 'c' {
                 println!(" 🔍 Fetching dictionary candidates...");
-                let candidates = DictionaryService::lookup_all_candidates(
+                let candidates = DictionaryService::lookup_all_candidates_cached(
                     &http_client,
+                    Some(&db),
                     &cand.target_word,
                     cfg.max_definition_senses,
                     cfg.max_glosses_per_sense,
