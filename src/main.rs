@@ -18,6 +18,7 @@ use db::Database;
 use dict::DictionaryService;
 use jpdb::JpdbVocabList;
 use media::MediaExtractor;
+use rayon::prelude::*;
 use miner::MiningEngine;
 use nlp::JapaneseTokenizer;
 use srt::parse_subtitle;
@@ -364,13 +365,13 @@ async fn main() -> Result<()> {
                 .unwrap()
                 .progress_chars("█▓▒░"),
         );
-        for cand in &candidates_to_process {
+        candidates_to_process.par_iter().for_each(|cand| {
             let audio_path = cfg.media_dir.join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
             if !audio_path.exists() {
                 let _ = MediaExtractor::extract_preview_audio(&video_path, cand.sentence.start_ms, cand.sentence.end_ms, &audio_path);
             }
             pb2.inc(1);
-        }
+        });
         pb2.finish();
         println!("\n");
 
@@ -382,13 +383,13 @@ async fn main() -> Result<()> {
                 .unwrap()
                 .progress_chars("█▓▒░"),
         );
-        for cand in &candidates_to_process {
+        candidates_to_process.par_iter().for_each(|cand| {
             let image_path = cfg.media_dir.join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
             if !image_path.exists() {
                 let _ = MediaExtractor::extract_screenshot(&video_path, cand.sentence.start_ms, &image_path);
             }
             pb3.inc(1);
-        }
+        });
         pb3.finish();
         println!("\n");
     }
