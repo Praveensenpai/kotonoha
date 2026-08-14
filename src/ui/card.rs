@@ -15,7 +15,8 @@ pub struct CardRenderParams<'a> {
     pub target_word: &'a str,
     pub reading: &'a str,
     pub pitch: &'a str,
-    pub jpdb_rank: Option<u32>,
+    pub episode_freq: usize,
+    pub density_tier: usize,
     pub definition: &'a str,
     pub known_context: &'a [String],
     pub unknown_context: &'a [String],
@@ -140,7 +141,8 @@ pub fn render_card(p: CardRenderParams<'_>) {
         target_word,
         reading,
         pitch,
-        jpdb_rank,
+        episode_freq,
+        density_tier,
         definition,
         known_context,
         unknown_context,
@@ -238,9 +240,14 @@ pub fn render_card(p: CardRenderParams<'_>) {
             )
         )
     );
-    if let Some(r) = jpdb_rank {
-        println!("{}", lrow("JPDB Rank:", &format!("#{}", r)));
-    }
+    let tier_label = match density_tier {
+        1 => "Tier 1 (1 Known + 1 Target)".to_string(),
+        2 => "Tier 2 (2 Known + 1 Target)".to_string(),
+        3 => "Tier 3 (3 Known + 1 Target)".to_string(),
+        4 => "Tier 4 (Standalone Word)".to_string(),
+        n => format!("Tier {} ({} Context Words)", n, n),
+    };
+    println!("{}", lrow("Mining Rank:", &format!("{}x in Ep | {}", episode_freq, tier_label)));
 
     if let Some(warn) = ai_warning {
         let warn_styled = format!("⚠️  AI Parsing Warning: {}", warn);

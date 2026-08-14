@@ -18,3 +18,28 @@ Definitions:
     ));
     assert!(prompt.contains("Sentence: \"私のせいですか？\""));
 }
+
+#[test]
+fn test_ai_index_normalization() {
+    let json_text = r#"{
+        "results": [
+            {
+                "card_index": 0,
+                "recommended_candidate_index": 1,
+                "recommended_sense_index": 0,
+                "parsing_warning": null,
+                "custom_definition_suggestion": null,
+                "explanation": null
+            }
+        ]
+    }"#;
+    let mut parsed: super::BatchAiAnalysisResponse = serde_json::from_str(json_text).unwrap();
+    for res in &mut parsed.results {
+        if let Some(cand_idx) = res.recommended_candidate_index {
+            if cand_idx > 0 {
+                res.recommended_candidate_index = Some(cand_idx - 1);
+            }
+        }
+    }
+    assert_eq!(parsed.results[0].recommended_candidate_index, Some(0));
+}

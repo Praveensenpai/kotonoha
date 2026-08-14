@@ -139,7 +139,14 @@ impl GeminiAiService {
                     // value for any duplicate keys that Gemini occasionally emits,
                     // avoiding hard "duplicate field" deserialization errors.
                     let value: serde_json::Value = serde_json::from_str(text)?;
-                    let parsed: BatchAiAnalysisResponse = serde_json::from_value(value)?;
+                    let mut parsed: BatchAiAnalysisResponse = serde_json::from_value(value)?;
+                    for res in &mut parsed.results {
+                        if let Some(cand_idx) = res.recommended_candidate_index {
+                            if cand_idx > 0 {
+                                res.recommended_candidate_index = Some(cand_idx - 1);
+                            }
+                        }
+                    }
                     return Ok(parsed.results);
                 }
                 Ok(response) => {

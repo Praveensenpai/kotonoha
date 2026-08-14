@@ -10,8 +10,8 @@ pub struct CandidateSentence {
     pub known_context_words: Vec<String>,
     pub unknown_context_words: Vec<String>,
     pub ignored_context_words: Vec<String>,
-    pub jpdb_rank: Option<u32>,
-    pub score: f64,
+    pub episode_freq: usize,
+    pub density_tier: usize,
 }
 
 pub struct MiningEngine {
@@ -28,8 +28,19 @@ impl MiningEngine {
         sentences: &[SubtitleSentence],
         known_words: &HashSet<String>,
         ignored_words: &HashSet<String>,
-        jpdb_ranks: &std::collections::HashMap<String, u32>,
     ) -> Vec<CandidateSentence> {
+        // Step 1: Count target word frequency across all episode subtitle lines
+        let mut episode_word_freq: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for sub in sentences {
+            if let Ok(tokens) = self.tokenizer.tokenize(&sub.text) {
+                for t in &tokens {
+                    if t.is_content_word && !known_words.contains(&t.dictionary_form) && !ignored_words.contains(&t.dictionary_form) {
+                        *episode_word_freq.entry(t.dictionary_form.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
         let mut candidates = Vec::new();
         let mut seen_targets = HashSet::new();
 
@@ -96,11 +107,16 @@ impl MiningEngine {
                     }
 
                     seen_targets.insert(target_word.clone());
-                    let rank = jpdb_ranks.get(&target_word).copied();
-
-                    let base_score = rank.unwrap_or(5000) as f64;
-                    let len_penalty = sub.text.chars().count() as f64 * 2.0;
-                    let score = base_score + len_penalty;
+                    let episode_freq = episode_word_freq.get(&target_word).copied().unwrap_or(1);
+                    
+                    let total_content_words = known_context.len() + 1;
+                    let density_tier = match total_content_words {
+                        2 => 1, // Tier 1: 1 Known + 1 Target (Holy Grail of mining!)
+                        3 => 2, // Tier 2: 2 Known + 1 Target
+                        4 => 3, // Tier 3: 3 Known + 1 Target
+                        1 => 4, // Tier 4: Standalone single word
+                        n => n, // Tier 5+: 4+ Known + 1 Target
+                    };
 
                     candidates.push(CandidateSentence {
                         sentence: sub.clone(),
@@ -109,14 +125,19 @@ impl MiningEngine {
                         known_context_words: known_context,
                         unknown_context_words: unknown_words,
                         ignored_context_words: ignored_context,
-                        jpdb_rank: rank,
-                        score,
+                        episode_freq,
+                        density_tier,
                     });
                 }
             }
         }
 
-        candidates.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+        // Multi-tier sorting: 1. Episode frequency (desc), 2. Density Tier (asc), 3. Subtitle index (asc)
+        candidates.sort_by(|a, b| {
+            b.episode_freq.cmp(&a.episode_freq)
+                .then_with(|| a.density_tier.cmp(&b.density_tier))
+                .then_with(|| a.sentence.index.cmp(&b.sentence.index))
+        });
         candidates
     }
 }

@@ -4,7 +4,6 @@ mod commands;
 mod config;
 mod db;
 mod dict;
-mod jpdb;
 mod media;
 mod miner;
 mod nlp;
@@ -16,7 +15,6 @@ use config::AppConfig;
 use console::style;
 use db::Database;
 use dict::DictionaryService;
-use jpdb::JpdbVocabList;
 use media::MediaExtractor;
 use rayon::prelude::*;
 use miner::MiningEngine;
@@ -37,7 +35,8 @@ async fn main() -> Result<()> {
     TerminalUi::print_banner();
 
     let cfg = AppConfig::load()?;
-    let db = Database::open(&cfg.db_path)?;
+    let mut db = Database::open(&cfg.db_path)?;
+    let http_client = reqwest::Client::new();
 
     // AnkiConnect status
     if anki::anki_connected(&cfg.anki_connect_url).await {
@@ -54,6 +53,9 @@ async fn main() -> Result<()> {
         );
     }
     println!();
+
+    let _ = DictionaryService::ensure_offline_dictionaries_ready(&http_client, &mut db).await;
+
 
     let input_path = match std::env::args().nth(1) {
         Some(arg) => PathBuf::from(arg),
@@ -180,9 +182,7 @@ async fn main() -> Result<()> {
     };
 
     let engine = MiningEngine::new(tokenizer);
-    let jpdb_list = JpdbVocabList::load_or_fetch("https://jpdb.io/vocabulary-list")?;
-
-    let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words, &jpdb_list.ranks);
+    let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words);
     let total_mined_cards = db.get_all_mined_cards().map(|v| v.len()).unwrap_or(0);
     println!(
         " 📊 Subtitle Line Comprehension Stats:\n   • Lines Known: {} / {} ({} comprehension ratio)\n   • i+1 Candidate Lines: {}\n   • Hard Lines (2+ Unknowns): {}\n   • Vocab Stats: {} | {} | {}\n",
@@ -262,7 +262,6 @@ async fn main() -> Result<()> {
                         if let Some(target_word) = target {
                             seen_words.insert(target_word.clone());
                             let target_reading = reading.unwrap_or_else(|| target_word.clone());
-                            let rank = jpdb_list.ranks.get(&target_word).copied();
                             known_candidates.push(miner::CandidateSentence {
                                 sentence: sub.clone(),
                                 target_word,
@@ -270,8 +269,8 @@ async fn main() -> Result<()> {
                                 known_context_words: known_context,
                                 unknown_context_words: Vec::new(),
                                 ignored_context_words: ignored_context,
-                                jpdb_rank: rank,
-                                score: 0.0,
+                                episode_freq: 1,
+                                density_tier: 1,
                             });
                         }
                     }
@@ -688,7 +687,8 @@ async fn main() -> Result<()> {
             target_word: &cand.target_word,
             reading: &dict_info.reading,
             pitch: &dict_info.pitch_accent,
-            jpdb_rank: cand.jpdb_rank,
+            episode_freq: cand.episode_freq,
+            density_tier: cand.density_tier,
             definition: &dict_info.definition,
             known_context: &cand.known_context_words,
             unknown_context: &cand.unknown_context_words,
@@ -740,7 +740,8 @@ async fn main() -> Result<()> {
                         target_word: &cand.target_word,
                         reading: &dict_info.reading,
                         pitch: &dict_info.pitch_accent,
-                        jpdb_rank: cand.jpdb_rank,
+                        episode_freq: cand.episode_freq,
+                        density_tier: cand.density_tier,
                         definition: &dict_info.definition,
                         known_context: &cand.known_context_words,
                         unknown_context: &cand.unknown_context_words,
@@ -787,7 +788,8 @@ async fn main() -> Result<()> {
                         target_word: &cand.target_word,
                         reading: &dict_info.reading,
                         pitch: &dict_info.pitch_accent,
-                        jpdb_rank: cand.jpdb_rank,
+                        episode_freq: cand.episode_freq,
+                        density_tier: cand.density_tier,
                         definition: &dict_info.definition,
                         known_context: &cand.known_context_words,
                         unknown_context: &cand.unknown_context_words,

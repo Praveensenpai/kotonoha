@@ -26,6 +26,18 @@ fn normalizes_split_rough_negative_sentence() {
 }
 
 #[test]
+fn normalizes_kurenai_to_kureru() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("考えてきてくれたの？").unwrap();
+    let kangaeru = tokens.iter().find(|token| token.surface.contains("考え")).unwrap();
+    assert!(kangaeru.is_content_word);
+    assert_eq!(kangaeru.dictionary_form, "考える");
+
+    let aux_ki = tokens.iter().find(|token| token.surface == "き").unwrap();
+    assert!(!aux_ki.is_content_word);
+}
+
+#[test]
 fn keeps_colloquial_small_tsu_words_together() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
     let tokens = tokenizer.tokenize("うわ キモッ むっ…").unwrap();

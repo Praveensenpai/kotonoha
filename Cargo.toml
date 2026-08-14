@@ -1,6 +1,6 @@
 [package]
 name = "kotonoha"
-version = "0.0.26"
+version = "0.0.27"
 edition = "2021"
 description = "言の葉 — Blazing-fast CLI Japanese $i+1$ sentence miner & card generator"
 authors = ["Praveensenpai"]
@@ -32,7 +32,9 @@ futures = "0.3"
 sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git" }
 crossterm = "0.25"
 ratatui = "0.29"
+zip = "2.2"
 unicode-width = "0.1"
 unicode-segmentation = "1.11"
 rayon = "1.10"
+
 

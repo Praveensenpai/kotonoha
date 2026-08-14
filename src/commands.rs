@@ -136,7 +136,6 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --manage-known        View & remove words from the known database");
         println!("  kotonoha --manage-mined        View & remove words from the mined list");
         println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
-        println!("  kotonoha --clear-cache         Purge all cached dictionary definitions");
         println!("  kotonoha --sync                Push locally mined cards to Anki");
         println!("  kotonoha --version | -v        Print version information");
         println!("  kotonoha --help    | -h | --h  Show help information");
@@ -234,19 +233,6 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             println!(" ℹ No changes made.");
         }
-        return Ok(true);
-    }
-    if matches!(
-        arg,
-        "--clear-cache" | "--clear-dict-cache" | "--clear-jpdb-cache"
-    ) {
-        let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
-        let count = db.clear_dictionary_cache()?;
-        println!(
-            " ✔ Cleared dictionary cache ({} cached entries purged).",
-            count
-        );
         return Ok(true);
     }
 

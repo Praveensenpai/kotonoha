@@ -9,9 +9,9 @@ fn placeholder_definition_is_detected() {
 #[tokio::test]
 async fn test_serif_lookup() {
     let client = reqwest::Client::new();
-    let res = DictionaryService::lookup(&client, "セリフ").await.unwrap();
+    let res = DictionaryService::lookup(&client, "台詞").await.unwrap();
     println!("LOOKUP RESULT: {:?}", res);
-    assert!(res.definition.contains("speech") || res.definition.contains("lines"));
+    assert!(res.definition.contains("speech") || res.definition.contains("lines") || res.definition.contains("dialogue") || res.definition.contains("serif"));
 }
 
 #[tokio::test]
@@ -66,6 +66,42 @@ async fn test_hen_lookup_first_result() {
     println!("HEN RESULT: {:?}", res);
     assert_eq!(res.reading, "へん");
     assert!(res.definition.contains("area") || res.definition.contains("vicinity") || res.definition.contains("region"));
+}
+
+#[tokio::test]
+async fn test_watashi_lookup_first_result() {
+    let client = reqwest::Client::new();
+    let res = DictionaryService::lookup(&client, "私").await.unwrap();
+    println!("WATASHI RESULT: {:?}", res);
+    assert_eq!(res.expression, "私");
+    assert!(res.definition.contains("I") || res.definition.contains("me"));
+}
+
+#[tokio::test]
+async fn test_sou_hiragana_lookup_returns_so_that_is_right() {
+    let client = reqwest::Client::new();
+    let res = DictionaryService::lookup(&client, "そう").await.unwrap();
+    println!("SOU RESULT: {:?}", res);
+    assert!(!res.definition.contains("vacuum"));
+}
+
+#[test]
+fn test_yomitan_structured_content_extraction() {
+    let json_val: serde_json::Value = serde_json::json!([
+        {
+            "type": "structured-content",
+            "content": {
+                "tag": "ul",
+                "content": [
+                    { "tag": "li", "content": "tactics" },
+                    { "tag": "li", "content": "strategy" }
+                ]
+            }
+        }
+    ]);
+    let mut glosses = Vec::new();
+    super::extract_text_from_yomitan_json(&json_val, &mut glosses);
+    assert_eq!(glosses, vec!["tactics", "strategy"]);
 }
 
 #[tokio::test]

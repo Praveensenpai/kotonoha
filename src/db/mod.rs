@@ -84,6 +84,17 @@ impl Database {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS offline_terms (
+                expression TEXT NOT NULL,
+                reading TEXT NOT NULL,
+                definition TEXT NOT NULL,
+                pitch_accent TEXT NOT NULL,
+                dict_name TEXT NOT NULL,
+                score INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_offline_terms_expr ON offline_terms(expression);
+            CREATE INDEX IF NOT EXISTS idx_offline_terms_reading ON offline_terms(reading);
+
             DELETE FROM dictionary_cache WHERE definition LIKE '%[Noun] serif%' OR definition LIKE '%[Wikipedia definition] Serif%';
             ",
         )?;
@@ -288,11 +299,6 @@ impl Database {
         }
         Ok(())
     }
-
-    pub fn clear_dictionary_cache(&self) -> Result<usize> {
-        let count = self.conn.execute("DELETE FROM dictionary_cache", [])?;
-        Ok(count)
-    }
 }
 
 pub struct SaveMinedCardParams<'a> {
@@ -480,6 +486,101 @@ impl Database {
             params![ttl_minutes as i64],
         )?;
         Ok(deleted)
+    }
+
+    pub fn is_offline_dict_indexed(&self) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM offline_terms",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        Ok(count > 0)
+    }
+
+    pub fn insert_offline_terms_batch(
+        &mut self,
+        terms: &[(String, String, String, String, String, i64)],
+    ) -> Result<usize> {
+        let tx = self.conn.transaction()?;
+        let mut inserted = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO offline_terms (expression, reading, definition, pitch_accent, dict_name, score) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for (expr, reading, def, pitch, dict, score) in terms {
+                stmt.execute(params![expr, reading, def, pitch, dict, score])?;
+                inserted += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(inserted)
+    }
+
+    pub fn query_offline_terms(
+        &self,
+        word: &str,
+        exact_only: bool,
+    ) -> Result<Vec<crate::dict::LookupResult>> {
+        let word_hira = crate::nlp::kata_to_hira(word);
+        let is_short_hiragana = word.chars().all(|c| matches!(c, '\u{3040}'..='\u{309F}')) && word.chars().count() <= 3;
+        let mut stmt = if exact_only {
+            self.conn.prepare(
+                "SELECT expression, reading, definition, pitch_accent FROM offline_terms
+                 WHERE expression = ?1 OR reading = ?1 OR reading = ?2
+                 ORDER BY score DESC LIMIT 10"
+            )?
+        } else if is_short_hiragana {
+            self.conn.prepare(
+                "SELECT expression, reading, definition, pitch_accent FROM offline_terms
+                 WHERE expression = ?1 OR reading = ?1 OR reading = ?2 OR expression LIKE ?3
+                 ORDER BY score DESC LIMIT 10"
+            )?
+        } else {
+            self.conn.prepare(
+                "SELECT expression, reading, definition, pitch_accent FROM offline_terms
+                 WHERE expression = ?1 OR reading = ?1 OR reading = ?2 OR expression LIKE ?3 OR reading LIKE ?3
+                 ORDER BY score DESC LIMIT 10"
+            )?
+        };
+
+        let map_row = |row: &rusqlite::Row<'_>| {
+            Ok(crate::dict::LookupResult {
+                expression: row.get(0)?,
+                reading: row.get(1)?,
+                definition: row.get(2)?,
+                pitch_accent: row.get(3)?,
+            })
+        };
+
+        let like_param = format!("{}%", word);
+        let mut results = Vec::new();
+
+        if exact_only {
+            let rows = stmt.query_map(params![word, word_hira], map_row)?;
+            for r in rows {
+                if let Ok(res) = r {
+                    results.push(res);
+                }
+            }
+        } else {
+            let rows = stmt.query_map(params![word, word_hira, like_param], map_row)?;
+            for r in rows {
+                if let Ok(res) = r {
+                    results.push(res);
+                }
+            }
+        }
+
+        results.sort_by_key(|res| {
+            let is_exact = res.expression == word || res.reading == word || res.reading == word_hira;
+            let is_uk_kana = is_short_hiragana
+                && res.reading == word
+                && res.definition.contains("[")
+                && (res.definition.contains("uk]") || res.definition.contains("uk "));
+            (!is_exact, !is_uk_kana, res.expression != word)
+        });
+
+        Ok(results)
     }
 
     pub fn mark_mined_card_synced(&self, card_id: i64, anki_note_id: i64) -> Result<()> {

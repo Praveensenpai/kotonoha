@@ -416,6 +416,44 @@ fn merge_complex_verb_inflections(tokens: Vec<SpannedToken>) -> Vec<SpannedToken
     merged
 }
 
+fn normalize_subsidiary_verb_lemma(surface: &str, raw_dict: &str, pos_type: &str, _pos_form: &str) -> String {
+    // Benefactive and auxiliary verbs following verb stems (e.g. て-form)
+    // くれる (Ichidan): くれ, くれない, くれれ
+    if surface.starts_with("くれ") && (raw_dict == "くる" || raw_dict == "くれる" || raw_dict == "くれ") {
+        return "くれる".to_string();
+    }
+    // あげる (Ichidan): あげ, あげない
+    if surface.starts_with("あげ") && (raw_dict == "あげる" || raw_dict == "あげ") {
+        return "あげる".to_string();
+    }
+    // もらう (Godan): もら, もらい, もらわない
+    if surface.starts_with("もら") && (raw_dict == "もらう" || raw_dict == "もら") {
+        return "もらう".to_string();
+    }
+    // みる (Ichidan): み, みない
+    if surface == "み" && (raw_dict == "みる" || raw_dict == "み") {
+        return "みる".to_string();
+    }
+    // おく (Godan): おき, おく
+    if (surface == "おき" || surface == "おく") && raw_dict == "おく" {
+        return "おく".to_string();
+    }
+    // しまう (Godan): しまっ, しまい
+    if surface.starts_with("しま") && raw_dict == "しまう" {
+        return "しまう".to_string();
+    }
+    // いく (Godan): いっ, いき
+    if (surface == "いっ" || surface == "いき") && (raw_dict == "いく" || raw_dict == "行きます") {
+        return "いく".to_string();
+    }
+
+    // Generic Ichidan stem normalization (e.g. 下一段 / 上一段 verb stems tagged as non-independent or auxiliary)
+    if (pos_type.contains("下一段") || pos_type.contains("上一段")) && !raw_dict.ends_with('る') {
+        return format!("{}る", raw_dict);
+    }
+
+    raw_dict.to_string()
+}
 
 fn is_imperative_following_text(text: &str) -> bool {
     let following = text.trim_start();
@@ -435,7 +473,8 @@ fn imperative_reading_stem(reading: &str) -> Option<&str> {
 /// godan imperative reading, so prefer the corresponding る-form there.
 fn normalize_ambiguous_imperatives(tokens: &mut [SpannedToken], text: &str) {
     for token in tokens {
-        if imperative_reading_stem(&token.token.reading).is_none()
+        if token.token.dictionary_form == "くれる"
+            || imperative_reading_stem(&token.token.reading).is_none()
             || !token.token.dictionary_form.ends_with("れる")
             || !is_imperative_following_text(text.get(token.end..).unwrap_or_default())
         {
@@ -511,7 +550,6 @@ impl JapaneseTokenizer {
         let mut tokens = Vec::new();
         for node in morphemes.iter() {
             let surface = node.surface().to_string();
-            let dictionary_form = node.dictionary_form().to_string();
             let pos: Vec<String> = node
                 .part_of_speech()
                 .iter()
@@ -520,6 +558,10 @@ impl JapaneseTokenizer {
 
             let pos_category = pos.first().map(|s| s.as_str()).unwrap_or("");
             let pos_sub = pos.get(1).map(|s| s.as_str()).unwrap_or("");
+            let pos_type = pos.get(4).map(|s| s.as_str()).unwrap_or("");
+            let pos_form = pos.get(5).map(|s| s.as_str()).unwrap_or("");
+
+            let dictionary_form = normalize_subsidiary_verb_lemma(&surface, node.dictionary_form(), pos_type, pos_form);
 
             let is_formal_noun = matches!(
                 dictionary_form.as_str(),
@@ -537,12 +579,13 @@ impl JapaneseTokenizer {
                     | "オッ" | "アッ" | "エッ" | "ウッ" | "ハッ" | "フッ" | "ンッ" | "クッ" | "チッ"
             );
 
-            // Filter symbols, interjections, punctuation, particles, numbers
+            // Filter symbols, interjections, punctuation, particles, numbers, and non-independent auxiliary verbs
             let is_symbol_or_junk = (is_audio_grunt
                 || matches!(
                     pos_category,
                     "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞"
-                ) || matches!(pos_sub, "数詞" | "非自立" | "接尾")
+                ) || matches!(pos_sub, "数詞" | "接尾")
+                || pos_sub.contains("非自立")
                 || matches!(
                     dictionary_form.as_str(),
                     "…" | "？"

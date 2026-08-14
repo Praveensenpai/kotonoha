@@ -1,5 +1,7 @@
 use anyhow::Result;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LookupResult {
@@ -347,181 +349,19 @@ impl DictionaryService {
     }
 
     async fn lookup_internal(
-        client: &reqwest::Client,
+        _client: &reqwest::Client,
         word: &str,
         exact_only: bool,
-        max_senses: usize,
-        max_glosses: usize,
+        _max_senses: usize,
+        _max_glosses: usize,
     ) -> Result<LookupResult> {
-        let url = format!("https://jisho.org/api/v1/search/words?keyword={}", urlencoding::encode(word));
-        let resp = client.get(&url).header("User-Agent", "kotonoha/0.0.1").send().await?;
-
-        if resp.status().is_success() {
-            let json: serde_json::Value = resp.json().await?;
-            if let Some(items) = json["data"].as_array() {
-                let word_hira = crate::nlp::kata_to_hira(word);
-                let exact_entries: Vec<&serde_json::Value> = items.iter().filter(|entry| {
-                    entry["japanese"].as_array().is_some_and(|forms| {
-                        forms.iter().any(|j| {
-                            let w_str = j["word"].as_str().unwrap_or("");
-                            let r_str = j["reading"].as_str().unwrap_or("");
-                            let is_exact = w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira;
-                            let is_kanji_stem_match = !w_str.is_empty()
-                                && word.chars().count() >= 2
-                                && w_str.chars().count() >= 2
-                                && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>()
-                                && (w_str.chars().count() as i32 - word.chars().count() as i32).abs() <= 1;
-                            is_exact || is_kanji_stem_match
-                        })
-                    })
-                }).collect();
-
-                if exact_only && exact_entries.is_empty() {
-                    return Ok(LookupResult {
-                        expression: word.to_string(),
-                        reading: word.to_string(),
-                        definition: "No dictionary definition found".to_string(),
-                        pitch_accent: "LH".to_string(),
-                    });
-                }
-
-                let candidates = if exact_entries.is_empty() { items.iter().collect() } else { exact_entries };
-                let best_entry = candidates
-                    .into_iter()
-                    .rev()
-                    .max_by_key(|entry| {
-                        let mut score: i32 = 0;
-                        let is_common = entry["is_common"].as_bool().unwrap_or(false);
-                        if is_common {
-                            score += 20;
-                        }
-
-                        let mut exact_match = false;
-                        let mut has_kanji_form = false;
-                        let mut min_len_diff = 1000;
-
-                        if let Some(jap_arr) = entry["japanese"].as_array() {
-                            for j in jap_arr {
-                                let w_str = j["word"].as_str().unwrap_or("");
-                                let r_str = j["reading"].as_str().unwrap_or("");
-                                let is_exact = w_str == word || r_str == word || crate::nlp::kata_to_hira(r_str) == word_hira;
-                                let is_kanji_stem_match = !w_str.is_empty()
-                                    && word.chars().count() >= 2
-                                    && w_str.chars().count() >= 2
-                                    && w_str.chars().take(2).collect::<String>() == word.chars().take(2).collect::<String>()
-                                    && (w_str.chars().count() as i32 - word.chars().count() as i32).abs() <= 1;
-
-                                if is_exact || is_kanji_stem_match {
-                                    exact_match = true;
-                                }
-
-                                let w_len = if !w_str.is_empty() { w_str.chars().count() } else { r_str.chars().count() };
-                                let word_len = word.chars().count();
-                                let diff = (w_len as i32 - word_len as i32).abs();
-                                if diff < min_len_diff {
-                                    min_len_diff = diff;
-                                }
-
-                                if w_str.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}')) {
-                                    has_kanji_form = true;
-                                }
-                            }
-                        }
-
-                        if exact_match {
-                            score += 100;
-                        }
-                        if has_kanji_form {
-                            score += 30;
-                        }
-                        score -= min_len_diff * 10;
-
-                        if let Some(senses) = entry["senses"].as_array() {
-                            let is_only_wiki = senses.iter().all(|s| {
-                                s["parts_of_speech"]
-                                    .as_array()
-                                    .and_then(|a| a.first())
-                                    .and_then(|v| v.as_str())
-                                    == Some("Wikipedia definition")
-                            });
-                            if is_only_wiki {
-                                score -= 100;
-                            }
-
-                            // Penalize single-word definitions that look like obscure typography loanwords
-                            if senses.len() == 1 {
-                                if let Some(english) = senses[0]["english_definitions"].as_array() {
-                                    if english.len() == 1 {
-                                        let def_str = english[0].as_str().unwrap_or("").to_lowercase();
-                                        if def_str == "serif" || def_str == word.to_lowercase() {
-                                            score -= 40;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        score
-                    });
-
-                if let Some(data) = best_entry {
-                    let reading = data["japanese"].as_array()
-                        .and_then(|forms| forms.iter().find(|j| {
-                            j["word"].as_str() == Some(word) || j["reading"].as_str() == Some(word)
-                        }).or_else(|| forms.first()))
-                        .and_then(|j| j["reading"].as_str())
-                        .unwrap_or(word)
-                        .to_string();
-
-                    let mut defs = Vec::new();
-                    if let Some(senses) = data["senses"].as_array() {
-                        let mut num = 1;
-                        for sense in senses {
-                            if num > max_senses {
-                                break;
-                            }
-
-                            let pos_str = sense["parts_of_speech"]
-                                .as_array()
-                                .and_then(|a| a.first())
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Vocab");
-
-                            if pos_str == "Wikipedia definition" {
-                                continue;
-                            }
-
-                            if let Some(defs_arr) = sense["english_definitions"].as_array() {
-                                let def_list: Vec<&str> = defs_arr
-                                    .iter()
-                                    .filter_map(|d| d.as_str())
-                                    .take(max_glosses)
-                                    .collect();
-                                if !def_list.is_empty() {
-                                    defs.push(format!("{}. [{}] {}", num, pos_str, def_list.join(", ")));
-                                    num += 1;
-                                }
-                            }
-                        }
+        let cfg = crate::config::AppConfig::load().ok();
+        if let Some(c) = cfg {
+            if let Ok(db) = crate::db::Database::open(&c.db_path) {
+                if let Ok(offline) = db.query_offline_terms(word, exact_only) {
+                    if let Some(first) = offline.into_iter().next() {
+                        return Ok(first);
                     }
-
-                    let definition = defs.join("\n│                 ");
-
-                    if definition.is_empty() {
-                        return Ok(LookupResult {
-                            expression: word.to_string(),
-                            reading,
-                            definition: "No dictionary definition found".to_string(),
-                            pitch_accent: "LH".to_string(),
-                        });
-                    }
-
-                    return Ok(LookupResult {
-                        expression: word.to_string(),
-                        reading,
-                        definition,
-                        pitch_accent: "LH".to_string(),
-                    });
                 }
             }
         }
@@ -645,6 +485,131 @@ impl DictionaryService {
         Ok(results)
     }
 
+    pub async fn ensure_offline_dictionaries_ready(
+        client: &reqwest::Client,
+        db: &mut crate::db::Database,
+    ) -> Result<()> {
+        if db.is_offline_dict_indexed().unwrap_or(false) {
+            return Ok(());
+        }
+
+        let dict_dir = dirs::config_dir()
+            .map(|p| p.join("kotonoha").join("dicts"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".config/kotonoha/dicts"));
+        std::fs::create_dir_all(&dict_dir)?;
+
+        let jmdict_path = dict_dir.join("JMdict_english.zip");
+        let pitch_path = dict_dir.join("kanjium_pitch_accents.zip");
+
+        let jmdict_url = "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip";
+
+        if !jmdict_path.exists() {
+            println!(" 📥 Downloading offline bilingual dictionary (JMdict ~15 MB)...");
+            if let Err(e) = download_file_with_progress(client, jmdict_url, &jmdict_path).await {
+                eprintln!(" ⚠️ Dictionary download warning: {}", e);
+            }
+        }
+
+        println!(" ⚡ Indexing offline Yomitan dictionaries into local SQLite database...");
+        let mut all_terms = Vec::new();
+        let mut pitch_map: std::collections::HashMap<(String, String), String> = std::collections::HashMap::new();
+
+        // Parse Pitch Accents
+        if pitch_path.exists() {
+            if let Ok(file) = std::fs::File::open(&pitch_path) {
+                if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                    for i in 0..archive.len() {
+                        if let Ok(mut zip_file) = archive.by_index(i) {
+                            let name = zip_file.name().to_string();
+                            if name.starts_with("term_meta_bank_") && name.ends_with(".json") {
+                                let mut contents = String::new();
+                                if zip_file.read_to_string(&mut contents).is_ok() {
+                                    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&contents) {
+                                        for entry in arr {
+                                            if let Some(item_arr) = entry.as_array() {
+                                                if item_arr.len() >= 3 {
+                                                    let expr = item_arr[0].as_str().unwrap_or("").to_string();
+                                                    let tag = item_arr[1].as_str().unwrap_or("");
+                                                    if tag == "pitch" {
+                                                        let pitch_data = &item_arr[2];
+                                                        let reading = pitch_data["reading"].as_str().unwrap_or(&expr).to_string();
+                                                        let pos = pitch_data["pitches"].as_array()
+                                                            .and_then(|a| a.first())
+                                                            .and_then(|p| p["position"].as_u64())
+                                                            .unwrap_or(0) as usize;
+                                                        let label = match pos {
+                                                            0 => "Heiban [0]".to_string(),
+                                                            1 => "Atamadaka [1]".to_string(),
+                                                            n => format!("Nakadaka [{}]", n),
+                                                        };
+                                                        pitch_map.insert((expr, reading), label);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Parse JMdict terms
+        if jmdict_path.exists() {
+            if let Ok(file) = std::fs::File::open(&jmdict_path) {
+                if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                    for i in 0..archive.len() {
+                        if let Ok(mut zip_file) = archive.by_index(i) {
+                            let name = zip_file.name().to_string();
+                            if name.starts_with("term_bank_") && name.ends_with(".json") {
+                                let mut contents = String::new();
+                                if zip_file.read_to_string(&mut contents).is_ok() {
+                                    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&contents) {
+                                        for entry in arr {
+                                            if let Some(item_arr) = entry.as_array() {
+                                                if item_arr.len() >= 6 {
+                                                    let expr = item_arr[0].as_str().unwrap_or("").to_string();
+                                                    let reading = item_arr[1].as_str().unwrap_or("").to_string();
+                                                    let pos_tag = item_arr[2].as_str().unwrap_or("Vocab");
+                                                    if pos_tag == "forms" || pos_tag.contains("forms") {
+                                                         continue;
+                                                    }
+                                                    let score = item_arr[4].as_i64().unwrap_or(0);
+                                                    
+                                                    let mut glosses = Vec::new();
+                                                    extract_text_from_yomitan_json(&item_arr[5], &mut glosses);
+
+                                                    if !glosses.is_empty() {
+                                                        let def = format!("1. [{}] {}", pos_tag, glosses.join(", "));
+                                                        let pitch = pitch_map.get(&(expr.clone(), reading.clone()))
+                                                            .or_else(|| pitch_map.get(&(expr.clone(), expr.clone())))
+                                                            .cloned()
+                                                            .unwrap_or_else(|| "LH".to_string());
+
+                                                        all_terms.push((expr, reading, def, pitch, "JMdict".to_string(), score));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !all_terms.is_empty() {
+            let inserted = db.insert_offline_terms_batch(&all_terms)?;
+            println!(" ✨ Successfully indexed {} offline vocabulary terms into local SQLite (< 1ms queries)!", inserted);
+        }
+
+        Ok(())
+    }
+
     pub async fn lookup_all_candidates_cached(
         client: &reqwest::Client,
         db: Option<&crate::db::Database>,
@@ -653,6 +618,11 @@ impl DictionaryService {
         max_glosses: usize,
     ) -> Result<Vec<LookupResult>> {
         if let Some(db_inst) = db {
+            if let Ok(offline) = db_inst.query_offline_terms(word, false) {
+                if !offline.is_empty() {
+                    return Ok(offline);
+                }
+            }
             if let Ok(Some(cached)) = db_inst.get_cached_candidates(word) {
                 if !cached.is_empty() {
                     return Ok(cached);
@@ -668,6 +638,69 @@ impl DictionaryService {
         }
 
         Ok(results)
+    }
+}
+
+async fn download_file_with_progress(
+    client: &reqwest::Client,
+    url: &str,
+    target_path: &std::path::Path,
+) -> Result<()> {
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        anyhow::bail!("Failed to download file from {}: {}", url, resp.status());
+    }
+
+    let total_size = resp.content_length().unwrap_or(0);
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")?
+            .progress_chars("#>-"),
+    );
+
+    let bytes = resp.bytes().await?;
+    pb.finish_with_message("Download complete");
+
+    std::fs::write(target_path, bytes)?;
+    Ok(())
+}
+
+fn extract_text_from_yomitan_json(v: &serde_json::Value, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::String(s) => {
+            let s_trim = s.trim();
+            if !s_trim.is_empty()
+                && !s_trim.starts_with("forms ")
+                && !s_trim.starts_with("see ")
+                && s_trim != "⟶"
+            {
+                out.push(s_trim.to_string());
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                extract_text_from_yomitan_json(item, out);
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            if let Some(data) = obj.get("data") {
+                if let Some(c) = data.get("content").and_then(|c| c.as_str()) {
+                    if c == "forms" {
+                        return;
+                    }
+                }
+            }
+            if let Some(t) = obj.get("type").and_then(|t| t.as_str()) {
+                if t == "forms" {
+                    return;
+                }
+            }
+            if let Some(content) = obj.get("content") {
+                extract_text_from_yomitan_json(content, out);
+            }
+        }
+        _ => {}
     }
 }
 
