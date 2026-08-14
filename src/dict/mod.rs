@@ -217,6 +217,55 @@ impl DictionaryService {
             return Ok(res);
         }
 
+        let grammar_direct_fallbacks = [
+            ("だけで", "だけ"),
+            ("についての", "について"),
+            ("につきまして", "について"),
+            ("に関する", "に関して"),
+            ("にかんして", "に関して"),
+            ("による", "によって"),
+            ("により", "によって"),
+            ("によっては", "によって"),
+            ("における", "において"),
+            ("にあたり", "にあたって"),
+            ("にわたり", "にわたって"),
+            ("にわたる", "にわたって"),
+            ("をはじめとする", "をはじめ"),
+            ("をつうじて", "を通じて"),
+            ("を通して", "を通じて"),
+            ("をとおして", "を通じて"),
+            ("にもとづいて", "に基づいて"),
+            ("に基づく", "に基づいて"),
+            ("と共に", "とともに"),
+            ("にはんして", "に反して"),
+            ("をこめて", "を込めて"),
+            ("に関わらず", "にかかわらず"),
+            ("にさきだって", "に先立って"),
+            ("を基に", "をもとに"),
+            ("を契機に", "をきっかけに"),
+            ("にかけては", "にかける"),
+            ("に応えて", "に答えて"),
+            ("にそって", "に沿って"),
+            ("にそくして", "に即して"),
+        ];
+
+        for (target, fallback_word) in grammar_direct_fallbacks {
+            if word == target {
+                if let Ok(fallback_res) = Self::lookup_internal(client, fallback_word, true, max_senses, max_glosses).await {
+                    if !is_placeholder_definition(&fallback_res.definition)
+                        && fallback_res.definition != "No dictionary definition found"
+                    {
+                        return Ok(LookupResult {
+                            expression: word.to_string(),
+                            reading: fallback_res.reading,
+                            definition: fallback_res.definition,
+                            pitch_accent: fallback_res.pitch_accent,
+                        });
+                    }
+                }
+            }
+        }
+
         let complex_fallbacks = [
             ("させられる", "る"),
             ("せられる", "る"),

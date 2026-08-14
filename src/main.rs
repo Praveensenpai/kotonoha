@@ -196,26 +196,160 @@ async fn main() -> Result<()> {
         style(format!("{} Unknown Words", file_unknown.len())).red().bold(),
     );
 
-    let candidates_to_process: Vec<_> = candidates.into_iter().take(cfg.default_card_limit).collect();
+    let session_mode = TerminalUi::select_session_mode(candidates.len(), known_lines_count)?;
+
+    let all_candidates: Vec<_> = match session_mode {
+        ui::SessionMode::Exit => {
+            println!(" 🚪 Exiting kotonoha.");
+            return Ok(());
+        }
+        ui::SessionMode::MineI1Candidates => candidates,
+        ui::SessionMode::ReviewKnownLines => {
+            let mode_tokenizer = JapaneseTokenizer::new()?;
+            let mut known_candidates = Vec::new();
+            let mut seen_words = std::collections::HashSet::new();
+
+            for sub in &sentences {
+                if sub.text.chars().count() < 4 {
+                    continue;
+                }
+                if let Ok(tokens) = mode_tokenizer.tokenize(&sub.text) {
+                    let mut unknown_words = Vec::new();
+                    let mut known_context = Vec::new();
+                    let mut ignored_context = Vec::new();
+                    let mut target = None;
+                    let mut reading = None;
+
+                    for t in &tokens {
+                        let dict_form = &t.dictionary_form;
+                        if ignored_words.contains(dict_form) {
+                            let entry = format!("{} (Ignored)", dict_form);
+                            if !ignored_context.contains(&entry) {
+                                ignored_context.push(entry);
+                            }
+                            continue;
+                        }
+                        if t.is_proper_noun {
+                            let entry = format!("{} (Name)", dict_form);
+                            if !ignored_context.contains(&entry) {
+                                ignored_context.push(entry);
+                            }
+                            continue;
+                        }
+                        if !t.is_content_word {
+                            if matches!(dict_form.as_str(), "ちゃん" | "さん" | "君" | "様" | "殿" | "氏" | "たん" | "先輩") {
+                                let entry = format!("{} (Suffix)", dict_form);
+                                if !ignored_context.contains(&entry) {
+                                    ignored_context.push(entry);
+                                }
+                            }
+                            continue;
+                        }
+                        if known_words.contains(dict_form) {
+                            if !known_context.contains(dict_form) {
+                                known_context.push(dict_form.clone());
+                            }
+                            if target.is_none() && !seen_words.contains(dict_form) {
+                                target = Some(dict_form.clone());
+                                reading = Some(t.reading.clone());
+                            }
+                        } else {
+                            unknown_words.push(dict_form.clone());
+                        }
+                    }
+
+                    if unknown_words.is_empty() {
+                        if let Some(target_word) = target {
+                            seen_words.insert(target_word.clone());
+                            let target_reading = reading.unwrap_or_else(|| target_word.clone());
+                            let rank = jpdb_list.ranks.get(&target_word).copied();
+                            known_candidates.push(miner::CandidateSentence {
+                                sentence: sub.clone(),
+                                target_word,
+                                target_reading,
+                                known_context_words: known_context,
+                                unknown_context_words: Vec::new(),
+                                ignored_context_words: ignored_context,
+                                jpdb_rank: rank,
+                                score: 0.0,
+                            });
+                        }
+                    }
+                }
+            }
+            known_candidates
+        }
+    };
+
+    if all_candidates.is_empty() {
+        println!(" ℹ No candidate sentences available for this mode.");
+        return Ok(());
+    }
+
+    let batch_size = cfg.default_card_limit.max(1);
+    let total_all_candidates = all_candidates.len();
+    let batch_chunks: Vec<Vec<_>> = all_candidates.chunks(batch_size).map(|c| c.to_vec()).collect();
+    let total_batches = batch_chunks.len();
 
     let http_client = std::sync::Arc::new(reqwest::Client::new());
+    let mut mined_count = 0;
+    let mut known_count = 0;
+    let mut skipped_count = 0;
+    let mut ignored_count = 0;
+    let mut user_quit = false;
+
+    for (batch_idx, candidates_to_process) in batch_chunks.into_iter().enumerate() {
+        if user_quit {
+            break;
+        }
+
+        let remaining_lines = total_all_candidates.saturating_sub((batch_idx + 1) * batch_size);
+        if total_batches > 1 {
+            println!(
+                "\n 📦 Processing Batch {}/{} ({} candidates in batch, {} lines remaining)...",
+                batch_idx + 1,
+                total_batches,
+                candidates_to_process.len(),
+                remaining_lines
+            );
+        }
 
     let ai_start = std::time::Instant::now();
+    let _ = db.clean_expired_ai_cache(cfg.ai_cache_ttl_minutes);
+
+    let mut cached_ai_results = Vec::new();
+    let mut uncached_card_targets = Vec::new();
+
+    if cfg.enable_ai {
+        for (idx, cand) in candidates_to_process.iter().enumerate() {
+            if let Ok(Some(cached_res)) = db.get_cached_ai_analysis(
+                &cand.sentence.text,
+                &cand.target_word,
+                &cfg.gemini_model,
+                idx,
+                cfg.ai_cache_ttl_minutes,
+            ) {
+                cached_ai_results.push(cached_res);
+            } else {
+                uncached_card_targets.push((
+                    idx,
+                    cand.sentence.text.clone(),
+                    cand.target_word.clone(),
+                    cand.target_reading.clone(),
+                ));
+            }
+        }
+    }
 
     // Spawn Gemini AI Context Analysis in the background upfront
-    let ai_task_handle = if cfg.enable_ai {
+    let ai_task_handle = if cfg.enable_ai && !uncached_card_targets.is_empty() {
         if let Some(ref api_key) = cfg.gemini_api_key {
             let api_key = api_key.clone();
             let model = cfg.gemini_model.clone();
             let client = std::sync::Arc::clone(&http_client);
             let max_senses = cfg.max_definition_senses;
             let max_glosses = cfg.max_glosses_per_sense;
-
-            let card_targets: Vec<(usize, String, String, String)> = candidates_to_process
-                .iter()
-                .enumerate()
-                .map(|(idx, cand)| (idx, cand.sentence.text.clone(), cand.target_word.clone(), cand.target_reading.clone()))
-                .collect();
+            let card_targets = uncached_card_targets.clone();
             let cfg_ai_batch_size = cfg.ai_batch_size;
 
             Some(tokio::spawn(async move {
@@ -395,34 +529,53 @@ async fn main() -> Result<()> {
     }
 
     // Step 4: Collect / Await Background Gemini AI Results
+    let cached_count_ai = cached_ai_results.len();
     let ai_results_map: HashMap<usize, ai::AiAnalysisResult> = match ai_task_handle {
         Some(handle) => {
             println!(" 🤖 [4/4] Gemini AI Context Analysis ({}) ...", cfg.gemini_model);
             match handle.await {
-                Ok(Ok(results)) => {
+                Ok(Ok(fresh_results)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
-                    println!(" ✔ Gemini AI analysis ready ({} card(s) processed in {:.2}s).\n", results.len(), elapsed);
-                    results.into_iter().map(|r| (r.card_index, r)).collect()
+                    println!(
+                        " ✔ Gemini AI analysis ready ({} from cache, {} fetched from API in {:.2}s).\n",
+                        cached_count_ai,
+                        fresh_results.len(),
+                        elapsed
+                    );
+
+                    for res in &fresh_results {
+                        let cand = &candidates_to_process[res.card_index];
+                        let _ = db.cache_ai_analysis(&cand.sentence.text, &cand.target_word, &cfg.gemini_model, res);
+                    }
+
+                    let mut merged = cached_ai_results;
+                    merged.extend(fresh_results);
+                    merged.into_iter().map(|r| (r.card_index, r)).collect()
                 }
                 Ok(Err(e)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
                     eprintln!(" ⚠️ Gemini AI batch analysis failed after {:.2}s: {e}\n", elapsed);
-                    HashMap::new()
+                    cached_ai_results.into_iter().map(|r| (r.card_index, r)).collect()
                 }
                 Err(e) => {
                     eprintln!(" ⚠️ Gemini AI task join error: {e}\n");
-                    HashMap::new()
+                    cached_ai_results.into_iter().map(|r| (r.card_index, r)).collect()
                 }
             }
         }
-        None => HashMap::new(),
+        None => {
+            if cached_count_ai > 0 {
+                let elapsed = ai_start.elapsed().as_secs_f64();
+                println!(
+                    " ✔ Gemini AI analysis ready (all {} card(s) loaded from cache in {:.2}s).\n",
+                    cached_count_ai, elapsed
+                );
+            }
+            cached_ai_results.into_iter().map(|r| (r.card_index, r)).collect()
+        }
     };
 
-    let mut mined_count = 0;
-    let mut known_count = 0;
-    let mut skipped_count = 0;
-    let mut ignored_count = 0;
-    let total_cards = candidates_to_process.len();
+        let total_cards = candidates_to_process.len();
 
     for (idx, cand) in candidates_to_process.iter().enumerate() {
         TerminalUi::render_progress(idx + 1, total_cards, mined_count, known_count, skipped_count, ignored_count);
@@ -539,6 +692,7 @@ async fn main() -> Result<()> {
             definition: &dict_info.definition,
             known_context: &cand.known_context_words,
             unknown_context: &cand.unknown_context_words,
+            ignored_context: &cand.ignored_context_words,
             ai_warning: ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
             translations: translations_tuple,
         });
@@ -550,7 +704,6 @@ async fn main() -> Result<()> {
             None
         };
 
-        let mut user_quit = false;
         loop {
             let action = TerminalUi::ask_action()?;
 
@@ -591,6 +744,7 @@ async fn main() -> Result<()> {
                         definition: &dict_info.definition,
                         known_context: &cand.known_context_words,
                         unknown_context: &cand.unknown_context_words,
+                        ignored_context: &cand.ignored_context_words,
                         ai_warning: ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
                         translations: translations_tuple,
                     });
@@ -637,6 +791,7 @@ async fn main() -> Result<()> {
                         definition: &dict_info.definition,
                         known_context: &cand.known_context_words,
                         unknown_context: &cand.unknown_context_words,
+                        ignored_context: &cand.ignored_context_words,
                         ai_warning: ai_analysis.as_ref().and_then(|r| r.parsing_warning.as_deref()),
                         translations: translations_tuple,
                     });
@@ -691,6 +846,11 @@ async fn main() -> Result<()> {
                     println!(" 🧠 Target word marked as known!");
                     break;
                 }
+                'u' => {
+                    let _ = db.remove_known_words(std::slice::from_ref(&cand.target_word));
+                    println!(" 🔓 Target word unmarked as known (moved back to unknown)!");
+                    break;
+                }
                 'i' => {
                     let _ = db.add_ignored_word(&cand.target_word);
                     ignored_count += 1;
@@ -718,6 +878,19 @@ async fn main() -> Result<()> {
             break;
         }
     }
+
+    if user_quit {
+        break;
+    }
+
+    if batch_idx + 1 < total_batches {
+        let next_batch_num = batch_idx + 2;
+        if !TerminalUi::ask_next_batch(next_batch_num, total_batches, remaining_lines)? {
+            println!(" 🚪 Finishing mining session after Batch {}/{}.", batch_idx + 1, total_batches);
+            break;
+        }
+    }
+}
 
     println!("\n🎉 Mining session finished! Mined {} cards.\n", mined_count);
 

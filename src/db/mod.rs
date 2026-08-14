@@ -74,6 +74,16 @@ impl Database {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS ai_analysis_cache (
+                cache_key TEXT PRIMARY KEY,
+                english_natural TEXT,
+                english_literal TEXT,
+                kannada_natural TEXT,
+                kannada_literal TEXT,
+                parsing_warning TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             DELETE FROM dictionary_cache WHERE definition LIKE '%[Noun] serif%' OR definition LIKE '%[Wikipedia definition] Serif%';
             ",
         )?;
@@ -397,6 +407,79 @@ impl Database {
             params![eng_nat, eng_lit, kan_nat, kan_lit, card_id],
         )?;
         Ok(())
+    }
+
+    pub fn get_cached_ai_analysis(
+        &self,
+        sentence: &str,
+        target_word: &str,
+        model: &str,
+        card_index: usize,
+        ttl_minutes: usize,
+    ) -> Result<Option<crate::ai::AiAnalysisResult>> {
+        if ttl_minutes == 0 {
+            return Ok(None);
+        }
+        let key = format!("{}:{}:{}", sentence, target_word, model);
+        let query = "
+            SELECT english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning
+            FROM ai_analysis_cache
+            WHERE cache_key = ?1 AND updated_at >= datetime('now', printf('-%d minutes', ?2))
+        ";
+        let mut stmt = self.conn.prepare(query)?;
+        let mut rows = stmt.query(params![key, ttl_minutes as i64])?;
+
+        if let Some(row) = rows.next()? {
+            let res = crate::ai::AiAnalysisResult {
+                card_index,
+                recommended_candidate_index: None,
+                recommended_sense_index: None,
+                custom_definition_suggestion: None,
+                explanation: None,
+                english_natural: row.get(0)?,
+                english_literal: row.get(1)?,
+                kannada_natural: row.get(2)?,
+                kannada_literal: row.get(3)?,
+                parsing_warning: row.get(4)?,
+            };
+            return Ok(Some(res));
+        }
+
+        Ok(None)
+    }
+
+    pub fn cache_ai_analysis(
+        &self,
+        sentence: &str,
+        target_word: &str,
+        model: &str,
+        res: &crate::ai::AiAnalysisResult,
+    ) -> Result<()> {
+        let key = format!("{}:{}:{}", sentence, target_word, model);
+        self.conn.execute(
+            "INSERT OR REPLACE INTO ai_analysis_cache (cache_key, english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)",
+            params![
+                key,
+                res.english_natural.as_deref(),
+                res.english_literal.as_deref(),
+                res.kannada_natural.as_deref(),
+                res.kannada_literal.as_deref(),
+                res.parsing_warning.as_deref()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn clean_expired_ai_cache(&self, ttl_minutes: usize) -> Result<usize> {
+        if ttl_minutes == 0 {
+            let deleted = self.conn.execute("DELETE FROM ai_analysis_cache", [])?;
+            return Ok(deleted);
+        }
+        let deleted = self.conn.execute(
+            "DELETE FROM ai_analysis_cache WHERE updated_at < datetime('now', printf('-%d minutes', ?1))",
+            params![ttl_minutes as i64],
+        )?;
+        Ok(deleted)
     }
 
     pub fn mark_mined_card_synced(&self, card_id: i64, anki_note_id: i64) -> Result<()> {

@@ -6,6 +6,10 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Sudachi](https://img.shields.io/badge/NLP-sudachi.rs-pink.svg)](https://github.com/WorksApplications/sudachi.rs)
 
+> [!WARNING]
+> **🚧 Project Status: Active Beta / Under Heavy Development**
+> `kotonoha` is currently in early active development (Beta). Features, tokenization rules, and sentence mining logic are actively evolving and not yet fully stable for production use. Expect bugs or incomplete functionality during this initial beta phase.
+
 `kotonoha` is a high-performance terminal utility that scans Japanese anime subtitle files (`.srt` / `.ass`) and video files (`.mkv` / `.mp4`), extracts $i+1$ candidate sentences (sentences containing **exactly one unknown vocabulary word**), renders an interactive TUI card preview with definitions & audio snippets, and saves mined cards to a local SQLite database or Anki.
 
 ---

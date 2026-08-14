@@ -248,6 +248,62 @@ fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<Sp
 
 fn merge_grammar_expressions(mut tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
     const GRAMMAR_PATTERNS: &[&str] = &[
+        "だって",
+        "だけど",
+        "だから",
+        "なのに",
+        "けれども",
+        "ですが",
+        "だけで",
+        "について",
+        "についての",
+        "につきまして",
+        "に関して",
+        "にかんして",
+        "に関する",
+        "によって",
+        "により",
+        "による",
+        "によっては",
+        "において",
+        "における",
+        "にあたって",
+        "にあたり",
+        "にわたって",
+        "にわたり",
+        "にわたる",
+        "をはじめ",
+        "をはじめとする",
+        "を通じて",
+        "をつうじて",
+        "を通して",
+        "をとおして",
+        "に基づいて",
+        "にもとづいて",
+        "に基づく",
+        "とともに",
+        "と共に",
+        "にしては",
+        "に反して",
+        "にはんして",
+        "を込めて",
+        "をこめて",
+        "にかかわらず",
+        "に関わらず",
+        "に先立って",
+        "にさきだって",
+        "をもとに",
+        "を基に",
+        "をきっかけに",
+        "を契機に",
+        "にかける",
+        "にかけては",
+        "に答えて",
+        "に応えて",
+        "に沿って",
+        "にそって",
+        "に即して",
+        "にそくして",
         "わけにはいかない",
         "わけにはいかぬ",
         "わけにはいかん",
@@ -465,11 +521,28 @@ impl JapaneseTokenizer {
             let pos_category = pos.first().map(|s| s.as_str()).unwrap_or("");
             let pos_sub = pos.get(1).map(|s| s.as_str()).unwrap_or("");
 
+            let is_formal_noun = matches!(
+                dictionary_form.as_str(),
+                "こと" | "もの" | "やつ" | "ため" | "ところ" | "わけ" | "はず" | "つもり"
+            );
+
+            let is_conjunction_particle = matches!(
+                dictionary_form.as_str(),
+                "だって" | "だけど" | "だから" | "なのに" | "けれど" | "けれども" | "でも" | "しかし" | "ただし" | "なお" | "ちなみに" | "および" | "ならびに"
+            );
+
+            let is_audio_grunt = matches!(
+                dictionary_form.as_str(),
+                "おっ" | "あっ" | "えっ" | "うっ" | "はっ" | "ふっ" | "んっ" | "くっ" | "ちっ" | "つっ"
+                    | "オッ" | "アッ" | "エッ" | "ウッ" | "ハッ" | "フッ" | "ンッ" | "クッ" | "チッ"
+            );
+
             // Filter symbols, interjections, punctuation, particles, numbers
-            let is_symbol_or_junk = matches!(
-                pos_category,
-                "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞"
-            ) || matches!(pos_sub, "数詞" | "非自立" | "接尾")
+            let is_symbol_or_junk = (is_audio_grunt
+                || matches!(
+                    pos_category,
+                    "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞"
+                ) || matches!(pos_sub, "数詞" | "非自立" | "接尾")
                 || matches!(
                     dictionary_form.as_str(),
                     "…" | "？"
@@ -487,14 +560,12 @@ impl JapaneseTokenizer {
                         | "の"
                         | "ん"
                         | "よう"
-                        | "こと"
-                        | "もの"
                         | "あ"
                         | "え"
                         | "お"
                         | "う"
                         | "い"
-                );
+                )) && !is_formal_noun && !is_conjunction_particle;
 
             let has_japanese_char = dictionary_form.chars().any(|c| {
                 matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FFF}')
@@ -507,10 +578,12 @@ impl JapaneseTokenizer {
                     .chars()
                     .all(|c| matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}'));
 
-            let is_content_word = matches!(
+            let is_content_word = (matches!(
                 pos_category,
-                "名詞" | "代名詞" | "接頭辞" | "動詞" | "形容詞" | "形状詞" | "副詞" | "連体詞"
-            ) && !is_symbol_or_junk
+                "名詞" | "代名詞" | "接頭辞" | "動詞" | "形容詞" | "形状詞" | "副詞" | "連体詞" | "接続詞"
+            ) || is_formal_noun
+                || is_conjunction_particle)
+                && !is_symbol_or_junk
                 && has_japanese_char
                 && !is_single_kana;
 
@@ -558,6 +631,7 @@ impl JapaneseTokenizer {
             }
         }
 
+        normalize_colloquial_greetings(&mut normalized_tokens);
         normalize_ambiguous_imperatives(&mut normalized_tokens, text);
         normalize_explanatory_nan(&mut normalized_tokens, text);
         let normalized_tokens = merge_fixed_expression(normalized_tokens, "よりにもよって");
@@ -566,6 +640,42 @@ impl JapaneseTokenizer {
         let normalized_tokens = merge_complex_verb_inflections(normalized_tokens);
         let normalized_tokens = merge_adverb_naru(normalized_tokens);
         Ok(merge_colloquial_small_tsu(normalized_tokens))
+    }
+}
+
+fn normalize_colloquial_greetings(tokens: &mut Vec<SpannedToken>) {
+    let mut i = 0;
+    while i < tokens.len() {
+        let is_ok_prefix = tokens[i].token.surface == "おっ" || tokens[i].token.surface == "お";
+        if is_ok_prefix && i + 1 < tokens.len() {
+            let next_surf = &tokens[i + 1].token.surface;
+            if next_surf.starts_with("はよ") || next_surf.starts_with("はよう") {
+                let combined_surface = format!("{}{}", tokens[i].token.surface, next_surf);
+                tokens[i].token.surface = combined_surface;
+                tokens[i].token.dictionary_form = "おはよう".to_string();
+                tokens[i].token.reading = "おはよう".to_string();
+                tokens[i].token.is_content_word = true;
+                tokens[i].end = tokens[i + 1].end;
+                tokens.remove(i + 1);
+            } else if next_surf == "は" && i + 2 < tokens.len() && tokens[i + 2].token.surface.starts_with('よ') {
+                let combined_surface = format!("{}{}{}", tokens[i].token.surface, tokens[i + 1].token.surface, tokens[i + 2].token.surface);
+                tokens[i].token.surface = combined_surface;
+                tokens[i].token.dictionary_form = "おはよう".to_string();
+                tokens[i].token.reading = "おはよう".to_string();
+                tokens[i].token.is_content_word = true;
+                tokens[i].end = tokens[i + 2].end;
+                tokens.remove(i + 2);
+                tokens.remove(i + 1);
+            } else if next_surf == "す" && tokens[i].token.surface == "おっ" {
+                tokens[i].token.surface = "おっす".to_string();
+                tokens[i].token.dictionary_form = "おっす".to_string();
+                tokens[i].token.reading = "おっす".to_string();
+                tokens[i].token.is_content_word = false;
+                tokens[i].end = tokens[i + 1].end;
+                tokens.remove(i + 1);
+            }
+        }
+        i += 1;
     }
 }
 
@@ -728,5 +838,64 @@ mod tests {
             .unwrap();
 
         assert!(verb_token.is_content_word);
+    }
+
+    #[test]
+    fn recognizes_dakede_particle_grammar_as_target() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer
+            .tokenize("会えるだけで幸せだ")
+            .unwrap();
+        let dakede_token = tokens
+            .iter()
+            .find(|token| token.dictionary_form == "だけで")
+            .unwrap();
+
+        assert_eq!(dakede_token.surface, "だけで");
+        assert!(dakede_token.is_content_word);
+    }
+
+    #[test]
+    fn recognizes_formal_nouns_as_content_words() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("そのことを教えて").unwrap();
+        let koto_token = tokens
+            .iter()
+            .find(|token| token.dictionary_form == "こと")
+            .unwrap();
+
+        assert_eq!(koto_token.surface, "こと");
+        assert!(koto_token.is_content_word);
+    }
+
+    #[test]
+    fn recognizes_datte_conjunction_as_content_word() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("だって私 あなたのことを...").unwrap();
+        for t in &tokens {
+            println!("TOKEN: surface='{}', dict='{}', is_content={}", t.surface, t.dictionary_form, t.is_content_word);
+        }
+        let datte = tokens.iter().find(|t| t.surface == "だって").unwrap();
+        assert!(datte.is_content_word);
+    }
+
+    #[test]
+    fn normalizes_colloquial_ohayou_greeting() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("おっはよー 諸君！").unwrap();
+        for t in &tokens {
+            println!("GREETING TOKEN: surface='{}', dict='{}', is_content={}", t.surface, t.dictionary_form, t.is_content_word);
+        }
+        let ohayou = tokens.iter().find(|t| t.dictionary_form == "おはよう").unwrap();
+        assert_eq!(ohayou.surface, "おっはよー");
+        assert!(ohayou.is_content_word);
+    }
+
+    #[test]
+    fn filters_standalone_audio_grunt() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("おっ！誰か来た").unwrap();
+        let otsu = tokens.iter().find(|t| t.surface == "おっ").unwrap();
+        assert!(!otsu.is_content_word);
     }
 }

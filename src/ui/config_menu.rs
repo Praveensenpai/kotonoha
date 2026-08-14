@@ -29,6 +29,7 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
     println!("  • Max Definition Senses: {}", cyan.apply_to(cfg.max_definition_senses));
     println!("  • Max Glosses / Sense:   {}", cyan.apply_to(cfg.max_glosses_per_sense));
     println!("  • AI Batch Size:         {}", cyan.apply_to(cfg.ai_batch_size));
+    println!("  • AI Cache TTL:          {} min", cyan.apply_to(cfg.ai_cache_ttl_minutes));
     println!();
 }
 
@@ -54,6 +55,7 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             format!("📖  Max Definition Senses      [Current: {}]", cfg.max_definition_senses),
             format!("📝  Max Glosses per Sense      [Current: {}]", cfg.max_glosses_per_sense),
             format!("🔢  AI Batch Size              [Current: {}]", cfg.ai_batch_size),
+            format!("⌛  AI Cache TTL (minutes)     [Current: {} min]", cfg.ai_cache_ttl_minutes),
             "🔄  Reset to Default Values".to_string(),
             "💾  Save & Exit".to_string(),
         ];
@@ -136,6 +138,14 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             if let Ok(num) = input.trim().parse::<usize>() {
                 cfg.ai_batch_size = num.max(1);
                 println!(" ✔ AI batch size set to {}", cyan.apply_to(cfg.ai_batch_size));
+            }
+        } else if choice.contains("AI Cache TTL") {
+            let input = Text::new("Enter AI analysis cache TTL in minutes (0 to disable cache):")
+                .with_default(&cfg.ai_cache_ttl_minutes.to_string())
+                .prompt()?;
+            if let Ok(num) = input.trim().parse::<usize>() {
+                cfg.ai_cache_ttl_minutes = num;
+                println!(" ✔ AI Cache TTL set to {} minutes", cyan.apply_to(num));
             }
         } else if choice.contains("Reset to Default Values") {
             *cfg = crate::config::AppConfig::default();

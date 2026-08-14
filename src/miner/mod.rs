@@ -9,6 +9,7 @@ pub struct CandidateSentence {
     pub target_reading: String,
     pub known_context_words: Vec<String>,
     pub unknown_context_words: Vec<String>,
+    pub ignored_context_words: Vec<String>,
     pub jpdb_rank: Option<u32>,
     pub score: f64,
 }
@@ -41,15 +42,36 @@ impl MiningEngine {
             if let Ok(tokens) = self.tokenizer.tokenize(&sub.text) {
                 let mut unknown_words = Vec::new();
                 let mut known_context = Vec::new();
+                let mut ignored_context = Vec::new();
                 let mut token_readings = std::collections::HashMap::new();
 
                 for t in &tokens {
-                    if !t.is_content_word {
-                        continue;
-                    }
                     let dict_form = &t.dictionary_form;
                     token_readings.insert(dict_form.clone(), t.reading.clone());
+
                     if ignored_words.contains(dict_form) {
+                        let entry = format!("{} (Ignored)", dict_form);
+                        if !ignored_context.contains(&entry) {
+                            ignored_context.push(entry);
+                        }
+                        continue;
+                    }
+
+                    if t.is_proper_noun {
+                        let entry = format!("{} (Name)", dict_form);
+                        if !ignored_context.contains(&entry) {
+                            ignored_context.push(entry);
+                        }
+                        continue;
+                    }
+
+                    if !t.is_content_word {
+                        if matches!(dict_form.as_str(), "ちゃん" | "さん" | "君" | "様" | "殿" | "氏" | "たん" | "先輩") {
+                            let entry = format!("{} (Suffix)", dict_form);
+                            if !ignored_context.contains(&entry) {
+                                ignored_context.push(entry);
+                            }
+                        }
                         continue;
                     }
 
@@ -86,6 +108,7 @@ impl MiningEngine {
                         target_reading,
                         known_context_words: known_context,
                         unknown_context_words: unknown_words,
+                        ignored_context_words: ignored_context,
                         jpdb_rank: rank,
                         score,
                     });

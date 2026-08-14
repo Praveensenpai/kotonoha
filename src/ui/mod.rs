@@ -3,6 +3,13 @@ pub mod config_menu;
 
 pub use card::{box_width, CardRenderParams};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionMode {
+    MineI1Candidates,
+    ReviewKnownLines,
+    Exit,
+}
+
 use anyhow::Result;
 use console::measure_text_width;
 use crossterm::{
@@ -13,7 +20,7 @@ use crossterm::{
 use inquire::{MultiSelect, Select, Text};
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Position},
     style::{Color, Modifier, Style as TuiStyle},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -271,11 +278,49 @@ impl TerminalUi {
         card::render_card(p);
     }
 
+    pub fn select_session_mode(i1_count: usize, known_lines_count: usize) -> Result<SessionMode> {
+        let options = vec![
+            format!("🎯  Mine i+1 Candidate Cards ({} candidates)", i1_count),
+            format!("🔍  Review & Verify Known Sentences ({} lines)", known_lines_count),
+            "🚪  Exit".to_string(),
+        ];
+
+        let choice = Select::new("Select session mode:", options).prompt()?;
+        if choice.contains("Mine i+1 Candidate") {
+            Ok(SessionMode::MineI1Candidates)
+        } else if choice.contains("Review & Verify Known") {
+            Ok(SessionMode::ReviewKnownLines)
+        } else {
+            Ok(SessionMode::Exit)
+        }
+    }
+
+    pub fn ask_next_batch(
+        next_batch: usize,
+        total_batches: usize,
+        remaining_lines: usize,
+    ) -> Result<bool> {
+        let prompt = format!(
+            "Proceed to Batch {}/{} ({} candidate lines remaining)?",
+            next_batch, total_batches, remaining_lines
+        );
+        let options = vec![
+            format!(
+                "🚀  Continue to Batch {}/{} ({} remaining)",
+                next_batch, total_batches, remaining_lines
+            ),
+            "🚪  Finish & Exit mining session".to_string(),
+        ];
+        let choice = Select::new(&prompt, options).prompt()?;
+        Ok(choice.contains("Continue"))
+    }
+
     pub fn ask_action() -> Result<char> {
         let options = vec![
             "⏭️  Skip to next card (n)",
             "⛏️  Mine this card (y)",
             "🧠  Mark target word as known (k)",
+            "🔓  Unmark target word as known / move to unknown (u)",
             "✍️  Edit target word reading / furigana (f)",
             "📖  Change dictionary candidate (c)",
             "🔊  Replay preview audio (r)",
@@ -288,6 +333,8 @@ impl TerminalUi {
             Ok('y')
         } else if ans.contains("(k)") {
             Ok('k')
+        } else if ans.contains("(u)") {
+            Ok('u')
         } else if ans.contains("(f)") {
             Ok('f')
         } else if ans.contains("(c)") {
@@ -486,7 +533,7 @@ impl TerminalUi {
         let mut rows = Vec::new();
         for s in sentences {
             let tokens = tokenizer.tokenize(&s.text).unwrap_or_default();
-            let mut unknown_count = 0;
+            let mut unknown_set = std::collections::HashSet::new();
             let mut spans = Vec::new();
             let mut rest = s.text.as_str();
             for token in &tokens {
@@ -494,7 +541,7 @@ impl TerminalUi {
                     && !known_words.contains(&token.dictionary_form)
                     && !ignored_words.contains(&token.dictionary_form);
                 if is_unknown {
-                    unknown_count += 1;
+                    unknown_set.insert(token.dictionary_form.clone());
                 }
                 // Sudachi token surfaces occur in order. Keeping the remaining
                 // suffix prevents repeated words from all being highlighted.
@@ -521,7 +568,7 @@ impl TerminalUi {
                 spans.push(Span::raw(rest.to_string()));
             }
 
-            let is_i1 = unknown_count == 1;
+            let is_i1 = unknown_set.len() == 1;
             let ts_str = format_timestamp(s.start_ms);
 
             let mut line = vec![Span::raw("  ")];
@@ -652,6 +699,10 @@ impl TerminalUi {
                 );
                 frame.render_widget(header, layout[0]);
 
+                let cursor_x = layout[0].x + 10 + card::visual_width(&search_display) as u16;
+                let cursor_y = layout[0].y + 2;
+                frame.set_cursor_position(Position::new(cursor_x, cursor_y));
+
                 let list_height = layout[1].height.saturating_sub(2) as usize;
                 let scroll_offset = selected.saturating_sub(list_height.saturating_sub(1));
                 let current_match = if visible.is_empty() { 0 } else { selected + 1 };
@@ -718,11 +769,11 @@ impl TerminalUi {
                 } else if audio_error {
                     "Audio player could not be started. Install mpv or ffplay.".to_string()
                 } else if video_path.is_some() {
-                    "Select a line, then press Space to play it.".to_string()
+                    "Select a line, then press Ctrl+P to play it.".to_string()
                 } else {
                     "Subtitle browsing is available; audio needs a matching video file.".to_string()
                 };
-                let help = "↑↓ navigate   Space play/replay   type search   Backspace clear   Enter/Esc exit";
+                let help = "↑↓ navigate   Ctrl+P/Tab play audio   type to search   Backspace clear   Enter/Esc exit";
                 frame.render_widget(
                     Paragraph::new(vec![
                         Line::styled(footer, TuiStyle::default().fg(Color::White)),
@@ -755,20 +806,23 @@ impl TerminalUi {
                         selected += 1;
                     }
                 }
-                KeyCode::Char(' ') if video_path.is_some() && !visible.is_empty() => {
-                    if let Some(mut child) = audio_child.take() {
-                        let _ = child.kill();
+                KeyCode::Tab
+                | KeyCode::Char('p') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                    if video_path.is_some() && !visible.is_empty() {
+                        if let Some(mut child) = audio_child.take() {
+                            let _ = child.kill();
+                        }
+                        let row_index = visible[selected];
+                        let sentence = rows[row_index].0;
+                        audio_child = crate::media::MediaExtractor::play_subtitle_segment(
+                            video_path.expect("checked above"),
+                            sentence.start_ms,
+                            sentence.end_ms,
+                        );
+                        playing_row = audio_child.as_ref().map(|_| row_index);
+                        audio_error = audio_child.is_none();
+                        loading_until = playing_row.map(|_| Instant::now() + Duration::from_millis(500));
                     }
-                    let row_index = visible[selected];
-                    let sentence = rows[row_index].0;
-                    audio_child = crate::media::MediaExtractor::play_subtitle_segment(
-                        video_path.expect("checked above"),
-                        sentence.start_ms,
-                        sentence.end_ms,
-                    );
-                    playing_row = audio_child.as_ref().map(|_| row_index);
-                    audio_error = audio_child.is_none();
-                    loading_until = playing_row.map(|_| Instant::now() + Duration::from_millis(500));
                 }
                 KeyCode::Enter => break,
                 KeyCode::Esc if filter.is_empty() => break,

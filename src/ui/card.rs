@@ -19,6 +19,7 @@ pub struct CardRenderParams<'a> {
     pub definition: &'a str,
     pub known_context: &'a [String],
     pub unknown_context: &'a [String],
+    pub ignored_context: &'a [String],
     pub ai_warning: Option<&'a str>,
     pub translations: Option<SentenceTranslations<'a>>,
 }
@@ -45,6 +46,67 @@ pub fn box_row(content: &str, inner_w: usize) -> String {
 
 pub fn box_empty(inner_w: usize) -> String {
     format!("│ {} │", " ".repeat(inner_w))
+}
+
+pub fn highlight_sentence_tokens(
+    sentence: &str,
+    target_word: &str,
+    known_context: &[String],
+    unknown_context: &[String],
+    ignored_context: &[String],
+) -> String {
+    let green = Style::new().green().bold();
+    let cyan = Style::new().cyan();
+    let red = Style::new().red().bold();
+    let dim = Style::new().dim();
+
+    if let Ok(tokenizer) = crate::nlp::JapaneseTokenizer::new() {
+        if let Ok(tokens) = tokenizer.tokenize(sentence) {
+            let mut out = String::new();
+            for t in tokens {
+                let surface = &t.surface;
+                let dict = &t.dictionary_form;
+
+                if surface == target_word || dict == target_word {
+                    out.push_str(&green.apply_to(surface).to_string());
+                } else if unknown_context.contains(dict) || unknown_context.contains(surface) {
+                    out.push_str(&red.apply_to(surface).to_string());
+                } else if t.is_proper_noun
+                    || ignored_context.iter().any(|ig| ig.starts_with(dict) || ig.starts_with(surface))
+                {
+                    out.push_str(&dim.apply_to(surface).to_string());
+                } else if known_context.contains(dict) || known_context.contains(surface) || t.is_content_word {
+                    out.push_str(&cyan.apply_to(surface).to_string());
+                } else {
+                    out.push_str(surface);
+                }
+            }
+            return out;
+        }
+    }
+
+    let mut result = sentence.to_string();
+    if !target_word.is_empty() {
+        result = result.replace(target_word, &green.apply_to(target_word).to_string());
+    }
+    for word in known_context {
+        if word != target_word && !word.is_empty() {
+            result = result.replace(word, &cyan.apply_to(word).to_string());
+        }
+    }
+    for word in unknown_context {
+        if word != target_word && !word.is_empty() {
+            result = result.replace(word, &red.apply_to(word).to_string());
+        }
+    }
+    for item in ignored_context {
+        let raw_word = item.split_whitespace().next().unwrap_or(item.as_str());
+        if !raw_word.is_empty() && raw_word != target_word {
+            result = result.replace(raw_word, &dim.apply_to(raw_word).to_string());
+        }
+    }
+
+    result
 }
 
 pub fn render_progress(
@@ -82,6 +144,7 @@ pub fn render_card(p: CardRenderParams<'_>) {
         definition,
         known_context,
         unknown_context,
+        ignored_context,
         ai_warning,
         translations,
     } = p;
@@ -136,7 +199,13 @@ pub fn render_card(p: CardRenderParams<'_>) {
         }
     };
 
-    let highlighted = sentence.replace(target_word, &green.apply_to(target_word).to_string());
+    let highlighted = highlight_sentence_tokens(
+        sentence,
+        target_word,
+        known_context,
+        unknown_context,
+        ignored_context,
+    );
 
     let unknown_str = if unknown_context.is_empty() {
         "None (i+1 target)".to_string()
@@ -205,6 +274,10 @@ pub fn render_card(p: CardRenderParams<'_>) {
 
     println!("{}", lrow("Unknown Words:", &red.apply_to(&format_val(&unknown_str)).to_string()));
     println!("{}", lrow("Known Words:", &cyan.apply_to(&format_val(&known_str)).to_string()));
+    if !ignored_context.is_empty() {
+        let ignored_str = ignored_context.join(", ");
+        println!("{}", lrow("Ignored/Names:", &Style::new().dim().apply_to(&format_val(&ignored_str)).to_string()));
+    }
     println!("{}", box_empty(iw));
     println!("{}\n", bottom);
 }
