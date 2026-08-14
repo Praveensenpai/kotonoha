@@ -246,6 +246,121 @@ fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Vec<Sp
     merged
 }
 
+fn merge_grammar_expressions(mut tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
+    const GRAMMAR_PATTERNS: &[&str] = &[
+        "わけにはいかない",
+        "わけにはいかぬ",
+        "わけにはいかん",
+        "わけがない",
+        "わけもない",
+        "ざるを得ない",
+        "ざるをえない",
+        "に違いない",
+        "にちがいない",
+        "そうになる",
+        "っこない",
+        "かねない",
+        "そうにない",
+        "そうもない",
+        "にすぎない",
+        "に過ぎない",
+        "にほかならない",
+        "に他ならない",
+        "かねる",
+        "てはいけない",
+        "ではいけない",
+        "じゃいけない",
+        "っちゃいけない",
+        "なきゃいけない",
+        "なくちゃいけない",
+        "なければならない",
+        "なくてはならない",
+        "に決まっている",
+        "にきまっている",
+        "よりほかはない",
+        "よりほかない",
+        "てしょうがない",
+        "てたまらない",
+        "てしかたない",
+    ];
+
+    for &expr in GRAMMAR_PATTERNS {
+        tokens = merge_fixed_expression(tokens, expr);
+    }
+    tokens
+}
+
+fn merge_complex_verb_inflections(tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
+    let aux_morphemes = [
+        "させる",
+        "させ",
+        "られる",
+        "られ",
+        "れる",
+        "れ",
+        "さす",
+        "さし",
+        "わす",
+        "わし",
+        "ちゃう",
+        "ちゃっ",
+        "ちゃ",
+        "じゃう",
+        "じゃっ",
+        "じゃ",
+        "てしまう",
+        "てしまっ",
+        "でしまう",
+        "でしまっ",
+        "ようとする",
+        "おうとする",
+    ];
+
+    let mut merged = Vec::with_capacity(tokens.len());
+    let mut tokens_iter = tokens.into_iter().peekable();
+
+    while let Some(mut current) = tokens_iter.next() {
+        if current.token.is_content_word {
+            let mut merged_any = false;
+            while let Some(next) = tokens_iter.peek() {
+                if next.begin == current.end {
+                    let next_surf = next.token.surface.as_str();
+                    let next_dict = next.token.dictionary_form.as_str();
+                    if aux_morphemes.contains(&next_surf) || aux_morphemes.contains(&next_dict) {
+                        let next_token = tokens_iter.next().unwrap();
+                        let surface = format!("{}{}", current.token.surface, next_token.token.surface);
+                        let dictionary_form = surface.clone();
+                        let reading = format!("{}{}", current.token.reading, next_token.token.reading);
+                        current = SpannedToken {
+                            token: TokenInfo {
+                                surface,
+                                dictionary_form,
+                                reading,
+                                is_content_word: true,
+                                is_proper_noun: false,
+                            },
+                            begin: current.begin,
+                            end: next_token.end,
+                        };
+                        merged_any = true;
+                        continue;
+                    }
+                }
+                break;
+            }
+            if merged_any {
+                if current.token.dictionary_form.ends_with("られ") || current.token.dictionary_form.ends_with("させ") {
+                    current.token.dictionary_form.push('る');
+                }
+            }
+        }
+        merged.push(current);
+    }
+
+    merged
+}
+
+
 fn is_imperative_following_text(text: &str) -> bool {
     let following = text.trim_start();
     following.is_empty()
@@ -447,6 +562,8 @@ impl JapaneseTokenizer {
         normalize_explanatory_nan(&mut normalized_tokens, text);
         let normalized_tokens = merge_fixed_expression(normalized_tokens, "よりにもよって");
         let normalized_tokens = merge_fixed_expression(normalized_tokens, "もしかして");
+        let normalized_tokens = merge_grammar_expressions(normalized_tokens);
+        let normalized_tokens = merge_complex_verb_inflections(normalized_tokens);
         let normalized_tokens = merge_adverb_naru(normalized_tokens);
         Ok(merge_colloquial_small_tsu(normalized_tokens))
     }
@@ -582,5 +699,34 @@ mod tests {
         assert_eq!(token.surface, "もしかして");
         assert_eq!(token.reading, "もしかして");
         assert!(!tokens.iter().any(|token| token.dictionary_form == "もし"));
+    }
+
+    #[test]
+    fn recognizes_grammar_expressions_as_targets() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer
+            .tokenize("言わざるを得ない事態になった")
+            .unwrap();
+        let grammar_token = tokens
+            .iter()
+            .find(|token| token.dictionary_form == "ざるを得ない")
+            .unwrap();
+
+        assert_eq!(grammar_token.surface, "ざるを得ない");
+        assert!(grammar_token.is_content_word);
+    }
+
+    #[test]
+    fn merges_complex_causative_passive_inflection() {
+        let tokenizer = super::JapaneseTokenizer::new().unwrap();
+        let tokens = tokenizer
+            .tokenize("ピーマンを食べさせられた")
+            .unwrap();
+        let verb_token = tokens
+            .iter()
+            .find(|token| token.dictionary_form == "食べさせられる" || token.dictionary_form == "食べさせられた")
+            .unwrap();
+
+        assert!(verb_token.is_content_word);
     }
 }

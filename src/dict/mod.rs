@@ -217,6 +217,43 @@ impl DictionaryService {
             return Ok(res);
         }
 
+        let complex_fallbacks = [
+            ("させられる", "る"),
+            ("せられる", "る"),
+            ("さされる", "す"),
+            ("わされる", "う"),
+            ("らされる", "る"),
+            ("させられ", "る"),
+            ("ちゃった", "つ"),
+            ("ちゃう", "つ"),
+            ("じゃった", "ぐ"),
+            ("じゃう", "ぐ"),
+            ("てしまう", "つ"),
+            ("でしまう", "ぐ"),
+            ("ざるを得ない", "う"),
+            ("ざるをえない", "う"),
+            ("わけにはいかない", ""),
+            ("わけにはいかぬ", ""),
+        ];
+
+        for (suffix, verb_end) in complex_fallbacks {
+            if let Some(stem) = word.strip_suffix(suffix) {
+                let verb_form = format!("{}{}", stem, verb_end);
+                if let Ok(fallback_res) = Self::lookup_internal(client, &verb_form, true, max_senses, max_glosses).await {
+                    if !is_placeholder_definition(&fallback_res.definition)
+                        && fallback_res.definition != "No dictionary definition found"
+                    {
+                        return Ok(LookupResult {
+                            expression: word.to_string(),
+                            reading: fallback_res.reading,
+                            definition: fallback_res.definition,
+                            pitch_accent: fallback_res.pitch_accent,
+                        });
+                    }
+                }
+            }
+        }
+
         let stem_fallbacks = [
             ("り", "る"),
             ("い", "う"),
