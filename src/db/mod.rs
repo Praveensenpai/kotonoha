@@ -7,6 +7,7 @@ pub struct Database {
     conn: Connection,
 }
 
+#[allow(dead_code)]
 pub struct MinedCard {
     pub id: i64,
     pub sentence: String,

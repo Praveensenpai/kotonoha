@@ -190,15 +190,6 @@ pub fn sentence_with_furigana(
         .unwrap_or_else(|_| escape_html(sentence))
 }
 
-pub fn format_translations_for_anki(
-    _eng_nat: Option<&str>,
-    _eng_lit: Option<&str>,
-    _kan_nat: Option<&str>,
-    _kan_lit: Option<&str>,
-) -> String {
-    String::new()
-}
-
 pub fn to_katakana(text: &str) -> String {
     text.chars()
         .map(|character| match character {
@@ -339,10 +330,9 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     }
 
     let mut synced_new = 0;
-    let mut updated_translations = 0;
 
     for (card, existing_anki_id) in all_cards {
-        let note_id = if let Some(id) = existing_anki_id {
+        let _note_id = if let Some(id) = existing_anki_id {
             id
         } else {
             let existing_note_id = find_existing_anki_note(
@@ -381,12 +371,6 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                 let image = image
                     .map(|filename| format!("<img src=\"{filename}\">"))
                     .unwrap_or_default();
-                let sent_eng = format_translations_for_anki(
-                    card.english_natural.as_deref(),
-                    card.english_literal.as_deref(),
-                    card.kannada_natural.as_deref(),
-                    card.kannada_literal.as_deref(),
-                );
 
                 let note_id = match anki_request(
                     &client,
@@ -399,7 +383,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                             "fields": {
                                 "SentKanji": card.sentence,
                                 "SentFurigana": sentence_furigana,
-                                "SentEng": sent_eng,
+                                "SentEng": "",
                                 "SentAudio": sentence_audio,
                                 "VocabKanji": card.target_word,
                                 "VocabFurigana": card.reading,
@@ -441,38 +425,17 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                 note_id
             }
         };
-
-        // Update existing Anki note fields if translations exist
-        let sent_eng = format_translations_for_anki(
-            card.english_natural.as_deref(),
-            card.english_literal.as_deref(),
-            card.kannada_natural.as_deref(),
-            card.kannada_literal.as_deref(),
-        );
-        if !sent_eng.is_empty()
-            && anki_request(
-                &client,
-                &cfg.anki_connect_url,
-                "updateNoteFields",
-                serde_json::json!({
-                    "note": {
-                        "id": note_id,
-                        "fields": {
-                            "SentEng": sent_eng
-                        }
-                    }
-                }),
-            )
-            .await
-            .is_ok()
-        {
-            updated_translations += 1;
-        }
     }
 
-    println!(
-        " ✔ Anki Sync Complete! ({synced_new} new cards synced, {updated_translations} cards updated with Reveal Translations)"
-    );
+    if synced_new == 0 {
+        println!(" ✔ Anki Sync Complete! (All cards already up to date)");
+    } else {
+        println!(
+            " ✔ Anki Sync Complete! ({} new card{} synced)",
+            synced_new,
+            if synced_new == 1 { "" } else { "s" }
+        );
+    }
     Ok(())
 }
 
