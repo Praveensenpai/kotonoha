@@ -86,11 +86,18 @@ pub async fn run_mining_loop(
 
             align_contextual_reading(cand, &mut dict_info, cfg, db, &http_client).await;
 
+            let is_ai_selected = ai_analysis.is_some_and(|r| {
+                r.custom_definition_suggestion.is_some()
+                    || r.recommended_candidate_index.is_some()
+                    || r.recommended_sense_index.is_some()
+            });
+
             let ctx = CardActionContext {
                 card_idx: idx,
                 cand,
                 dict_info: &mut dict_info,
                 ai_analysis,
+                is_ai_selected,
                 video_path,
                 cfg,
                 db,

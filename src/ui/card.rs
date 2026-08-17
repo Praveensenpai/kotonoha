@@ -22,6 +22,7 @@ pub struct CardRenderParams<'a> {
     pub unknown_context: &'a [String],
     pub ignored_context: &'a [String],
     pub ai_warning: Option<&'a str>,
+    pub is_ai_selected: bool,
     pub translations: Option<SentenceTranslations<'a>>,
 }
 
@@ -156,6 +157,7 @@ pub fn render_card(p: CardRenderParams<'_>) {
         unknown_context,
         ignored_context,
         ai_warning,
+        is_ai_selected,
         translations,
     } = p;
     let cyan = Style::new().cyan().bold();
@@ -312,10 +314,16 @@ pub fn render_card(p: CardRenderParams<'_>) {
         for (idx, line) in def_lines.iter().enumerate() {
             let clean_line = line.trim();
             let clean_line = clean_line.strip_prefix('│').unwrap_or(clean_line).trim();
-            let truncated_line = format_val(clean_line);
             if idx == 0 {
+                let display_line = if is_ai_selected {
+                    format!("✨ {}", clean_line)
+                } else {
+                    clean_line.to_string()
+                };
+                let truncated_line = format_val(&display_line);
                 println!("{}", lrow("Definitions:", &truncated_line));
             } else {
+                let truncated_line = format_val(clean_line);
                 println!("{}", lrow("", &truncated_line));
             }
         }

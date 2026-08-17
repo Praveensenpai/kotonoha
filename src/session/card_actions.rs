@@ -24,13 +24,14 @@ pub struct CardActionContext<'a> {
     pub cand: &'a CandidateSentence,
     pub dict_info: &'a mut LookupResult,
     pub ai_analysis: Option<&'a AiAnalysisResult>,
+    pub is_ai_selected: bool,
     pub video_path: &'a Path,
     pub cfg: &'a AppConfig,
     pub db: &'a mut Database,
     pub http_client: &'a Arc<reqwest::Client>,
 }
 
-pub async fn handle_card_interaction(ctx: CardActionContext<'_>) -> Result<CardActionResult> {
+pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<CardActionResult> {
     let audio_path = ctx.cfg.media_dir.join(format!(
         "{}_{}.opus",
         ctx.cand.target_word, ctx.cand.sentence.index
@@ -105,6 +106,26 @@ pub async fn handle_card_interaction(ctx: CardActionContext<'_>) -> Result<CardA
                 &ctx.dict_info.pitch_accent,
                 ctx.ai_analysis,
             ) {
+                let chosen_is_ai = ctx.ai_analysis.is_some_and(|r| {
+                    if let Some(ref sug) = r.custom_definition_suggestion {
+                        if chosen.definition == *sug
+                            || chosen.definition == format!("1. [AI Suggestion] {}", sug)
+                        {
+                            return true;
+                        }
+                    }
+                    if let Some(idx) = r.recommended_candidate_index {
+                        if candidates
+                            .get(idx)
+                            .map(|c| (&c.expression, &c.reading, &c.definition))
+                            == Some((&chosen.expression, &chosen.reading, &chosen.definition))
+                        {
+                            return true;
+                        }
+                    }
+                    false
+                });
+                ctx.is_ai_selected = chosen_is_ai;
                 *ctx.dict_info = chosen;
                 let _ = ctx.db.cache_definition(
                     &ctx.dict_info.expression,
@@ -222,6 +243,7 @@ pub fn render_current_card(ctx: &CardActionContext<'_>) {
             .ai_analysis
             .as_ref()
             .and_then(|r| r.parsing_warning.as_deref()),
+        is_ai_selected: ctx.is_ai_selected,
         translations: None,
     });
 }
