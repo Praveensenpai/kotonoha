@@ -35,11 +35,11 @@ async fn main() -> Result<()> {
     let http_client = reqwest::Client::new();
 
     // AnkiConnect status
-    if anki::anki_connected(&cfg.anki_connect_url).await {
+    if anki::anki_connected(&cfg.anki.connect_url).await {
         println!(
             " {}  Anki connected (Deck: {})",
             style("✔").green().bold(),
-            style(&cfg.anki_deck_name).cyan().bold()
+            style(&cfg.anki.deck_name).cyan().bold()
         );
     } else {
         println!(

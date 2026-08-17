@@ -3,20 +3,43 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppConfig {
-    pub default_card_limit: usize,
-    pub media_dir: PathBuf,
-    pub db_path: PathBuf,
-    pub audio_padding_secs: f64,
-    pub enable_anki_sync: bool,
-    pub anki_connect_url: String,
-    pub anki_deck_name: String,
+pub struct AnkiSettings {
+    #[serde(default = "default_enable_anki_sync")]
+    pub enable_sync: bool,
+    #[serde(default = "default_anki_connect_url")]
+    pub connect_url: String,
+    #[serde(default = "default_anki_deck_name")]
+    pub deck_name: String,
     #[serde(default = "default_anki_model_name")]
-    pub anki_model_name: String,
-    #[serde(default = "default_max_definition_senses")]
-    pub max_definition_senses: usize,
-    #[serde(default = "default_max_glosses_per_sense")]
-    pub max_glosses_per_sense: usize,
+    pub model_name: String,
+}
+
+fn default_enable_anki_sync() -> bool {
+    true
+}
+fn default_anki_connect_url() -> String {
+    "http://127.0.0.1:8765".to_string()
+}
+fn default_anki_deck_name() -> String {
+    "Anime Mining T1".to_string()
+}
+fn default_anki_model_name() -> String {
+    "Japanese sentences+".to_string()
+}
+
+impl Default for AnkiSettings {
+    fn default() -> Self {
+        Self {
+            enable_sync: default_enable_anki_sync(),
+            connect_url: default_anki_connect_url(),
+            deck_name: default_anki_deck_name(),
+            model_name: default_anki_model_name(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSettings {
     #[serde(default = "default_enable_ai")]
     pub enable_ai: bool,
     #[serde(default)]
@@ -29,32 +52,76 @@ pub struct AppConfig {
     pub ai_cache_ttl_minutes: usize,
 }
 
-fn default_anki_model_name() -> String {
-    "Japanese sentences+".to_string()
+fn default_enable_ai() -> bool {
+    true
+}
+fn default_gemini_model() -> String {
+    "gemini-3.5-flash-lite".to_string()
+}
+fn default_ai_batch_size() -> usize {
+    10
+}
+fn default_ai_cache_ttl_minutes() -> usize {
+    30
+}
+
+impl Default for AiSettings {
+    fn default() -> Self {
+        Self {
+            enable_ai: default_enable_ai(),
+            gemini_api_key: std::env::var("GEMINI_API_KEY").ok(),
+            gemini_model: default_gemini_model(),
+            ai_batch_size: default_ai_batch_size(),
+            ai_cache_ttl_minutes: default_ai_cache_ttl_minutes(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DictionarySettings {
+    #[serde(default = "default_max_definition_senses")]
+    pub max_definition_senses: usize,
+    #[serde(default = "default_max_glosses_per_sense")]
+    pub max_glosses_per_sense: usize,
 }
 
 fn default_max_definition_senses() -> usize {
     3
 }
-
 fn default_max_glosses_per_sense() -> usize {
     4
 }
 
-fn default_enable_ai() -> bool {
-    true
+impl Default for DictionarySettings {
+    fn default() -> Self {
+        Self {
+            max_definition_senses: default_max_definition_senses(),
+            max_glosses_per_sense: default_max_glosses_per_sense(),
+        }
+    }
 }
 
-fn default_gemini_model() -> String {
-    "gemini-3.5-flash-lite".to_string()
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
+    #[serde(default = "default_card_limit")]
+    pub default_card_limit: usize,
+    pub media_dir: PathBuf,
+    pub db_path: PathBuf,
+    #[serde(default = "default_audio_padding_secs")]
+    pub audio_padding_secs: f64,
+    #[serde(default)]
+    pub anki: AnkiSettings,
+    #[serde(default)]
+    pub ai: AiSettings,
+    #[serde(default)]
+    pub dict: DictionarySettings,
 }
 
-fn default_ai_batch_size() -> usize {
-    10
+fn default_card_limit() -> usize {
+    25
 }
-
-fn default_ai_cache_ttl_minutes() -> usize {
-    30
+fn default_audio_padding_secs() -> f64 {
+    0.25
 }
 
 /// Expands a leading `~/` using the home directory of the user running Kotonoha.
@@ -79,24 +146,14 @@ impl Default for AppConfig {
 
         let media_dir = home.join(".local/share/kotonoha/media");
 
-        let api_key = std::env::var("GEMINI_API_KEY").ok();
-
         Self {
-            default_card_limit: 25,
+            default_card_limit: default_card_limit(),
             media_dir,
             db_path: config_dir.join("kotonoha.db"),
-            audio_padding_secs: 0.25,
-            enable_anki_sync: true,
-            anki_connect_url: "http://127.0.0.1:8765".to_string(),
-            anki_deck_name: "Anime Mining T1".to_string(),
-            anki_model_name: default_anki_model_name(),
-            max_definition_senses: 3,
-            max_glosses_per_sense: 4,
-            enable_ai: true,
-            gemini_api_key: api_key,
-            gemini_model: default_gemini_model(),
-            ai_batch_size: default_ai_batch_size(),
-            ai_cache_ttl_minutes: default_ai_cache_ttl_minutes(),
+            audio_padding_secs: default_audio_padding_secs(),
+            anki: AnkiSettings::default(),
+            ai: AiSettings::default(),
+            dict: DictionarySettings::default(),
         }
     }
 }
@@ -116,8 +173,8 @@ impl AppConfig {
             let mut cfg: AppConfig = toml::from_str(&content).unwrap_or_default();
             cfg.media_dir = expand_home_path(cfg.media_dir, &home);
             cfg.db_path = expand_home_path(cfg.db_path, &home);
-            if cfg.gemini_api_key.is_none() {
-                cfg.gemini_api_key = std::env::var("GEMINI_API_KEY").ok();
+            if cfg.ai.gemini_api_key.is_none() {
+                cfg.ai.gemini_api_key = std::env::var("GEMINI_API_KEY").ok();
             }
             Ok(cfg)
         } else {

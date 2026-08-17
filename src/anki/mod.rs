@@ -279,7 +279,7 @@ pub fn pitch_pattern(reading: &str, pitch_accent: &str) -> (String, String) {
 }
 
 pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
-    if !anki_connected(&cfg.anki_connect_url).await {
+    if !anki_connected(&cfg.anki.connect_url).await {
         anyhow::bail!(
             "Anki is not connected. Please open Anki and make sure AnkiConnect is installed."
         );
@@ -295,23 +295,23 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     let tokenizer = JapaneseTokenizer::new()?;
     anki_request(
         &client,
-        &cfg.anki_connect_url,
+        &cfg.anki.connect_url,
         "version",
         serde_json::json!({}),
     )
     .await?;
     anki_request(
         &client,
-        &cfg.anki_connect_url,
+        &cfg.anki.connect_url,
         "createDeck",
-        serde_json::json!({"deck": cfg.anki_deck_name}),
+        serde_json::json!({"deck": cfg.anki.deck_name}),
     )
     .await?;
     let fields = anki_request(
         &client,
-        &cfg.anki_connect_url,
+        &cfg.anki.connect_url,
         "modelFieldNames",
-        serde_json::json!({"modelName": cfg.anki_model_name}),
+        serde_json::json!({"modelName": cfg.anki.model_name}),
     )
     .await?;
     let required_fields = [
@@ -333,7 +333,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     let available_fields = fields.as_array().ok_or_else(|| {
         anyhow::anyhow!(
             "AnkiConnect returned invalid fields for note type: {}",
-            cfg.anki_model_name
+            cfg.anki.model_name
         )
     })?;
     if required_fields.iter().any(|field| {
@@ -343,7 +343,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     }) {
         anyhow::bail!(
             "Anki note type '{}' does not have the required Japanese sentences+ fields",
-            cfg.anki_model_name
+            cfg.anki.model_name
         );
     }
 
@@ -355,8 +355,8 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
         } else {
             let existing_note_id = find_existing_anki_note(
                 &client,
-                &cfg.anki_connect_url,
-                &cfg.anki_model_name,
+                &cfg.anki.connect_url,
+                &cfg.anki.model_name,
                 &card.sentence,
             )
             .await?;
@@ -371,14 +371,14 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                     pitch_pattern(&card.reading, &card.pitch_accent);
                 let audio = match card.audio_path.as_deref() {
                     Some(path) => {
-                        upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "opus")
+                        upload_anki_media(&client, &cfg.anki.connect_url, card.id, path, "opus")
                             .await?
                     }
                     None => None,
                 };
                 let image = match card.image_path.as_deref() {
                     Some(path) => {
-                        upload_anki_media(&client, &cfg.anki_connect_url, card.id, path, "jpg")
+                        upload_anki_media(&client, &cfg.anki.connect_url, card.id, path, "jpg")
                             .await?
                     }
                     None => None,
@@ -392,12 +392,12 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
 
                 let note_id = match anki_request(
                     &client,
-                    &cfg.anki_connect_url,
+                    &cfg.anki.connect_url,
                     "addNote",
                     serde_json::json!({
                         "note": {
-                            "deckName": cfg.anki_deck_name,
-                            "modelName": cfg.anki_model_name,
+                            "deckName": cfg.anki.deck_name,
+                            "modelName": cfg.anki.model_name,
                             "fields": {
                                 "SentKanji": card.sentence,
                                 "SentFurigana": sentence_furigana,
@@ -426,8 +426,8 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                     Err(error) if error.to_string().to_ascii_lowercase().contains("duplicate") => {
                         find_existing_anki_note(
                             &client,
-                            &cfg.anki_connect_url,
-                            &cfg.anki_model_name,
+                            &cfg.anki.connect_url,
+                            &cfg.anki.model_name,
                             &card.sentence,
                         )
                         .await?

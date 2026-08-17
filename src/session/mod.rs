@@ -1,3 +1,6 @@
+pub mod ai_batch;
+pub mod card_actions;
+pub mod media_preload;
 pub mod mining;
 
 use anyhow::Result;
