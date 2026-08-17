@@ -226,7 +226,7 @@ pub fn render_card(p: CardRenderParams<'_>) {
     let pitch_num = pitch.parse::<usize>().unwrap_or_else(|_| {
         if pitch == "HLL" || pitch == "1" { 1 } else { 0 }
     });
-    let (pitch_overbar, pitch_tag, _morae_cnt) = crate::dict::format_pitch_accent(reading, pitch_num);
+    let (reading_str, pitch_tag, _morae_cnt) = crate::dict::format_pitch_accent(reading, pitch_num);
 
     println!(
         "{}",
@@ -235,7 +235,7 @@ pub fn render_card(p: CardRenderParams<'_>) {
             &format!(
                 "{} ({} [Pitch: {}])",
                 green.apply_to(target_word),
-                yellow.apply_to(&pitch_overbar),
+                yellow.apply_to(&reading_str),
                 cyan.apply_to(&pitch_tag)
             )
         )

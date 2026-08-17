@@ -114,3 +114,21 @@ async fn test_ato_lookup_all_candidates() {
     let has_ato_trace = candidates.iter().any(|c| c.expression == "跡" || c.definition.contains("trace"));
     assert!(has_ato_after && has_ato_trace);
 }
+
+#[test]
+fn test_format_pitch_accent_no_combining_characters() {
+    let (reading, tag, morae) = format_pitch_accent("なん", 0);
+    assert_eq!(reading, "なん");
+    assert!(!reading.contains('\u{0305}'));
+    assert!(!reading.contains('\u{0332}'));
+    assert_eq!(tag, "[0] LH (2 morae)");
+    assert_eq!(morae, 2);
+
+    let (reading2, tag2, morae2) = format_pitch_accent("きみ", 0);
+    assert_eq!(reading2, "きみ");
+    assert!(!reading2.contains('\u{0305}'));
+    assert!(!reading2.contains('\u{0332}'));
+    assert_eq!(tag2, "[0] LH (2 morae)");
+    assert_eq!(morae2, 2);
+}
+

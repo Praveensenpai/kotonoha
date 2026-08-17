@@ -174,27 +174,18 @@ pub fn format_pitch_accent(reading: &str, pitch_num: usize) -> (String, String, 
         }
     }
 
-    let mut overbar_str = String::new();
     let mut hl_str = String::new();
 
-    for (i, mora) in morae.iter().enumerate() {
+    for (i, _) in morae.iter().enumerate() {
         let is_high = pattern[i] == 1;
         if is_high {
             hl_str.push('H');
-            for c in mora.chars() {
-                overbar_str.push(c);
-                overbar_str.push('\u{0305}');
-            }
         } else {
             hl_str.push('L');
-            for c in mora.chars() {
-                overbar_str.push(c);
-                overbar_str.push('\u{0332}');
-            }
         }
     }
 
-    (overbar_str, format!("[{}] {} ({} morae)", k, hl_str, total_morae), total_morae)
+    (reading.to_string(), format!("[{}] {} ({} morae)", k, hl_str, total_morae), total_morae)
 }
 
 pub struct DictionaryService;
@@ -502,11 +493,19 @@ impl DictionaryService {
         let pitch_path = dict_dir.join("kanjium_pitch_accents.zip");
 
         let jmdict_url = "https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip";
+        let pitch_url = "https://github.com/Ajatt-Tools/rikaitan/raw/dictionaries/kanjium_pitch_accents.zip";
 
         if !jmdict_path.exists() {
             println!(" 📥 Downloading offline bilingual dictionary (JMdict ~15 MB)...");
             if let Err(e) = download_file_with_progress(client, jmdict_url, &jmdict_path).await {
-                eprintln!(" ⚠️ Dictionary download warning: {}", e);
+                eprintln!(" ⚠️ JMdict download warning: {}", e);
+            }
+        }
+
+        if !pitch_path.exists() {
+            println!(" 📥 Downloading pitch accent dictionary (Kanjium ~1 MB)...");
+            if let Err(e) = download_file_with_progress(client, pitch_url, &pitch_path).await {
+                eprintln!(" ⚠️ Pitch accent dictionary download warning: {}", e);
             }
         }
 
