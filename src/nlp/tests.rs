@@ -1,4 +1,4 @@
-use super::normalize_colloquial_negative;
+use super::mergers::normalize_colloquial_negative;
 
 #[test]
 fn normalizes_rough_negative_form() {
@@ -29,7 +29,10 @@ fn normalizes_split_rough_negative_sentence() {
 fn normalizes_kurenai_to_kureru() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
     let tokens = tokenizer.tokenize("考えてきてくれたの？").unwrap();
-    let kangaeru = tokens.iter().find(|token| token.surface.contains("考え")).unwrap();
+    let kangaeru = tokens
+        .iter()
+        .find(|token| token.surface.contains("考え"))
+        .unwrap();
     assert!(kangaeru.is_content_word);
     assert_eq!(kangaeru.dictionary_form, "考える");
 
@@ -73,7 +76,10 @@ fn leaves_regular_words_unchanged() {
 fn resolves_sentence_final_imperative() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
     let tokens = tokenizer.tokenize("ジョーロも生徒会 頑張れよ").unwrap();
-    let token = tokens.iter().find(|token| token.surface == "頑張れよ").unwrap();
+    let token = tokens
+        .iter()
+        .find(|token| token.surface == "頑張れよ")
+        .unwrap();
 
     assert_eq!(token.dictionary_form, "頑張る");
     assert_eq!(token.reading, "がんばる");
@@ -83,7 +89,10 @@ fn resolves_sentence_final_imperative() {
 fn preserves_non_imperative_potential_form() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
     let tokens = tokenizer.tokenize("彼は頑張れる").unwrap();
-    let token = tokens.iter().find(|token| token.surface == "頑張れる").unwrap();
+    let token = tokens
+        .iter()
+        .find(|token| token.surface == "頑張れる")
+        .unwrap();
 
     assert_eq!(token.dictionary_form, "頑張れる");
 }
@@ -92,11 +101,16 @@ fn preserves_non_imperative_potential_form() {
 fn keeps_adverb_naru_phrase_together() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
     let tokens = tokenizer.tokenize("何がどうして こうなった!? ").unwrap();
-    let token = tokens.iter().find(|token| token.dictionary_form == "こうなる").unwrap();
+    let token = tokens
+        .iter()
+        .find(|token| token.dictionary_form == "こうなる")
+        .unwrap();
 
     assert_eq!(token.surface, "こうなっ");
     assert_eq!(token.reading, "こうなる");
-    assert!(!tokens.iter().any(|token| token.dictionary_form == "こうなっ"));
+    assert!(!tokens
+        .iter()
+        .any(|token| token.dictionary_form == "こうなっ"));
 }
 
 #[test]
@@ -110,7 +124,9 @@ fn keeps_yori_ni_mo_yotte_expression_together() {
 
     assert_eq!(token.surface, "よりにもよって");
     assert_eq!(token.reading, "よりにもよって");
-    assert!(!tokens.iter().any(|token| token.dictionary_form == "よりにもよっ"));
+    assert!(!tokens
+        .iter()
+        .any(|token| token.dictionary_form == "よりにもよっ"));
 }
 
 #[test]
@@ -143,9 +159,7 @@ fn keeps_moshikashite_expression_together() {
 #[test]
 fn recognizes_grammar_expressions_as_targets() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
-    let tokens = tokenizer
-        .tokenize("言わざるを得ない事態になった")
-        .unwrap();
+    let tokens = tokenizer.tokenize("言わざるを得ない事態になった").unwrap();
     let grammar_token = tokens
         .iter()
         .find(|token| token.dictionary_form == "ざるを得ない")
@@ -158,12 +172,12 @@ fn recognizes_grammar_expressions_as_targets() {
 #[test]
 fn merges_complex_causative_passive_inflection() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
-    let tokens = tokenizer
-        .tokenize("ピーマンを食べさせられた")
-        .unwrap();
+    let tokens = tokenizer.tokenize("ピーマンを食べさせられた").unwrap();
     let verb_token = tokens
         .iter()
-        .find(|token| token.dictionary_form == "食べさせられる" || token.dictionary_form == "食べさせられた")
+        .find(|token| {
+            token.dictionary_form == "食べさせられる" || token.dictionary_form == "食べさせられた"
+        })
         .unwrap();
 
     assert!(verb_token.is_content_word);
@@ -172,9 +186,7 @@ fn merges_complex_causative_passive_inflection() {
 #[test]
 fn recognizes_dakede_particle_grammar_as_target() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
-    let tokens = tokenizer
-        .tokenize("会えるだけで幸せだ")
-        .unwrap();
+    let tokens = tokenizer.tokenize("会えるだけで幸せだ").unwrap();
     let dakede_token = tokens
         .iter()
         .find(|token| token.dictionary_form == "だけで")
@@ -209,7 +221,10 @@ fn recognizes_datte_conjunction_as_content_word() {
 fn normalizes_colloquial_ohayou_greeting() {
     let tokenizer = super::JapaneseTokenizer::new().unwrap();
     let tokens = tokenizer.tokenize("おっはよー 諸君！").unwrap();
-    let ohayou = tokens.iter().find(|t| t.dictionary_form == "おはよう").unwrap();
+    let ohayou = tokens
+        .iter()
+        .find(|t| t.dictionary_form == "おはよう")
+        .unwrap();
     assert_eq!(ohayou.surface, "おっはよー");
     assert!(ohayou.is_content_word);
 }

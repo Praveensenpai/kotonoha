@@ -30,12 +30,18 @@ impl MiningEngine {
         ignored_words: &HashSet<String>,
     ) -> Vec<CandidateSentence> {
         // Step 1: Count target word frequency across all episode subtitle lines
-        let mut episode_word_freq: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut episode_word_freq: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for sub in sentences {
             if let Ok(tokens) = self.tokenizer.tokenize(&sub.text) {
                 for t in &tokens {
-                    if t.is_content_word && !known_words.contains(&t.dictionary_form) && !ignored_words.contains(&t.dictionary_form) {
-                        *episode_word_freq.entry(t.dictionary_form.clone()).or_insert(0) += 1;
+                    if t.is_content_word
+                        && !known_words.contains(&t.dictionary_form)
+                        && !ignored_words.contains(&t.dictionary_form)
+                    {
+                        *episode_word_freq
+                            .entry(t.dictionary_form.clone())
+                            .or_insert(0) += 1;
                     }
                 }
             }
@@ -77,7 +83,10 @@ impl MiningEngine {
                     }
 
                     if !t.is_content_word {
-                        if matches!(dict_form.as_str(), "ちゃん" | "さん" | "君" | "様" | "殿" | "氏" | "たん" | "先輩") {
+                        if matches!(
+                            dict_form.as_str(),
+                            "ちゃん" | "さん" | "君" | "様" | "殿" | "氏" | "たん" | "先輩"
+                        ) {
                             let entry = format!("{} (Suffix)", dict_form);
                             if !ignored_context.contains(&entry) {
                                 ignored_context.push(entry);
@@ -99,7 +108,10 @@ impl MiningEngine {
 
                 if unknown_words.len() == 1 {
                     let target_word = unknown_words[0].clone();
-                    let target_reading = token_readings.get(&target_word).cloned().unwrap_or_else(|| target_word.clone());
+                    let target_reading = token_readings
+                        .get(&target_word)
+                        .cloned()
+                        .unwrap_or_else(|| target_word.clone());
 
                     // Deduplicate target words so you only see the single best sentence per word
                     if seen_targets.contains(&target_word) {
@@ -108,7 +120,7 @@ impl MiningEngine {
 
                     seen_targets.insert(target_word.clone());
                     let episode_freq = episode_word_freq.get(&target_word).copied().unwrap_or(1);
-                    
+
                     let total_content_words = known_context.len() + 1;
                     let density_tier = match total_content_words {
                         2 => 1, // Tier 1: 1 Known + 1 Target (Holy Grail of mining!)
@@ -134,7 +146,8 @@ impl MiningEngine {
 
         // Multi-tier sorting: 1. Episode frequency (desc), 2. Density Tier (asc), 3. Subtitle index (asc)
         candidates.sort_by(|a, b| {
-            b.episode_freq.cmp(&a.episode_freq)
+            b.episode_freq
+                .cmp(&a.episode_freq)
                 .then_with(|| a.density_tier.cmp(&b.density_tier))
                 .then_with(|| a.sentence.index.cmp(&b.sentence.index))
         });

@@ -89,7 +89,13 @@ impl MediaExtractor {
 
     pub fn play_preview_audio(audio_path: &Path) -> Option<std::process::Child> {
         let player = if which_exists("mpv") {
-            vec!["mpv", "--no-config", "--no-video", "--really-quiet", "--no-terminal"]
+            vec![
+                "mpv",
+                "--no-config",
+                "--no-video",
+                "--really-quiet",
+                "--no-terminal",
+            ]
         } else if which_exists("pw-play") {
             vec!["pw-play"]
         } else if which_exists("paplay") {

@@ -9,11 +9,30 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
     let dim = Style::new().dim();
 
     println!("\n📋  K O T O N O H A   C O N F I G U R A T I O N\n");
-    println!("  • Card Limit:            {}", cyan.apply_to(cfg.default_card_limit));
-    println!("  • Media Directory:       {}", dim.apply_to(cfg.media_dir.display()));
-    println!("  • Database Path:         {}", dim.apply_to(cfg.db_path.display()));
-    println!("  • Enable AI:             {}", if cfg.enable_ai { green.apply_to("true") } else { yellow.apply_to("false") });
-    println!("  • Gemini Model:          {}", cyan.apply_to(&cfg.gemini_model));
+    println!(
+        "  • Card Limit:            {}",
+        cyan.apply_to(cfg.default_card_limit)
+    );
+    println!(
+        "  • Media Directory:       {}",
+        dim.apply_to(cfg.media_dir.display())
+    );
+    println!(
+        "  • Database Path:         {}",
+        dim.apply_to(cfg.db_path.display())
+    );
+    println!(
+        "  • Enable AI:             {}",
+        if cfg.enable_ai {
+            green.apply_to("true")
+        } else {
+            yellow.apply_to("false")
+        }
+    );
+    println!(
+        "  • Gemini Model:          {}",
+        cyan.apply_to(&cfg.gemini_model)
+    );
     let key_status = match cfg.gemini_api_key.as_deref() {
         Some(k) if !k.trim().is_empty() && k != "YOUR_GEMINI_API_KEY_HERE" => {
             let mask_len = k.len().saturating_sub(6);
@@ -22,14 +41,42 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
         _ => "Not set (Set GEMINI_API_KEY env var or in config)".to_string(),
     };
     println!("  • Gemini API Key:        {}", yellow.apply_to(key_status));
-    println!("  • Anki Sync Enabled:     {}", if cfg.enable_anki_sync { green.apply_to("true") } else { yellow.apply_to("false") });
-    println!("  • AnkiConnect URL:       {}", dim.apply_to(&cfg.anki_connect_url));
-    println!("  • Anki Deck Name:        {}", cyan.apply_to(&cfg.anki_deck_name));
-    println!("  • Anki Model Name:       {}", dim.apply_to(&cfg.anki_model_name));
-    println!("  • Max Definition Senses: {}", cyan.apply_to(cfg.max_definition_senses));
-    println!("  • Max Glosses / Sense:   {}", cyan.apply_to(cfg.max_glosses_per_sense));
-    println!("  • AI Batch Size:         {}", cyan.apply_to(cfg.ai_batch_size));
-    println!("  • AI Cache TTL:          {} min", cyan.apply_to(cfg.ai_cache_ttl_minutes));
+    println!(
+        "  • Anki Sync Enabled:     {}",
+        if cfg.enable_anki_sync {
+            green.apply_to("true")
+        } else {
+            yellow.apply_to("false")
+        }
+    );
+    println!(
+        "  • AnkiConnect URL:       {}",
+        dim.apply_to(&cfg.anki_connect_url)
+    );
+    println!(
+        "  • Anki Deck Name:        {}",
+        cyan.apply_to(&cfg.anki_deck_name)
+    );
+    println!(
+        "  • Anki Model Name:       {}",
+        dim.apply_to(&cfg.anki_model_name)
+    );
+    println!(
+        "  • Max Definition Senses: {}",
+        cyan.apply_to(cfg.max_definition_senses)
+    );
+    println!(
+        "  • Max Glosses / Sense:   {}",
+        cyan.apply_to(cfg.max_glosses_per_sense)
+    );
+    println!(
+        "  • AI Batch Size:         {}",
+        cyan.apply_to(cfg.ai_batch_size)
+    );
+    println!(
+        "  • AI Cache TTL:          {} min",
+        cyan.apply_to(cfg.ai_cache_ttl_minutes)
+    );
     println!();
 }
 
@@ -46,16 +93,43 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
         };
 
         let options = vec![
-            format!("🎴  Default Card Limit         [Current: {}]", cfg.default_card_limit),
+            format!(
+                "🎴  Default Card Limit         [Current: {}]",
+                cfg.default_card_limit
+            ),
             format!("🔑  Gemini API Key             [Current: {}]", key_display),
-            format!("🤖  Gemini Model               [Current: {}]", cfg.gemini_model),
-            format!("⚡  Enable AI Disambiguation   [Current: {}]", cfg.enable_ai),
-            format!("📦  Anki Deck Name             [Current: {}]", cfg.anki_deck_name),
-            format!("🔌  AnkiConnect URL            [Current: {}]", cfg.anki_connect_url),
-            format!("📖  Max Definition Senses      [Current: {}]", cfg.max_definition_senses),
-            format!("📝  Max Glosses per Sense      [Current: {}]", cfg.max_glosses_per_sense),
-            format!("🔢  AI Batch Size              [Current: {}]", cfg.ai_batch_size),
-            format!("⌛  AI Cache TTL (minutes)     [Current: {} min]", cfg.ai_cache_ttl_minutes),
+            format!(
+                "🤖  Gemini Model               [Current: {}]",
+                cfg.gemini_model
+            ),
+            format!(
+                "⚡  Enable AI Disambiguation   [Current: {}]",
+                cfg.enable_ai
+            ),
+            format!(
+                "📦  Anki Deck Name             [Current: {}]",
+                cfg.anki_deck_name
+            ),
+            format!(
+                "🔌  AnkiConnect URL            [Current: {}]",
+                cfg.anki_connect_url
+            ),
+            format!(
+                "📖  Max Definition Senses      [Current: {}]",
+                cfg.max_definition_senses
+            ),
+            format!(
+                "📝  Max Glosses per Sense      [Current: {}]",
+                cfg.max_glosses_per_sense
+            ),
+            format!(
+                "🔢  AI Batch Size              [Current: {}]",
+                cfg.ai_batch_size
+            ),
+            format!(
+                "⌛  AI Cache TTL (minutes)     [Current: {} min]",
+                cfg.ai_cache_ttl_minutes
+            ),
             "🔄  Reset to Default Values".to_string(),
             "💾  Save & Exit".to_string(),
         ];
@@ -101,7 +175,14 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             println!(" ✔ Model set to {}", cyan.apply_to(&cfg.gemini_model));
         } else if choice.contains("Enable AI Disambiguation") {
             cfg.enable_ai = !cfg.enable_ai;
-            println!(" ✔ AI Disambiguation {}", if cfg.enable_ai { green.apply_to("Enabled") } else { cyan.apply_to("Disabled") });
+            println!(
+                " ✔ AI Disambiguation {}",
+                if cfg.enable_ai {
+                    green.apply_to("Enabled")
+                } else {
+                    cyan.apply_to("Disabled")
+                }
+            );
         } else if choice.contains("Anki Deck Name") {
             let input = Text::new("Enter Anki deck name:")
                 .with_default(&cfg.anki_deck_name)
@@ -137,7 +218,10 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
                 .prompt()?;
             if let Ok(num) = input.trim().parse::<usize>() {
                 cfg.ai_batch_size = num.max(1);
-                println!(" ✔ AI batch size set to {}", cyan.apply_to(cfg.ai_batch_size));
+                println!(
+                    " ✔ AI batch size set to {}",
+                    cyan.apply_to(cfg.ai_batch_size)
+                );
             }
         } else if choice.contains("AI Cache TTL") {
             let input = Text::new("Enter AI analysis cache TTL in minutes (0 to disable cache):")

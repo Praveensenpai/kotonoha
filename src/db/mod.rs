@@ -105,22 +105,38 @@ impl Database {
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         if !columns.iter().any(|column| column == "anki_note_id") {
-            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN anki_note_id INTEGER", [])?;
+            self.conn.execute(
+                "ALTER TABLE mined_cards ADD COLUMN anki_note_id INTEGER",
+                [],
+            )?;
         }
         if !columns.iter().any(|column| column == "pitch_accent") {
-            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN pitch_accent TEXT", [])?;
+            self.conn
+                .execute("ALTER TABLE mined_cards ADD COLUMN pitch_accent TEXT", [])?;
         }
         if !columns.iter().any(|column| column == "english_natural") {
-            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN english_natural TEXT", [])?;
+            self.conn.execute(
+                "ALTER TABLE mined_cards ADD COLUMN english_natural TEXT",
+                [],
+            )?;
         }
         if !columns.iter().any(|column| column == "english_literal") {
-            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN english_literal TEXT", [])?;
+            self.conn.execute(
+                "ALTER TABLE mined_cards ADD COLUMN english_literal TEXT",
+                [],
+            )?;
         }
         if !columns.iter().any(|column| column == "kannada_natural") {
-            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN kannada_natural TEXT", [])?;
+            self.conn.execute(
+                "ALTER TABLE mined_cards ADD COLUMN kannada_natural TEXT",
+                [],
+            )?;
         }
         if !columns.iter().any(|column| column == "kannada_literal") {
-            self.conn.execute("ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT", [])?;
+            self.conn.execute(
+                "ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT",
+                [],
+            )?;
         }
 
         let kw_columns = self
@@ -129,7 +145,10 @@ impl Database {
             .query_map([], |row| row.get::<_, String>(1))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         if !kw_columns.iter().any(|column| column == "source") {
-            self.conn.execute("ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'", [])?;
+            self.conn.execute(
+                "ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'",
+                [],
+            )?;
         }
         self.conn.execute(
             "UPDATE known_words SET source = 'mined' WHERE word IN (SELECT target_word FROM mined_cards)",
@@ -149,7 +168,9 @@ impl Database {
     }
 
     pub fn get_known_words_by_source(&self, source: &str) -> Result<HashSet<String>> {
-        let mut stmt = self.conn.prepare("SELECT word FROM known_words WHERE source = ?")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT word FROM known_words WHERE source = ?")?;
         let rows = stmt.query_map(params![source], |row| row.get(0))?;
         let mut set = HashSet::new();
         for r in rows {
@@ -185,7 +206,9 @@ impl Database {
     }
 
     pub fn get_known_words_sorted_by_source(&self, source: &str) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare("SELECT word FROM known_words WHERE source = ? ORDER BY word ASC")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT word FROM known_words WHERE source = ? ORDER BY word ASC")?;
         let rows = stmt.query_map(params![source], |row| row.get(0))?;
         let mut words = Vec::new();
         for r in rows {
@@ -226,7 +249,9 @@ impl Database {
     }
 
     pub fn get_ignored_words_sorted(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare("SELECT word FROM ignored_words ORDER BY word ASC")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT word FROM ignored_words ORDER BY word ASC")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut words = Vec::new();
         for r in rows {
@@ -248,7 +273,10 @@ impl Database {
         Ok(removed)
     }
 
-    pub fn get_cached_definition(&self, expression: &str) -> Result<Option<(String, String, String)>> {
+    pub fn get_cached_definition(
+        &self,
+        expression: &str,
+    ) -> Result<Option<(String, String, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT reading, definition, pitch_accent FROM dictionary_cache WHERE expression = ?",
         )?;
@@ -271,7 +299,13 @@ impl Database {
         }
     }
 
-    pub fn cache_definition(&self, expression: &str, reading: &str, definition: &str, pitch: &str) -> Result<()> {
+    pub fn cache_definition(
+        &self,
+        expression: &str,
+        reading: &str,
+        definition: &str,
+        pitch: &str,
+    ) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO dictionary_cache (expression, reading, definition, pitch_accent) VALUES (?, ?, ?, ?)",
             params![expression, reading, definition, pitch],
@@ -279,8 +313,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_cached_candidates(&self, expression: &str) -> Result<Option<Vec<crate::dict::LookupResult>>> {
-        let mut stmt = self.conn.prepare("SELECT candidates_json FROM all_candidates_cache WHERE expression = ?")?;
+    pub fn get_cached_candidates(
+        &self,
+        expression: &str,
+    ) -> Result<Option<Vec<crate::dict::LookupResult>>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT candidates_json FROM all_candidates_cache WHERE expression = ?")?;
         let mut rows = stmt.query(params![expression])?;
         if let Some(row) = rows.next()? {
             let json_str: String = row.get(0)?;
@@ -291,7 +330,11 @@ impl Database {
         Ok(None)
     }
 
-    pub fn cache_candidates(&self, expression: &str, candidates: &[crate::dict::LookupResult]) -> Result<()> {
+    pub fn cache_candidates(
+        &self,
+        expression: &str,
+        candidates: &[crate::dict::LookupResult],
+    ) -> Result<()> {
         if let Ok(json_str) = serde_json::to_string(candidates) {
             self.conn.execute(
                 "INSERT OR REPLACE INTO all_candidates_cache (expression, candidates_json) VALUES (?, ?)",
@@ -314,6 +357,23 @@ pub struct SaveMinedCardParams<'a> {
     pub english_literal: Option<&'a str>,
     pub kannada_natural: Option<&'a str>,
     pub kannada_literal: Option<&'a str>,
+}
+
+#[allow(dead_code)]
+pub struct UpdateTranslationsParams<'a> {
+    pub card_id: i64,
+    pub eng_nat: Option<&'a str>,
+    pub eng_lit: Option<&'a str>,
+    pub kan_nat: Option<&'a str>,
+    pub kan_lit: Option<&'a str>,
+}
+
+pub struct GetCachedAiParams<'a> {
+    pub sentence: &'a str,
+    pub target_word: &'a str,
+    pub model: &'a str,
+    pub card_index: usize,
+    pub ttl_minutes: usize,
 }
 
 impl Database {
@@ -346,7 +406,8 @@ impl Database {
                 kannada_literal: row.get(11)?,
             })
         })?;
-        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
     }
 
     #[allow(dead_code)]
@@ -371,7 +432,8 @@ impl Database {
                 kannada_literal: row.get(11)?,
             })
         })?;
-        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
     }
 
     pub fn get_all_mined_cards(&self) -> Result<Vec<(MinedCard, Option<i64>)>> {
@@ -397,48 +459,38 @@ impl Database {
             let note_id: Option<i64> = row.get(12)?;
             Ok((card, note_id))
         })?;
-        rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
     }
 
     #[allow(dead_code)]
-    pub fn update_card_translations(
-        &self,
-        card_id: i64,
-        eng_nat: Option<&str>,
-        eng_lit: Option<&str>,
-        kan_nat: Option<&str>,
-        kan_lit: Option<&str>,
-    ) -> Result<()> {
+    pub fn update_card_translations(&self, p: UpdateTranslationsParams<'_>) -> Result<()> {
         self.conn.execute(
             "UPDATE mined_cards SET english_natural = ?, english_literal = ?, kannada_natural = ?, kannada_literal = ? WHERE id = ?",
-            params![eng_nat, eng_lit, kan_nat, kan_lit, card_id],
+            params![p.eng_nat, p.eng_lit, p.kan_nat, p.kan_lit, p.card_id],
         )?;
         Ok(())
     }
 
     pub fn get_cached_ai_analysis(
         &self,
-        sentence: &str,
-        target_word: &str,
-        model: &str,
-        card_index: usize,
-        ttl_minutes: usize,
+        p: GetCachedAiParams<'_>,
     ) -> Result<Option<crate::ai::AiAnalysisResult>> {
-        if ttl_minutes == 0 {
+        if p.ttl_minutes == 0 {
             return Ok(None);
         }
-        let key = format!("{}:{}:{}", sentence, target_word, model);
+        let key = format!("{}:{}:{}", p.sentence, p.target_word, p.model);
         let query = "
             SELECT english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning
             FROM ai_analysis_cache
             WHERE cache_key = ?1 AND updated_at >= datetime('now', printf('-%d minutes', ?2))
         ";
         let mut stmt = self.conn.prepare(query)?;
-        let mut rows = stmt.query(params![key, ttl_minutes as i64])?;
+        let mut rows = stmt.query(params![key, p.ttl_minutes as i64])?;
 
         if let Some(row) = rows.next()? {
             let res = crate::ai::AiAnalysisResult {
-                card_index,
+                card_index: p.card_index,
                 recommended_candidate_index: None,
                 recommended_sense_index: None,
                 custom_definition_suggestion: None,
@@ -490,11 +542,10 @@ impl Database {
     }
 
     pub fn is_offline_dict_indexed(&self) -> Result<bool> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM offline_terms",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM offline_terms", [], |row| row.get(0))
+            .unwrap_or(0);
         Ok(count > 0)
     }
 
@@ -523,18 +574,19 @@ impl Database {
         exact_only: bool,
     ) -> Result<Vec<crate::dict::LookupResult>> {
         let word_hira = crate::nlp::kata_to_hira(word);
-        let is_short_hiragana = word.chars().all(|c| matches!(c, '\u{3040}'..='\u{309F}')) && word.chars().count() <= 3;
+        let is_short_hiragana =
+            word.chars().all(|c| matches!(c, '\u{3040}'..='\u{309F}')) && word.chars().count() <= 3;
         let mut stmt = if exact_only {
             self.conn.prepare(
                 "SELECT expression, reading, definition, pitch_accent FROM offline_terms
                  WHERE expression = ?1 OR reading = ?1 OR reading = ?2
-                 ORDER BY score DESC LIMIT 10"
+                 ORDER BY score DESC LIMIT 10",
             )?
         } else if is_short_hiragana {
             self.conn.prepare(
                 "SELECT expression, reading, definition, pitch_accent FROM offline_terms
                  WHERE expression = ?1 OR reading = ?1 OR reading = ?2 OR expression LIKE ?3
-                 ORDER BY score DESC LIMIT 10"
+                 ORDER BY score DESC LIMIT 10",
             )?
         } else {
             self.conn.prepare(
@@ -558,22 +610,19 @@ impl Database {
 
         if exact_only {
             let rows = stmt.query_map(params![word, word_hira], map_row)?;
-            for r in rows {
-                if let Ok(res) = r {
-                    results.push(res);
-                }
+            for res in rows.flatten() {
+                results.push(res);
             }
         } else {
             let rows = stmt.query_map(params![word, word_hira, like_param], map_row)?;
-            for r in rows {
-                if let Ok(res) = r {
-                    results.push(res);
-                }
+            for res in rows.flatten() {
+                results.push(res);
             }
         }
 
         results.sort_by_key(|res| {
-            let is_exact = res.expression == word || res.reading == word || res.reading == word_hira;
+            let is_exact =
+                res.expression == word || res.reading == word || res.reading == word_hira;
             let is_uk_kana = is_short_hiragana
                 && res.reading == word
                 && res.definition.contains("[")

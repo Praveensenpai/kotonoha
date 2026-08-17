@@ -184,13 +184,13 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let tokenizer = JapaneseTokenizer::new()?;
         let known_words = db.get_known_words()?;
         let ignored_words = db.get_ignored_words()?;
-        TerminalUi::inspect_sentences(
-            &sentences,
-            &tokenizer,
-            &known_words,
-            &ignored_words,
-            video_path.as_deref(),
-        )?;
+        TerminalUi::inspect_sentences(crate::ui::InspectSentencesParams {
+            sentences: &sentences,
+            tokenizer: &tokenizer,
+            known_words: &known_words,
+            ignored_words: &ignored_words,
+            video_path: video_path.as_deref(),
+        })?;
         return Ok(true);
     }
     if arg == "--manage-ignored" {

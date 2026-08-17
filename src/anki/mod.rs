@@ -33,7 +33,9 @@ pub async fn anki_request(
     {
         Ok(res) => res,
         Err(e) if e.is_connect() => {
-            anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
+            anyhow::bail!(
+                "Anki is not connected. Please open Anki and make sure AnkiConnect is installed."
+            );
         }
         Err(e) => return Err(e.into()),
     };
@@ -43,7 +45,10 @@ pub async fn anki_request(
     if let Some(error) = body.get("error").and_then(|value| value.as_str()) {
         anyhow::bail!("AnkiConnect error: {error}");
     }
-    Ok(body.get("result").cloned().unwrap_or(serde_json::Value::Null))
+    Ok(body
+        .get("result")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null))
 }
 
 pub async fn upload_anki_media(
@@ -95,7 +100,10 @@ pub async fn find_existing_anki_note(
         return Ok(None);
     }
 
-    let note_ids: Vec<i64> = note_ids.iter().filter_map(serde_json::Value::as_i64).collect();
+    let note_ids: Vec<i64> = note_ids
+        .iter()
+        .filter_map(serde_json::Value::as_i64)
+        .collect();
     if note_ids.is_empty() {
         return Ok(None);
     }
@@ -119,7 +127,9 @@ pub async fn find_existing_anki_note(
             .and_then(|fields| fields.get("SentKanji"))
             .and_then(|field| field.get("value"))
             .and_then(serde_json::Value::as_str);
-        (value == Some(sentence)).then(|| note.get("noteId").and_then(serde_json::Value::as_i64)).flatten()
+        (value == Some(sentence))
+            .then(|| note.get("noteId").and_then(serde_json::Value::as_i64))
+            .flatten()
     }))
 }
 
@@ -172,10 +182,16 @@ pub fn sentence_with_furigana(
                     let surface = escape_html(&token.surface);
                     let is_target =
                         token.surface == target_word || token.dictionary_form == target_word;
-                    let display = if token.surface.chars().any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'))
+                    let display = if token
+                        .surface
+                        .chars()
+                        .any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'))
                         && !token.reading.is_empty()
                     {
-                        format!("<ruby>{surface}<rt>{}</rt></ruby>", escape_html(&token.reading))
+                        format!(
+                            "<ruby>{surface}<rt>{}</rt></ruby>",
+                            escape_html(&token.reading)
+                        )
                     } else {
                         surface
                     };
@@ -264,7 +280,9 @@ pub fn pitch_pattern(reading: &str, pitch_accent: &str) -> (String, String) {
 
 pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     if !anki_connected(&cfg.anki_connect_url).await {
-        anyhow::bail!("Anki is not connected. Please open Anki and make sure AnkiConnect is installed.");
+        anyhow::bail!(
+            "Anki is not connected. Please open Anki and make sure AnkiConnect is installed."
+        );
     }
 
     let all_cards = db.get_all_mined_cards()?;
@@ -405,9 +423,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                     Ok(res) => res
                         .as_i64()
                         .ok_or_else(|| anyhow::anyhow!("AnkiConnect did not return a note ID"))?,
-                    Err(error)
-                        if error.to_string().to_ascii_lowercase().contains("duplicate") =>
-                    {
+                    Err(error) if error.to_string().to_ascii_lowercase().contains("duplicate") => {
                         find_existing_anki_note(
                             &client,
                             &cfg.anki_connect_url,

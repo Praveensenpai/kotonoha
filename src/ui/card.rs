@@ -1,4 +1,4 @@
-use console::{Style};
+use console::Style;
 use crossterm::terminal;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -36,7 +36,10 @@ pub fn visual_width(s: &str) -> usize {
 }
 
 pub fn box_width() -> usize {
-    terminal::size().map(|(w, _)| w as usize).unwrap_or(80).clamp(60, 110)
+    terminal::size()
+        .map(|(w, _)| w as usize)
+        .unwrap_or(80)
+        .clamp(60, 110)
 }
 
 pub fn box_row(content: &str, inner_w: usize) -> String {
@@ -73,10 +76,15 @@ pub fn highlight_sentence_tokens(
                 } else if unknown_context.contains(dict) || unknown_context.contains(surface) {
                     out.push_str(&red.apply_to(surface).to_string());
                 } else if t.is_proper_noun
-                    || ignored_context.iter().any(|ig| ig.starts_with(dict) || ig.starts_with(surface))
+                    || ignored_context
+                        .iter()
+                        .any(|ig| ig.starts_with(dict) || ig.starts_with(surface))
                 {
                     out.push_str(&dim.apply_to(surface).to_string());
-                } else if known_context.contains(dict) || known_context.contains(surface) || t.is_content_word {
+                } else if known_context.contains(dict)
+                    || known_context.contains(surface)
+                    || t.is_content_word
+                {
                     out.push_str(&cyan.apply_to(surface).to_string());
                 } else {
                     out.push_str(surface);
@@ -223,9 +231,16 @@ pub fn render_card(p: CardRenderParams<'_>) {
     println!("\n{}", top);
     println!("{}", box_empty(iw));
     println!("{}", lrow("Sentence:", &highlighted));
-    let pitch_num = pitch.parse::<usize>().unwrap_or_else(|_| {
-        if pitch == "HLL" || pitch == "1" { 1 } else { 0 }
-    });
+    let pitch_num =
+        pitch.parse::<usize>().unwrap_or_else(
+            |_| {
+                if pitch == "HLL" || pitch == "1" {
+                    1
+                } else {
+                    0
+                }
+            },
+        );
     let (reading_str, pitch_tag, _morae_cnt) = crate::dict::format_pitch_accent(reading, pitch_num);
 
     println!(
@@ -247,19 +262,46 @@ pub fn render_card(p: CardRenderParams<'_>) {
         4 => "Tier 4 (Standalone Word)".to_string(),
         n => format!("Tier {} ({} Context Words)", n, n),
     };
-    println!("{}", lrow("Mining Rank:", &format!("{}x in Ep | {}", episode_freq, tier_label)));
+    println!(
+        "{}",
+        lrow(
+            "Mining Rank:",
+            &format!("{}x in Ep | {}", episode_freq, tier_label)
+        )
+    );
 
     if let Some(warn) = ai_warning {
         let warn_styled = format!("⚠️  AI Parsing Warning: {}", warn);
-        println!("{}", lrow("AI Notice:", &red.apply_to(&format_val(&warn_styled)).to_string()));
+        println!(
+            "{}",
+            lrow(
+                "AI Notice:",
+                &red.apply_to(&format_val(&warn_styled)).to_string()
+            )
+        );
     }
 
     if let Some(trans) = translations {
         if let Some(ref eng_nat) = trans.0 {
-            println!("{}", lrow("English (Nat):", &cyan.apply_to(&format_val(eng_nat)).to_string()));
+            println!(
+                "{}",
+                lrow(
+                    "English (Nat):",
+                    &cyan.apply_to(&format_val(eng_nat)).to_string()
+                )
+            );
         }
         if let Some(ref eng_lit) = trans.1 {
-            println!("{}", lrow("English (Lit):", &Style::new().dim().apply_to(&format_val(eng_lit)).to_string()));
+            println!(
+                "{}",
+                lrow(
+                    "English (Lit):",
+                    &Style::new()
+                        .dim()
+                        .apply_to(&format_val(eng_lit))
+                        .to_string()
+                )
+            );
         }
     }
 
@@ -279,11 +321,32 @@ pub fn render_card(p: CardRenderParams<'_>) {
         }
     }
 
-    println!("{}", lrow("Unknown Words:", &red.apply_to(&format_val(&unknown_str)).to_string()));
-    println!("{}", lrow("Known Words:", &cyan.apply_to(&format_val(&known_str)).to_string()));
+    println!(
+        "{}",
+        lrow(
+            "Unknown Words:",
+            &red.apply_to(&format_val(&unknown_str)).to_string()
+        )
+    );
+    println!(
+        "{}",
+        lrow(
+            "Known Words:",
+            &cyan.apply_to(&format_val(&known_str)).to_string()
+        )
+    );
     if !ignored_context.is_empty() {
         let ignored_str = ignored_context.join(", ");
-        println!("{}", lrow("Ignored/Names:", &Style::new().dim().apply_to(&format_val(&ignored_str)).to_string()));
+        println!(
+            "{}",
+            lrow(
+                "Ignored/Names:",
+                &Style::new()
+                    .dim()
+                    .apply_to(&format_val(&ignored_str))
+                    .to_string()
+            )
+        );
     }
     println!("{}", box_empty(iw));
     println!("{}\n", bottom);
