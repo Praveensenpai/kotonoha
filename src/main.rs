@@ -48,6 +48,30 @@ async fn main() -> Result<()> {
             style("kotonoha --sync").cyan()
         );
     }
+
+    let unsynced = db.get_unsynced_mined_cards().unwrap_or_default();
+    if !unsynced.is_empty() {
+        println!(
+            " {}  {} unsynced card{} in database. Please run {} so old media can be cleaned up.",
+            style("⚠").yellow().bold(),
+            style(unsynced.len()).yellow().bold(),
+            if unsynced.len() == 1 { "" } else { "s" },
+            style("kotonoha --sync").cyan()
+        );
+    }
+
+    if cfg.max_cached_cards > 0 {
+        let protected = db.get_unsynced_media_paths().unwrap_or_default();
+        if let Ok(cleaned) = media::MediaExtractor::clean_old_media(
+            &cfg.media_dir,
+            cfg.max_cached_cards,
+            &protected,
+        ) {
+            if cleaned > 0 {
+                println!(" 🧹 Auto-cleaned {} old cached media file(s).", cleaned);
+            }
+        }
+    }
     println!();
 
     let _ = DictionaryService::ensure_offline_dictionaries_ready(&http_client, &mut db).await;

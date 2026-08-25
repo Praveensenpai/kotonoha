@@ -159,6 +159,99 @@ impl MediaExtractor {
         cmd.stderr(Stdio::null());
         cmd.spawn().ok()
     }
+
+    /// Prune old cached media files from `media_dir` down to `max_cards`.
+    /// Preserves any files present in `protected_paths` (e.g. unsynced mined cards).
+    /// Returns the number of files successfully deleted.
+    pub fn clean_old_media(
+        media_dir: &Path,
+        max_cards: usize,
+        protected_paths: &std::collections::HashSet<std::path::PathBuf>,
+    ) -> Result<usize> {
+        if max_cards == 0 || !media_dir.exists() || !media_dir.is_dir() {
+            return Ok(0);
+        }
+
+        let media_extensions = ["opus", "jpg", "jpeg", "png", "mp3", "wav", "webm"];
+
+        let entries = match std::fs::read_dir(media_dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(0),
+        };
+
+        // Group files by card stem (e.g., "word_1" for "word_1.opus" and "word_1.jpg")
+        let mut card_files: std::collections::HashMap<String, Vec<(std::path::PathBuf, std::time::SystemTime)>> =
+            std::collections::HashMap::new();
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if !media_extensions.contains(&ext.as_str()) {
+                continue;
+            }
+
+            let mtime = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            card_files.entry(stem).or_default().push((path, mtime));
+        }
+
+        // Filter out cards that contain any protected file path
+        let mut cleanable_cards: Vec<(String, std::time::SystemTime, Vec<std::path::PathBuf>)> = Vec::new();
+
+        for (stem, files) in card_files {
+            let is_protected = files.iter().any(|(p, _)| {
+                protected_paths.contains(p)
+                    || protected_paths.iter().any(|prot| prot.file_name() == p.file_name())
+            });
+
+            if !is_protected {
+                let newest_mtime = files
+                    .iter()
+                    .map(|(_, m)| *m)
+                    .max()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                let paths = files.into_iter().map(|(p, _)| p).collect();
+                cleanable_cards.push((stem, newest_mtime, paths));
+            }
+        }
+
+        if cleanable_cards.len() <= max_cards {
+            return Ok(0);
+        }
+
+        // Sort ascending by modification time (oldest first)
+        cleanable_cards.sort_by_key(|(_, mtime, _)| *mtime);
+
+        let excess_count = cleanable_cards.len() - max_cards;
+        let mut deleted_files = 0;
+
+        for (_, _, files) in cleanable_cards.into_iter().take(excess_count) {
+            for file_path in files {
+                if std::fs::remove_file(&file_path).is_ok() {
+                    deleted_files += 1;
+                }
+            }
+        }
+
+        Ok(deleted_files)
+    }
 }
 
 fn which_exists(bin: &str) -> bool {
@@ -170,3 +263,6 @@ fn which_exists(bin: &str) -> bool {
         .map(|s| s.success())
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests;

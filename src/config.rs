@@ -105,6 +105,8 @@ impl Default for DictionarySettings {
 pub struct AppConfig {
     #[serde(default = "default_card_limit")]
     pub default_card_limit: usize,
+    #[serde(default = "default_max_cached_cards")]
+    pub max_cached_cards: usize,
     pub media_dir: PathBuf,
     pub db_path: PathBuf,
     #[serde(default = "default_audio_padding_secs")]
@@ -119,6 +121,9 @@ pub struct AppConfig {
 
 fn default_card_limit() -> usize {
     25
+}
+fn default_max_cached_cards() -> usize {
+    50
 }
 fn default_audio_padding_secs() -> f64 {
     0.25
@@ -148,6 +153,7 @@ impl Default for AppConfig {
 
         Self {
             default_card_limit: default_card_limit(),
+            max_cached_cards: default_max_cached_cards(),
             media_dir,
             db_path: config_dir.join("kotonoha.db"),
             audio_padding_secs: default_audio_padding_secs(),

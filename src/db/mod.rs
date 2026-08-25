@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct Database {
     conn: Connection,
@@ -639,5 +639,26 @@ impl Database {
             params![anki_note_id, card_id],
         )?;
         Ok(())
+    }
+
+    pub fn get_unsynced_media_paths(&self) -> Result<HashSet<PathBuf>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT audio_path, image_path FROM mined_cards WHERE anki_note_id IS NULL",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let audio: Option<String> = row.get(0)?;
+            let image: Option<String> = row.get(1)?;
+            Ok((audio, image))
+        })?;
+        let mut set = HashSet::new();
+        for r in rows.flatten() {
+            if let Some(a) = r.0 {
+                set.insert(PathBuf::from(a));
+            }
+            if let Some(i) = r.1 {
+                set.insert(PathBuf::from(i));
+            }
+        }
+        Ok(set)
     }
 }

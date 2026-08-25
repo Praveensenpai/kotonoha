@@ -3,6 +3,10 @@
 # Default maximum cards to mine per session
 default_card_limit = 25
 
+# Maximum recent cards to keep audio & screenshots for before auto-cleanup on startup
+# (e.g. 50 cards = keeps up to 50 .opus audios + 50 .jpg screenshots). Set to 0 to disable cleanup.
+max_cached_cards = 50
+
 # Media storage directory for audio snippets & screenshots
 media_dir = "~/.local/share/kotonoha/media"
 

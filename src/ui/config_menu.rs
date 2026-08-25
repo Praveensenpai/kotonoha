@@ -14,6 +14,10 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
         cyan.apply_to(cfg.default_card_limit)
     );
     println!(
+        "  • Max Cached Cards:      {}",
+        cyan.apply_to(cfg.max_cached_cards)
+    );
+    println!(
         "  • Media Directory:       {}",
         dim.apply_to(cfg.media_dir.display())
     );
@@ -97,6 +101,10 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
                 "🎴  Default Card Limit         [Current: {}]",
                 cfg.default_card_limit
             ),
+            format!(
+                "💾  Max Cached Cards           [Current: {}]",
+                cfg.max_cached_cards
+            ),
             format!("🔑  Gemini API Key             [Current: {}]", key_display),
             format!(
                 "🤖  Gemini Model               [Current: {}]",
@@ -145,6 +153,14 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             if let Ok(num) = input.trim().parse::<usize>() {
                 cfg.default_card_limit = num;
                 println!(" ✔ Card limit set to {}", cyan.apply_to(num));
+            }
+        } else if choice.contains("Max Cached Cards") {
+            let input = Text::new("Enter maximum cached cards to keep in media dir (0 to disable cleanup):")
+                .with_default(&cfg.max_cached_cards.to_string())
+                .prompt()?;
+            if let Ok(num) = input.trim().parse::<usize>() {
+                cfg.max_cached_cards = num;
+                println!(" ✔ Max cached cards set to {}", cyan.apply_to(num));
             }
         } else if choice.contains("Gemini API Key") {
             let current_key = cfg.ai.gemini_api_key.clone().unwrap_or_default();
