@@ -190,6 +190,9 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     "mined",
                 );
                 println!(" ✔ Card mined successfully!");
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::Mined);
             }
             'k' => {
@@ -197,6 +200,9 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     .db
                     .add_known_words(std::slice::from_ref(&ctx.cand.target_word));
                 println!(" 🧠 Target word marked as known!");
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::Known);
             }
             'u' => {
@@ -204,22 +210,37 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     .db
                     .remove_known_words(std::slice::from_ref(&ctx.cand.target_word));
                 println!(" 🔓 Target word unmarked as known (moved back to unknown)!");
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::UnmarkedKnown);
             }
             'i' => {
                 let _ = ctx.db.add_ignored_word(&ctx.cand.target_word);
                 println!(" 🚫 Target word ignored.");
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::Ignored);
             }
             'n' => {
                 println!(" ⏭️ Card skipped.");
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::Skipped);
             }
             'q' => {
                 println!(" 🚪 Exiting mining session.");
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::Quit);
             }
             _ => {
+                if let Some(mut child) = audio_child.take() {
+                    let _ = child.kill();
+                }
                 return Ok(CardActionResult::Skipped);
             }
         }

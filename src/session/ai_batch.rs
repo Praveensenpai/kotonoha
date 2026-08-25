@@ -44,7 +44,10 @@ pub fn prepare_ai_batch(
         }
     }
 
-    let task_handle = if cfg.ai.enable_ai && cfg.ai.has_valid_api_key() && !uncached_card_targets.is_empty() {
+    let task_handle = if cfg.ai.enable_ai
+        && cfg.ai.has_valid_api_key()
+        && !uncached_card_targets.is_empty()
+    {
         if let Some(ref api_key) = cfg.ai.gemini_api_key {
             let api_key = api_key.clone();
             let model = cfg.ai.gemini_model.clone();

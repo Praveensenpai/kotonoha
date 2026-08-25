@@ -7,7 +7,6 @@ pub struct Database {
     conn: Connection,
 }
 
-#[allow(dead_code)]
 pub struct MinedCard {
     pub id: i64,
     pub sentence: String,
@@ -18,9 +17,6 @@ pub struct MinedCard {
     pub audio_path: Option<String>,
     pub image_path: Option<String>,
     pub english_natural: Option<String>,
-    pub english_literal: Option<String>,
-    pub kannada_natural: Option<String>,
-    pub kannada_literal: Option<String>,
 }
 
 impl Database {
@@ -200,11 +196,6 @@ impl Database {
         Ok(added)
     }
 
-    #[allow(dead_code)]
-    pub fn get_known_words_sorted(&self) -> Result<Vec<String>> {
-        self.get_known_words_sorted_by_source("known")
-    }
-
     pub fn get_known_words_sorted_by_source(&self, source: &str) -> Result<Vec<String>> {
         let mut stmt = self
             .conn
@@ -359,15 +350,6 @@ pub struct SaveMinedCardParams<'a> {
     pub kannada_literal: Option<&'a str>,
 }
 
-#[allow(dead_code)]
-pub struct UpdateTranslationsParams<'a> {
-    pub card_id: i64,
-    pub eng_nat: Option<&'a str>,
-    pub eng_lit: Option<&'a str>,
-    pub kan_nat: Option<&'a str>,
-    pub kan_lit: Option<&'a str>,
-}
-
 pub struct GetCachedAiParams<'a> {
     pub sentence: &'a str,
     pub target_word: &'a str,
@@ -387,7 +369,7 @@ impl Database {
 
     pub fn get_unsynced_mined_cards(&self) -> Result<Vec<MinedCard>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal
+            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural
              FROM mined_cards WHERE anki_note_id IS NULL ORDER BY id",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -401,35 +383,6 @@ impl Database {
                 audio_path: row.get(6)?,
                 image_path: row.get(7)?,
                 english_natural: row.get(8)?,
-                english_literal: row.get(9)?,
-                kannada_natural: row.get(10)?,
-                kannada_literal: row.get(11)?,
-            })
-        })?;
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(Into::into)
-    }
-
-    #[allow(dead_code)]
-    pub fn get_cards_missing_translations(&self) -> Result<Vec<MinedCard>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal
-             FROM mined_cards WHERE english_natural IS NULL OR kannada_natural IS NULL ORDER BY id",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(MinedCard {
-                id: row.get(0)?,
-                sentence: row.get(1)?,
-                target_word: row.get(2)?,
-                reading: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-                pitch_accent: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                definition: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
-                audio_path: row.get(6)?,
-                image_path: row.get(7)?,
-                english_natural: row.get(8)?,
-                english_literal: row.get(9)?,
-                kannada_natural: row.get(10)?,
-                kannada_literal: row.get(11)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
@@ -438,7 +391,7 @@ impl Database {
 
     pub fn get_all_mined_cards(&self) -> Result<Vec<(MinedCard, Option<i64>)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, english_literal, kannada_natural, kannada_literal, anki_note_id
+            "SELECT id, sentence, target_word, reading, pitch_accent, definition, audio_path, image_path, english_natural, anki_note_id
              FROM mined_cards ORDER BY id",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -452,24 +405,12 @@ impl Database {
                 audio_path: row.get(6)?,
                 image_path: row.get(7)?,
                 english_natural: row.get(8)?,
-                english_literal: row.get(9)?,
-                kannada_natural: row.get(10)?,
-                kannada_literal: row.get(11)?,
             };
-            let note_id: Option<i64> = row.get(12)?;
+            let note_id: Option<i64> = row.get(9)?;
             Ok((card, note_id))
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into)
-    }
-
-    #[allow(dead_code)]
-    pub fn update_card_translations(&self, p: UpdateTranslationsParams<'_>) -> Result<()> {
-        self.conn.execute(
-            "UPDATE mined_cards SET english_natural = ?, english_literal = ?, kannada_natural = ?, kannada_literal = ? WHERE id = ?",
-            params![p.eng_nat, p.eng_lit, p.kan_nat, p.kan_lit, p.card_id],
-        )?;
-        Ok(())
     }
 
     pub fn get_cached_ai_analysis(
@@ -642,9 +583,9 @@ impl Database {
     }
 
     pub fn get_unsynced_media_paths(&self) -> Result<HashSet<PathBuf>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT audio_path, image_path FROM mined_cards WHERE anki_note_id IS NULL",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT audio_path, image_path FROM mined_cards WHERE anki_note_id IS NULL")?;
         let rows = stmt.query_map([], |row| {
             let audio: Option<String> = row.get(0)?;
             let image: Option<String> = row.get(1)?;

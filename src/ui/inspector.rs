@@ -93,9 +93,9 @@ pub fn inspect_sentences(p: InspectSentencesParams<'_>) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_inspector(&mut terminal, &rows, p.video_path);
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    let _ = disable_raw_mode();
+    let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let _ = terminal.show_cursor();
     result
 }
 

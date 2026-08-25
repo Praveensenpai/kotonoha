@@ -155,9 +155,11 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
                 println!(" ✔ Card limit set to {}", cyan.apply_to(num));
             }
         } else if choice.contains("Max Cached Cards") {
-            let input = Text::new("Enter maximum cached cards to keep in media dir (0 to disable cleanup):")
-                .with_default(&cfg.max_cached_cards.to_string())
-                .prompt()?;
+            let input = Text::new(
+                "Enter maximum cached cards to keep in media dir (0 to disable cleanup):",
+            )
+            .with_default(&cfg.max_cached_cards.to_string())
+            .prompt()?;
             if let Ok(num) = input.trim().parse::<usize>() {
                 cfg.max_cached_cards = num;
                 println!(" ✔ Max cached cards set to {}", cyan.apply_to(num));

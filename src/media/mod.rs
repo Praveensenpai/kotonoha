@@ -180,8 +180,10 @@ impl MediaExtractor {
         };
 
         // Group files by card stem (e.g., "word_1" for "word_1.opus" and "word_1.jpg")
-        let mut card_files: std::collections::HashMap<String, Vec<(std::path::PathBuf, std::time::SystemTime)>> =
-            std::collections::HashMap::new();
+        let mut card_files: std::collections::HashMap<
+            String,
+            Vec<(std::path::PathBuf, std::time::SystemTime)>,
+        > = std::collections::HashMap::new();
 
         for entry in entries.flatten() {
             let path = entry.path();
@@ -213,12 +215,15 @@ impl MediaExtractor {
         }
 
         // Filter out cards that contain any protected file path
-        let mut cleanable_cards: Vec<(String, std::time::SystemTime, Vec<std::path::PathBuf>)> = Vec::new();
+        let mut cleanable_cards: Vec<(String, std::time::SystemTime, Vec<std::path::PathBuf>)> =
+            Vec::new();
 
         for (stem, files) in card_files {
             let is_protected = files.iter().any(|(p, _)| {
                 protected_paths.contains(p)
-                    || protected_paths.iter().any(|prot| prot.file_name() == p.file_name())
+                    || protected_paths
+                        .iter()
+                        .any(|prot| prot.file_name() == p.file_name())
             });
 
             if !is_protected {
@@ -255,13 +260,15 @@ impl MediaExtractor {
 }
 
 fn which_exists(bin: &str) -> bool {
-    Command::new("which")
-        .arg(bin)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    if let Some(paths) = std::env::var_os("PATH") {
+        for path in std::env::split_paths(&paths) {
+            let full_path = path.join(bin);
+            if full_path.is_file() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

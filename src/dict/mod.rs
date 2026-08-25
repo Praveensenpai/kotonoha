@@ -253,7 +253,7 @@ pub struct LookupLimits {
 pub struct DictionaryService;
 
 impl DictionaryService {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub async fn lookup(client: &reqwest::Client, word: &str) -> Result<LookupResult> {
         Self::lookup_with_limits(client, word, 3, 4).await
     }

@@ -401,7 +401,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                             "fields": {
                                 "SentKanji": card.sentence,
                                 "SentFurigana": sentence_furigana,
-                                "SentEng": "",
+                                "SentEng": card.english_natural.as_deref().unwrap_or_default(),
                                 "SentAudio": sentence_audio,
                                 "VocabKanji": card.target_word,
                                 "VocabFurigana": card.reading,

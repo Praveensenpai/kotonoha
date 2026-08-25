@@ -1,6 +1,25 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::Path;
+use std::sync::LazyLock;
+
+static RE_HTML: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]*>").unwrap());
+static RE_ASS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{[^}]*\}").unwrap());
+static RE_FULL_PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"（[^）]*）").unwrap());
+static RE_HALF_PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\([^)]*\)").unwrap());
+static RE_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
+static RE_SRT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?s)(\d+)\s*\n(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*\n(.*?)(?:\n\r?\n|\z)",
+    )
+    .unwrap()
+});
+static RE_ASS_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)Dialogue:\s*\d+,\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*(.*)",
+    )
+    .unwrap()
+});
 
 #[derive(Debug, Clone)]
 pub struct SubtitleSentence {
@@ -27,23 +46,17 @@ pub fn parse_subtitle(path: &Path) -> Result<Vec<SubtitleSentence>> {
 }
 
 fn clean_text(text: &str) -> String {
-    let re_html = Regex::new(r"<[^>]*>").unwrap();
-    let re_ass = Regex::new(r"\{[^}]*\}").unwrap();
-    let re_full_parens = Regex::new(r"（[^）]*）").unwrap();
-    let re_half_parens = Regex::new(r"\([^)]*\)").unwrap();
-
-    let cleaned = re_html.replace_all(text, "");
-    let cleaned = re_ass.replace_all(&cleaned, "");
-    let cleaned = re_full_parens.replace_all(&cleaned, "");
-    let cleaned = re_half_parens.replace_all(&cleaned, "");
+    let cleaned = RE_HTML.replace_all(text, "");
+    let cleaned = RE_ASS.replace_all(&cleaned, "");
+    let cleaned = RE_FULL_PARENS.replace_all(&cleaned, "");
+    let cleaned = RE_HALF_PARENS.replace_all(&cleaned, "");
     let flattened = cleaned
         .replace("\\N", " ")
         .replace("\\n", " ")
         .replace("\r\n", " ")
         .replace(['\n', '\r'], " ");
 
-    let re_spaces = Regex::new(r"\s+").unwrap();
-    re_spaces.replace_all(flattened.trim(), " ").to_string()
+    RE_SPACES.replace_all(flattened.trim(), " ").to_string()
 }
 
 fn parse_time_srt(s: &str) -> Option<u64> {
@@ -60,11 +73,8 @@ fn parse_time_srt(s: &str) -> Option<u64> {
 
 fn parse_srt(content: &str) -> Result<Vec<SubtitleSentence>> {
     let mut result = Vec::new();
-    let re = Regex::new(
-        r"(?s)(\d+)\s*\n(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*\n(.*?)(?:\n\r?\n|\z)",
-    )?;
 
-    for cap in re.captures_iter(content) {
+    for cap in RE_SRT.captures_iter(content) {
         let index: usize = cap[1].parse().unwrap_or(0);
         let start_str = &cap[2];
         let end_str = &cap[3];
@@ -90,13 +100,10 @@ fn parse_srt(content: &str) -> Result<Vec<SubtitleSentence>> {
 
 fn parse_ass(content: &str) -> Result<Vec<SubtitleSentence>> {
     let mut result = Vec::new();
-    let re = Regex::new(
-        r"(?i)Dialogue:\s*\d+,\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*(.*)",
-    )?;
-
     let mut idx = 1;
+
     for line in content.lines() {
-        if let Some(cap) = re.captures(line) {
+        if let Some(cap) = RE_ASS_LINE.captures(line) {
             let start_str = &cap[1];
             let end_str = &cap[2];
             let raw_text = &cap[3];

@@ -36,6 +36,10 @@ pub fn kata_to_hira(s: &str) -> String {
         .collect()
 }
 
+static CHAR_DEF: &str = include_str!("resources/char.def");
+static REWRITE_DEF: &str = include_str!("resources/rewrite.def");
+static UNK_DEF: &str = include_str!("resources/unk.def");
+
 pub struct JapaneseTokenizer {
     dict: JapaneseDictionary,
 }
@@ -48,23 +52,39 @@ impl JapaneseTokenizer {
 
         let dict_path = kotonoha_dir.join("system.dic");
         if !dict_path.exists() {
-            let uv_dic = PathBuf::from("/home/paisen/.cache/uv/archive-v0/xaAwtzGbATmrfCxj/sudachidict_core/resources/system.dic");
-            if uv_dic.exists() {
-                let _ = std::fs::copy(uv_dic, &dict_path);
+            let possible_roots = [
+                dirs::cache_dir().map(|p| p.join("uv")),
+                dirs::home_dir().map(|p| p.join(".cache/uv")),
+            ];
+            'find_dic: for root in possible_roots.into_iter().flatten() {
+                if root.exists() {
+                    for entry in walkdir::WalkDir::new(root)
+                        .max_depth(6)
+                        .into_iter()
+                        .flatten()
+                    {
+                        if entry.file_name() == "system.dic" && entry.path().is_file() {
+                            let _ = std::fs::copy(entry.path(), &dict_path);
+                            break 'find_dic;
+                        }
+                    }
+                }
             }
         }
 
-        let res_dir = PathBuf::from(
-            "/home/paisen/.cargo/git/checkouts/sudachi.rs-f754f73973769f6e/f4dd8f2/resources",
-        );
-        for def_file in &["char.def", "rewrite.def", "unk.def"] {
-            let dst = kotonoha_dir.join(def_file);
-            if !dst.exists() {
-                let src = res_dir.join(def_file);
-                if src.exists() {
-                    let _ = std::fs::copy(src, dst);
-                }
-            }
+        let char_dst = kotonoha_dir.join("char.def");
+        if !char_dst.exists() {
+            let _ = std::fs::write(&char_dst, CHAR_DEF);
+        }
+
+        let rewrite_dst = kotonoha_dir.join("rewrite.def");
+        if !rewrite_dst.exists() {
+            let _ = std::fs::write(&rewrite_dst, REWRITE_DEF);
+        }
+
+        let unk_dst = kotonoha_dir.join("unk.def");
+        if !unk_dst.exists() {
+            let _ = std::fs::write(&unk_dst, UNK_DEF);
         }
 
         let config = Config::minimal_at(&kotonoha_dir).with_system_dic(&dict_path);

@@ -1,6 +1,10 @@
 use console::Style;
 use crossterm::terminal;
+use std::sync::LazyLock;
 use unicode_segmentation::UnicodeSegmentation;
+
+static TOKENIZER: LazyLock<Option<crate::nlp::JapaneseTokenizer>> =
+    LazyLock::new(|| crate::nlp::JapaneseTokenizer::new().ok());
 
 pub type SentenceTranslations<'a> = (
     &'a Option<String>,
@@ -65,7 +69,7 @@ pub fn highlight_sentence_tokens(
     let red = Style::new().red().bold();
     let dim = Style::new().dim();
 
-    if let Ok(tokenizer) = crate::nlp::JapaneseTokenizer::new() {
+    if let Some(ref tokenizer) = *TOKENIZER {
         if let Ok(tokens) = tokenizer.tokenize(sentence) {
             let mut out = String::new();
             for t in tokens {

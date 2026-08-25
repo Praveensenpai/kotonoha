@@ -80,11 +80,9 @@ async fn main() -> Result<()> {
 
     if cfg.max_cached_cards > 0 {
         let protected = db.get_unsynced_media_paths().unwrap_or_default();
-        if let Ok(cleaned) = media::MediaExtractor::clean_old_media(
-            &cfg.media_dir,
-            cfg.max_cached_cards,
-            &protected,
-        ) {
+        if let Ok(cleaned) =
+            media::MediaExtractor::clean_old_media(&cfg.media_dir, cfg.max_cached_cards, &protected)
+        {
             if cleaned > 0 {
                 println!(" 🧹 Auto-cleaned {} old cached media file(s).", cleaned);
             }
