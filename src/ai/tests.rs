@@ -43,3 +43,27 @@ fn test_ai_index_normalization() {
     }
     assert_eq!(parsed.results[0].recommended_candidate_index, Some(0));
 }
+
+#[test]
+fn test_has_valid_api_key() {
+    use crate::config::AiSettings;
+
+    let mut ai = AiSettings::default();
+    ai.gemini_api_key = None;
+    assert!(!ai.has_valid_api_key());
+
+    ai.gemini_api_key = Some("".to_string());
+    assert!(!ai.has_valid_api_key());
+
+    ai.gemini_api_key = Some("   ".to_string());
+    assert!(!ai.has_valid_api_key());
+
+    ai.gemini_api_key = Some("YOUR_GEMINI_API_KEY_HERE".to_string());
+    assert!(!ai.has_valid_api_key());
+
+    ai.gemini_api_key = Some("your_api_key_here".to_string());
+    assert!(!ai.has_valid_api_key());
+
+    ai.gemini_api_key = Some("AIzaSyValidKey123".to_string());
+    assert!(ai.has_valid_api_key());
+}

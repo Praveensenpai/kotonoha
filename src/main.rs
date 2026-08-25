@@ -49,6 +49,24 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Gemini AI status
+    if cfg.ai.enable_ai {
+        if cfg.ai.has_valid_api_key() {
+            println!(
+                " {}  Gemini AI ready (Model: {})",
+                style("✔").green().bold(),
+                style(&cfg.ai.gemini_model).cyan().bold()
+            );
+        } else {
+            println!(
+                " {}  Gemini API key not set — AI disambiguation & translations disabled.\n    Set {} env var or run {} to configure.",
+                style("⚠").yellow().bold(),
+                style("GEMINI_API_KEY").yellow().bold(),
+                style("kotonoha --config").cyan()
+            );
+        }
+    }
+
     let unsynced = db.get_unsynced_mined_cards().unwrap_or_default();
     if !unsynced.is_empty() {
         println!(

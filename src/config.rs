@@ -21,7 +21,7 @@ fn default_anki_connect_url() -> String {
     "http://127.0.0.1:8765".to_string()
 }
 fn default_anki_deck_name() -> String {
-    "Anime Mining T1".to_string()
+    "日本語::Mining".to_string()
 }
 fn default_anki_model_name() -> String {
     "Japanese sentences+".to_string()
@@ -63,6 +63,20 @@ fn default_ai_batch_size() -> usize {
 }
 fn default_ai_cache_ttl_minutes() -> usize {
     30
+}
+
+impl AiSettings {
+    pub fn has_valid_api_key(&self) -> bool {
+        match self.gemini_api_key.as_deref() {
+            Some(key) => {
+                let trimmed = key.trim();
+                !trimmed.is_empty()
+                    && trimmed != "YOUR_GEMINI_API_KEY_HERE"
+                    && trimmed != "your_api_key_here"
+            }
+            None => false,
+        }
+    }
 }
 
 impl Default for AiSettings {
