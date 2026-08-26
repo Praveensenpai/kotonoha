@@ -427,9 +427,16 @@ impl TerminalUi {
         }
         options.push("✍  Enter custom definition text".to_string());
 
-        let ans = Select::new("Select dictionary definition:", options)
-            .with_page_size(10)
-            .prompt()?;
+        let mut select = Select::new("Select dictionary definition:", options).with_page_size(10);
+        if let Some(idx) = ai_rec_cand {
+            if idx < candidates.len() {
+                select = select.with_starting_cursor(idx);
+            }
+        } else if ai_suggested_def.is_some() {
+            select = select.with_starting_cursor(candidates.len());
+        }
+
+        let ans = select.prompt()?;
 
         if ans.contains("AI Contextual Gloss") {
             if let Some(sug) = ai_suggested_def {

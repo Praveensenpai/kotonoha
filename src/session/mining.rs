@@ -81,10 +81,10 @@ pub async fn run_mining_loop(
             let mut dict_info = resolve_dict_info(cand, cfg, db, &http_client).await?;
             let ai_analysis = ai_results_map.get(&idx);
 
+            align_contextual_reading(cand, &mut dict_info, cfg, db, &http_client).await;
+
             apply_ai_gloss_or_candidate(ai_analysis, &mut dict_info, cand, cfg, db, &http_client)
                 .await;
-
-            align_contextual_reading(cand, &mut dict_info, cfg, db, &http_client).await;
 
             let is_ai_selected = ai_analysis.is_some_and(|r| {
                 r.custom_definition_suggestion.is_some()
@@ -243,6 +243,7 @@ async fn apply_ai_gloss_or_candidate(
                         rec_def = s.clone();
                     }
                 }
+                *dict_info = rec_cand.clone();
                 dict_info.definition = rec_def;
             }
         }
