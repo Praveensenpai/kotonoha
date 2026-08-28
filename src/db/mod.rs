@@ -78,6 +78,10 @@ impl Database {
                 kannada_natural TEXT,
                 kannada_literal TEXT,
                 parsing_warning TEXT,
+                recommended_candidate_index INTEGER,
+                recommended_sense_index INTEGER,
+                custom_definition_suggestion TEXT,
+                explanation TEXT,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -131,6 +135,36 @@ impl Database {
         if !columns.iter().any(|column| column == "kannada_literal") {
             self.conn.execute(
                 "ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT",
+                [],
+            )?;
+        }
+
+        let ai_columns = self
+            .conn
+            .prepare("PRAGMA table_info(ai_analysis_cache)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if !ai_columns.iter().any(|c| c == "recommended_candidate_index") {
+            self.conn.execute(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN recommended_candidate_index INTEGER",
+                [],
+            )?;
+        }
+        if !ai_columns.iter().any(|c| c == "recommended_sense_index") {
+            self.conn.execute(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN recommended_sense_index INTEGER",
+                [],
+            )?;
+        }
+        if !ai_columns.iter().any(|c| c == "custom_definition_suggestion") {
+            self.conn.execute(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN custom_definition_suggestion TEXT",
+                [],
+            )?;
+        }
+        if !ai_columns.iter().any(|c| c == "explanation") {
+            self.conn.execute(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN explanation TEXT",
                 [],
             )?;
         }
@@ -422,7 +456,8 @@ impl Database {
         }
         let key = format!("{}:{}:{}", p.sentence, p.target_word, p.model);
         let query = "
-            SELECT english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning
+            SELECT english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning,
+                   recommended_candidate_index, recommended_sense_index, custom_definition_suggestion, explanation
             FROM ai_analysis_cache
             WHERE cache_key = ?1 AND updated_at >= datetime('now', printf('-%d minutes', ?2))
         ";
@@ -430,12 +465,14 @@ impl Database {
         let mut rows = stmt.query(params![key, p.ttl_minutes as i64])?;
 
         if let Some(row) = rows.next()? {
+            let rec_cand: Option<i64> = row.get(5)?;
+            let rec_sense: Option<i64> = row.get(6)?;
             let res = crate::ai::AiAnalysisResult {
                 card_index: p.card_index,
-                recommended_candidate_index: None,
-                recommended_sense_index: None,
-                custom_definition_suggestion: None,
-                explanation: None,
+                recommended_candidate_index: rec_cand.map(|v| v as usize),
+                recommended_sense_index: rec_sense.map(|v| v as usize),
+                custom_definition_suggestion: row.get(7)?,
+                explanation: row.get(8)?,
                 english_natural: row.get(0)?,
                 english_literal: row.get(1)?,
                 kannada_natural: row.get(2)?,
@@ -457,14 +494,21 @@ impl Database {
     ) -> Result<()> {
         let key = format!("{}:{}:{}", sentence, target_word, model);
         self.conn.execute(
-            "INSERT OR REPLACE INTO ai_analysis_cache (cache_key, english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)",
+            "INSERT OR REPLACE INTO ai_analysis_cache (
+                cache_key, english_natural, english_literal, kannada_natural, kannada_literal, parsing_warning,
+                recommended_candidate_index, recommended_sense_index, custom_definition_suggestion, explanation, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CURRENT_TIMESTAMP)",
             params![
                 key,
                 res.english_natural.as_deref(),
                 res.english_literal.as_deref(),
                 res.kannada_natural.as_deref(),
                 res.kannada_literal.as_deref(),
-                res.parsing_warning.as_deref()
+                res.parsing_warning.as_deref(),
+                res.recommended_candidate_index.map(|v| v as i64),
+                res.recommended_sense_index.map(|v| v as i64),
+                res.custom_definition_suggestion.as_deref(),
+                res.explanation.as_deref()
             ],
         )?;
         Ok(())

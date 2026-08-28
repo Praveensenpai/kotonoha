@@ -177,24 +177,50 @@ async fn resolve_dict_info(
     let (reading, raw_definition, pitch_accent) = match (cached, needs_context_refresh) {
         (Some(res), false) => res,
         (_, true) | (None, false) => {
-            let res = DictionaryService::lookup_with_limits(
+            let cands = DictionaryService::lookup_all_candidates_cached(
                 http_client,
+                Some(db),
                 &cand.target_word,
-                cfg.dict.max_definition_senses.max(RAW_SENSE_LIMIT),
-                cfg.dict.max_glosses_per_sense,
+                LookupLimits {
+                    max_senses: cfg.dict.max_definition_senses.max(RAW_SENSE_LIMIT),
+                    max_glosses: cfg.dict.max_glosses_per_sense,
+                },
             )
-            .await?;
-            if !dict::is_placeholder_definition(&res.definition)
-                && res.definition != "No dictionary definition found"
-            {
-                db.cache_definition(
-                    &res.expression,
-                    &res.reading,
-                    &res.definition,
-                    &res.pitch_accent,
-                )?;
+            .await
+            .unwrap_or_default();
+
+            if let Some(first) = cands.into_iter().next() {
+                if !dict::is_placeholder_definition(&first.definition)
+                    && first.definition != "No dictionary definition found"
+                {
+                    db.cache_definition(
+                        &first.expression,
+                        &first.reading,
+                        &first.definition,
+                        &first.pitch_accent,
+                    )?;
+                }
+                (first.reading, first.definition, first.pitch_accent)
+            } else {
+                let res = DictionaryService::lookup_with_limits(
+                    http_client,
+                    &cand.target_word,
+                    cfg.dict.max_definition_senses.max(RAW_SENSE_LIMIT),
+                    cfg.dict.max_glosses_per_sense,
+                )
+                .await?;
+                if !dict::is_placeholder_definition(&res.definition)
+                    && res.definition != "No dictionary definition found"
+                {
+                    db.cache_definition(
+                        &res.expression,
+                        &res.reading,
+                        &res.definition,
+                        &res.pitch_accent,
+                    )?;
+                }
+                (res.reading, res.definition, res.pitch_accent)
             }
-            (res.reading, res.definition, res.pitch_accent)
         }
     };
 
@@ -284,15 +310,12 @@ async fn align_contextual_reading(
                     cfg.dict.max_glosses_per_sense,
                 );
             }
-        } else {
-            dict_info.reading = cand.target_reading.clone();
+            let _ = db.cache_definition(
+                &dict_info.expression,
+                &dict_info.reading,
+                &dict_info.definition,
+                &dict_info.pitch_accent,
+            );
         }
-
-        let _ = db.cache_definition(
-            &dict_info.expression,
-            &dict_info.reading,
-            &dict_info.definition,
-            &dict_info.pitch_accent,
-        );
     }
 }
