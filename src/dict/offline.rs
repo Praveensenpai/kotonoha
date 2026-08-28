@@ -6,7 +6,7 @@ pub async fn ensure_offline_dictionaries_ready(
     client: &reqwest::Client,
     db: &mut crate::db::Database,
 ) -> Result<()> {
-    if db.is_offline_dict_indexed().unwrap_or(false) {
+    if db.is_offline_dict_indexed().await.unwrap_or(false) {
         return Ok(());
     }
 
@@ -162,7 +162,7 @@ pub async fn ensure_offline_dictionaries_ready(
     }
 
     if !all_terms.is_empty() {
-        let inserted = db.insert_offline_terms_batch(&all_terms)?;
+        let inserted = db.insert_offline_terms_batch(&all_terms).await?;
         println!(" ✨ Successfully indexed {} offline vocabulary terms into local SQLite (< 1ms queries)!", inserted);
     }
 

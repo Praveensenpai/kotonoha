@@ -14,7 +14,7 @@ pub struct AiBatchPreparation {
     pub task_handle: Option<JoinHandle<Result<Vec<ai::AiAnalysisResult>>>>,
 }
 
-pub fn prepare_ai_batch(
+pub async fn prepare_ai_batch(
     candidates_to_process: &[CandidateSentence],
     cfg: &AppConfig,
     db: &Database,
@@ -31,7 +31,7 @@ pub fn prepare_ai_batch(
                 model: &cfg.ai.gemini_model,
                 card_index: idx,
                 ttl_minutes: cfg.ai.ai_cache_ttl_minutes,
-            }) {
+            }).await {
                 cached_results.push(cached_res);
             } else {
                 uncached_card_targets.push((
@@ -183,7 +183,7 @@ pub async fn collect_ai_results(
                             &cand.target_word,
                             &cfg.ai.gemini_model,
                             res,
-                        );
+                        ).await;
                     }
 
                     let mut merged = prep.cached_results;

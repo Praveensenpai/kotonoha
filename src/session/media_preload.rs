@@ -29,14 +29,15 @@ pub async fn preload_batch_media(
             .progress_chars("█▓▒░"),
     );
 
-    let uncached_words: Vec<String> = candidates_to_process
-        .iter()
-        .map(|c| c.target_word.clone())
-        .filter(|w| {
-            db.get_cached_definition(w).unwrap_or(None).is_none()
-                || db.get_cached_candidates(w).unwrap_or(None).is_none()
-        })
-        .collect();
+    let mut uncached_words = Vec::new();
+    for c in candidates_to_process {
+        let w = &c.target_word;
+        if db.get_cached_definition(w).await.unwrap_or(None).is_none()
+            || db.get_cached_candidates(w).await.unwrap_or(None).is_none()
+        {
+            uncached_words.push(w.clone());
+        }
+    }
 
     let cached_count = (candidates_to_process.len() - uncached_words.len()) as u64;
     pb1.set_position(cached_count);
@@ -82,10 +83,10 @@ pub async fn preload_batch_media(
                     &dict_res.reading,
                     &dict_res.definition,
                     &dict_res.pitch_accent,
-                );
+                ).await;
             }
             if !cands_res.is_empty() {
-                let _ = db.cache_candidates(&dict_res.expression, &cands_res);
+                let _ = db.cache_candidates(&dict_res.expression, &cands_res).await;
             }
             pb1.inc(1);
         }

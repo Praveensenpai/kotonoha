@@ -153,13 +153,13 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
     }
     if arg == "--sync" {
         let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
+        let db = Database::open(&cfg.db_path).await?;
         anki::sync_to_anki(&cfg, &db).await?;
         return Ok(true);
     }
     if arg == "--inspect" {
         let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
+        let db = Database::open(&cfg.db_path).await?;
         let input_path = match std::env::args().nth(2) {
             Some(p) => PathBuf::from(p),
             None => TerminalUi::select_media_file()?,
@@ -182,8 +182,8 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         };
         let sentences = parse_subtitle(&subtitle_path)?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let known_words = db.get_known_words()?;
-        let ignored_words = db.get_ignored_words()?;
+        let known_words = db.get_known_words().await?;
+        let ignored_words = db.get_ignored_words().await?;
         TerminalUi::inspect_sentences(crate::ui::InspectSentencesParams {
             sentences: &sentences,
             tokenizer: &tokenizer,
@@ -195,12 +195,12 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
     }
     if arg == "--manage-ignored" {
         let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
+        let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let words = words_with_readings(&tokenizer, db.get_ignored_words_sorted()?);
+        let words = words_with_readings(&tokenizer, db.get_ignored_words_sorted().await?);
         let to_remove = TerminalUi::manage_ignored_words(&words)?;
         if !to_remove.is_empty() {
-            let count = db.remove_ignored_words(&to_remove)?;
+            let count = db.remove_ignored_words(&to_remove).await?;
             println!(" ✔ Removed {} word(s) from the ignore list.", count);
         } else {
             println!(" ℹ No changes made.");
@@ -209,12 +209,12 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
     }
     if arg == "--manage-known" {
         let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
+        let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("known")?);
+        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("known").await?);
         let to_remove = TerminalUi::manage_known_words(&words)?;
         if !to_remove.is_empty() {
-            let count = db.remove_known_words(&to_remove)?;
+            let count = db.remove_known_words(&to_remove).await?;
             println!(" ✔ Removed {} word(s) from your known list.", count);
         } else {
             println!(" ℹ No changes made.");
@@ -223,12 +223,12 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
     }
     if arg == "--manage-mined" {
         let cfg = AppConfig::load()?;
-        let db = Database::open(&cfg.db_path)?;
+        let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("mined")?);
+        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("mined").await?);
         let to_remove = TerminalUi::manage_mined_words(&words)?;
         if !to_remove.is_empty() {
-            let count = db.remove_known_words(&to_remove)?;
+            let count = db.remove_known_words(&to_remove).await?;
             println!(" ✔ Removed {} word(s) from your mined list.", count);
         } else {
             println!(" ℹ No changes made.");

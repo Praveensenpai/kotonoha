@@ -26,7 +26,7 @@ pub struct ComprehensionStats {
     pub unknown_count: usize,
 }
 
-pub fn bootstrap_vocabulary(
+pub async fn bootstrap_vocabulary(
     sentences: &[SubtitleSentence],
     tokenizer: &JapaneseTokenizer,
     db: &mut Database,
@@ -80,7 +80,7 @@ pub fn bootstrap_vocabulary(
         let newly_ignored = TerminalUi::bootstrap_ignored_names(&name_candidates)?;
         if !newly_ignored.is_empty() {
             for w in &newly_ignored {
-                let _ = db.add_ignored_word(w);
+                let _ = db.add_ignored_word(w).await;
             }
             println!(
                 " 🚫 Marked {} character names/proper nouns as ignored!",
@@ -92,7 +92,7 @@ pub fn bootstrap_vocabulary(
     if !general_candidates.is_empty() {
         let newly_known = TerminalUi::bootstrap_known_words(&general_candidates)?;
         if !newly_known.is_empty() {
-            let count = db.add_known_words(&newly_known)?;
+            let count = db.add_known_words(&newly_known).await?;
             println!(" ✔ Marked {} words as known!", count);
         }
     }
@@ -100,14 +100,14 @@ pub fn bootstrap_vocabulary(
     Ok(())
 }
 
-pub fn calculate_comprehension_stats(
+pub async fn calculate_comprehension_stats(
     sentences: &[SubtitleSentence],
     tokenizer: &JapaneseTokenizer,
     db: &Database,
     ignored_words: &HashSet<String>,
 ) -> Result<ComprehensionStats> {
-    let already_known_set = db.get_known_words_by_source("known")?;
-    let mined_set = db.get_known_words_by_source("mined")?;
+    let already_known_set = db.get_known_words_by_source("known").await?;
+    let mined_set = db.get_known_words_by_source("mined").await?;
 
     let mut file_already_known = HashSet::new();
     let mut file_mined = HashSet::new();
@@ -251,8 +251,8 @@ pub async fn run_session(
     http_client: reqwest::Client,
 ) -> Result<()> {
     let tokenizer = JapaneseTokenizer::new()?;
-    let known_words = db.get_known_words()?;
-    let ignored_words = db.get_ignored_words()?;
+    let known_words = db.get_known_words().await?;
+    let ignored_words = db.get_ignored_words().await?;
 
     bootstrap_vocabulary(
         &sentences,
@@ -260,12 +260,12 @@ pub async fn run_session(
         &mut db,
         &known_words,
         &ignored_words,
-    )?;
+    ).await?;
 
-    let known_words = db.get_known_words()?;
-    let ignored_words = db.get_ignored_words()?;
+    let known_words = db.get_known_words().await?;
+    let ignored_words = db.get_ignored_words().await?;
 
-    let stats = calculate_comprehension_stats(&sentences, &tokenizer, &db, &ignored_words)?;
+    let stats = calculate_comprehension_stats(&sentences, &tokenizer, &db, &ignored_words).await?;
     let engine = MiningEngine::new(tokenizer);
     let candidates = engine.find_candidates(&sentences, &known_words, &ignored_words);
 

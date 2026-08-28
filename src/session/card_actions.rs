@@ -132,7 +132,7 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     &ctx.dict_info.reading,
                     &ctx.dict_info.definition,
                     &ctx.dict_info.pitch_accent,
-                );
+                ).await;
                 println!(
                     " ✨ Updated candidate: 【{} ({})】",
                     ctx.dict_info.expression, ctx.dict_info.reading
@@ -183,12 +183,12 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     english_literal: eng_lit,
                     kannada_natural: kan_nat,
                     kannada_literal: kan_lit,
-                })?;
+                }).await?;
 
                 let _ = ctx.db.add_known_words_with_source(
                     std::slice::from_ref(&ctx.cand.target_word),
                     "mined",
-                );
+                ).await;
                 println!(" ✔ Card mined successfully!");
                 if let Some(mut child) = audio_child.take() {
                     let _ = child.kill();
@@ -198,7 +198,8 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
             'k' => {
                 let _ = ctx
                     .db
-                    .add_known_words(std::slice::from_ref(&ctx.cand.target_word));
+                    .add_known_words(std::slice::from_ref(&ctx.cand.target_word))
+                    .await;
                 println!(" 🧠 Target word marked as known!");
                 if let Some(mut child) = audio_child.take() {
                     let _ = child.kill();
@@ -208,7 +209,8 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
             'u' => {
                 let _ = ctx
                     .db
-                    .remove_known_words(std::slice::from_ref(&ctx.cand.target_word));
+                    .remove_known_words(std::slice::from_ref(&ctx.cand.target_word))
+                    .await;
                 println!(" 🔓 Target word unmarked as known (moved back to unknown)!");
                 if let Some(mut child) = audio_child.take() {
                     let _ = child.kill();
@@ -216,7 +218,7 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                 return Ok(CardActionResult::UnmarkedKnown);
             }
             'i' => {
-                let _ = ctx.db.add_ignored_word(&ctx.cand.target_word);
+                let _ = ctx.db.add_ignored_word(&ctx.cand.target_word).await;
                 println!(" 🚫 Target word ignored.");
                 if let Some(mut child) = audio_child.take() {
                     let _ = child.kill();

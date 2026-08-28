@@ -285,7 +285,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
         );
     }
 
-    let all_cards = db.get_all_mined_cards()?;
+    let all_cards = db.get_all_mined_cards().await?;
     if all_cards.is_empty() {
         println!(" ✔ No locally mined cards in database.");
         return Ok(());
@@ -362,7 +362,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             .await?;
 
             if let Some(note_id) = existing_note_id {
-                db.mark_mined_card_synced(card.id, note_id)?;
+                db.mark_mined_card_synced(card.id, note_id).await?;
                 note_id
             } else {
                 let sentence_furigana =
@@ -436,7 +436,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                     Err(error) => return Err(error),
                 };
 
-                db.mark_mined_card_synced(card.id, note_id)?;
+                db.mark_mined_card_synced(card.id, note_id).await?;
                 synced_new += 1;
                 note_id
             }

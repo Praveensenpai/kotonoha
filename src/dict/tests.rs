@@ -6,9 +6,9 @@ fn placeholder_definition_is_detected() {
     assert!(!is_placeholder_definition("1. [Noun] Monday"));
 }
 
-fn ensure_test_offline_dict() {
+async fn ensure_test_offline_dict() {
     if let Ok(cfg) = crate::config::AppConfig::load() {
-        if let Ok(mut db) = crate::db::Database::open(&cfg.db_path) {
+        if let Ok(mut db) = crate::db::Database::open(&cfg.db_path).await {
             let terms = vec![
                 (
                     "台詞".to_string(),
@@ -43,7 +43,7 @@ fn ensure_test_offline_dict() {
                     100,
                 ),
             ];
-            let _ = db.insert_offline_terms_batch(&terms);
+            let _ = db.insert_offline_terms_batch(&terms).await;
         }
     }
 }
@@ -51,7 +51,7 @@ fn ensure_test_offline_dict() {
 #[tokio::test]
 async fn test_serif_lookup() {
     let client = reqwest::Client::new();
-    ensure_test_offline_dict();
+    ensure_test_offline_dict().await;
     let res = DictionaryService::lookup(&client, "台詞").await.unwrap();
     println!("LOOKUP RESULT: {:?}", res);
     assert!(
@@ -65,7 +65,7 @@ async fn test_serif_lookup() {
 #[tokio::test]
 async fn test_sakibashiri_lookup() {
     let client = reqwest::Client::new();
-    ensure_test_offline_dict();
+    ensure_test_offline_dict().await;
     let res = DictionaryService::lookup(&client, "先走り").await.unwrap();
     println!("SAKIBASHIRI RESULT: {:?}", res);
     assert!(
@@ -117,7 +117,7 @@ fn prioritizes_contextual_toori_sense() {
 #[tokio::test]
 async fn test_hen_lookup_first_result() {
     let client = reqwest::Client::new();
-    ensure_test_offline_dict();
+    ensure_test_offline_dict().await;
     let res = DictionaryService::lookup(&client, "辺").await.unwrap();
     println!("HEN RESULT: {:?}", res);
     assert_eq!(res.reading, "へん");
@@ -131,7 +131,7 @@ async fn test_hen_lookup_first_result() {
 #[tokio::test]
 async fn test_watashi_lookup_first_result() {
     let client = reqwest::Client::new();
-    ensure_test_offline_dict();
+    ensure_test_offline_dict().await;
     let res = DictionaryService::lookup(&client, "私").await.unwrap();
     println!("WATASHI RESULT: {:?}", res);
     assert_eq!(res.expression, "私");

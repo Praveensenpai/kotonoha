@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
     TerminalUi::print_banner();
 
     let cfg = AppConfig::load()?;
-    let mut db = Database::open(&cfg.db_path)?;
+    let mut db = Database::open(&cfg.db_path).await?;
     let http_client = reqwest::Client::new();
 
     // AnkiConnect status
@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let unsynced = db.get_unsynced_mined_cards().unwrap_or_default();
+    let unsynced = db.get_unsynced_mined_cards().await.unwrap_or_default();
     if !unsynced.is_empty() {
         println!(
             " {}  {} unsynced card{} in database. Please run {} so old media can be cleaned up.",
@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
     }
 
     if cfg.max_cached_cards > 0 {
-        let protected = db.get_unsynced_media_paths().unwrap_or_default();
+        let protected = db.get_unsynced_media_paths().await.unwrap_or_default();
         if let Ok(cleaned) =
             media::MediaExtractor::clean_old_media(&cfg.media_dir, cfg.max_cached_cards, &protected)
         {

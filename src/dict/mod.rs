@@ -421,8 +421,8 @@ impl DictionaryService {
     ) -> Result<LookupResult> {
         let cfg = crate::config::AppConfig::load().ok();
         if let Some(c) = cfg {
-            if let Ok(db) = crate::db::Database::open(&c.db_path) {
-                if let Ok(offline) = db.query_offline_terms(word, exact_only) {
+            if let Ok(db) = crate::db::Database::open(&c.db_path).await {
+                if let Ok(offline) = db.query_offline_terms(word, exact_only).await {
                     if let Some(first) = offline.into_iter().next() {
                         return Ok(first);
                     }
@@ -577,12 +577,12 @@ impl DictionaryService {
         limits: LookupLimits,
     ) -> Result<Vec<LookupResult>> {
         if let Some(db_inst) = db {
-            if let Ok(offline) = db_inst.query_offline_terms(word, false) {
+            if let Ok(offline) = db_inst.query_offline_terms(word, false).await {
                 if !offline.is_empty() {
                     return Ok(offline);
                 }
             }
-            if let Ok(Some(cached)) = db_inst.get_cached_candidates(word) {
+            if let Ok(Some(cached)) = db_inst.get_cached_candidates(word).await {
                 if !cached.is_empty() {
                     return Ok(cached);
                 }
@@ -594,7 +594,7 @@ impl DictionaryService {
                 .await?;
         if let Some(db_inst) = db {
             if !results.is_empty() {
-                let _ = db_inst.cache_candidates(word, &results);
+                let _ = db_inst.cache_candidates(word, &results).await;
             }
         }
 

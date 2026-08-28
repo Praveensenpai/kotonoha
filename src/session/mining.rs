@@ -55,9 +55,9 @@ pub async fn run_mining_loop(
         }
 
         let ai_start = std::time::Instant::now();
-        let _ = db.clean_expired_ai_cache(cfg.ai.ai_cache_ttl_minutes);
+        let _ = db.clean_expired_ai_cache(cfg.ai.ai_cache_ttl_minutes).await;
 
-        let ai_prep = prepare_ai_batch(&candidates_to_process, cfg, db, &http_client);
+        let ai_prep = prepare_ai_batch(&candidates_to_process, cfg, db, &http_client).await;
 
         if !candidates_to_process.is_empty() {
             preload_batch_media(&candidates_to_process, video_path, cfg, db, &http_client).await;
@@ -141,7 +141,7 @@ pub async fn run_mining_loop(
         mined_count
     );
 
-    let unsynced = db.get_unsynced_mined_cards()?;
+    let unsynced = db.get_unsynced_mined_cards().await?;
     if !unsynced.is_empty() {
         if anki::anki_connected(&cfg.anki.connect_url).await {
             println!(" 🔄 Auto-syncing mined cards to Anki...");
@@ -168,7 +168,7 @@ async fn resolve_dict_info(
 ) -> Result<dict::LookupResult> {
     const RAW_SENSE_LIMIT: usize = 12;
     let context_hint = dict::context_hint(&cand.sentence.text, &cand.target_word);
-    let cached = db.get_cached_definition(&cand.target_word)?;
+    let cached = db.get_cached_definition(&cand.target_word).await?;
     let needs_context_refresh = context_hint.is_some_and(|hint| {
         cached
             .as_ref()
@@ -198,7 +198,7 @@ async fn resolve_dict_info(
                         &first.reading,
                         &first.definition,
                         &first.pitch_accent,
-                    )?;
+                    ).await?;
                 }
                 (first.reading, first.definition, first.pitch_accent)
             } else {
@@ -217,7 +217,7 @@ async fn resolve_dict_info(
                         &res.reading,
                         &res.definition,
                         &res.pitch_accent,
-                    )?;
+                    ).await?;
                 }
                 (res.reading, res.definition, res.pitch_accent)
             }
@@ -315,7 +315,7 @@ async fn align_contextual_reading(
                 &dict_info.reading,
                 &dict_info.definition,
                 &dict_info.pitch_accent,
-            );
+            ).await;
         }
     }
 }

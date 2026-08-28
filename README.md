@@ -93,7 +93,7 @@ kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.ja.srt"
 | :--- | :--- | :--- |
 | **Language** | Rust 2021 | Native speed & memory safety |
 | **Japanese NLP** | [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) | WorksApplications Japanese tokenizer & POS analyzer |
-| **Database** | SQLite (`rusqlite`) | Local storage for known words & mined cards |
+| **Database** | SQLite (`SeaORM`) | Local storage for known words & mined cards |
 | **TUI Engine** | `ratatui`, `inquire` & `console` | Keyboard-driven subtitle inspector, prompts, and card boxes |
 | **Media Engine** | `ffmpeg` & `mpv` | Headless audio extraction and background preview |
 

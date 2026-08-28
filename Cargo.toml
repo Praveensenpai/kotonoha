@@ -1,6 +1,6 @@
 [package]
 name = "kotonoha"
-version = "0.0.39"
+version = "0.0.40"
 edition = "2021"
 description = "言の葉 — Blazing-fast CLI Japanese $i+1$ sentence miner & card generator"
 authors = ["Praveensenpai"]
@@ -27,7 +27,8 @@ base64 = "0.22"
 toml = "0.8"
 walkdir = "2.5"
 dirs = "5.0"
-rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 futures = "0.3"
 sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git" }
 crossterm = "0.25"
