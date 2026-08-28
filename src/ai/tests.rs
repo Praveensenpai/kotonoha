@@ -26,7 +26,7 @@ fn test_ai_index_normalization() {
             {
                 "card_index": 0,
                 "recommended_candidate_index": 1,
-                "recommended_sense_index": 0,
+                "recommended_sense_index": 1,
                 "parsing_warning": null,
                 "custom_definition_suggestion": null,
                 "explanation": null
@@ -40,8 +40,14 @@ fn test_ai_index_normalization() {
                 res.recommended_candidate_index = Some(cand_idx - 1);
             }
         }
+        if let Some(sense_idx) = res.recommended_sense_index {
+            if sense_idx > 0 {
+                res.recommended_sense_index = Some(sense_idx - 1);
+            }
+        }
     }
     assert_eq!(parsed.results[0].recommended_candidate_index, Some(0));
+    assert_eq!(parsed.results[0].recommended_sense_index, Some(0));
 }
 
 #[test]

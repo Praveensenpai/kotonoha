@@ -146,6 +146,11 @@ impl GeminiAiService {
                                 res.recommended_candidate_index = Some(cand_idx - 1);
                             }
                         }
+                        if let Some(sense_idx) = res.recommended_sense_index {
+                            if sense_idx > 0 {
+                                res.recommended_sense_index = Some(sense_idx - 1);
+                            }
+                        }
                     }
                     return Ok(parsed.results);
                 }
