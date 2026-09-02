@@ -164,6 +164,7 @@ impl TerminalUi {
             "Select source files to delete (Space to tick/untick, Enter to proceed):",
             display_items,
         )
+        .with_formatter(&|opts| format!("{} item(s) selected", opts.len()))
         .prompt() {
             Ok(s) => s,
             Err(_) => {
@@ -244,6 +245,7 @@ impl TerminalUi {
             "Select .koto bundles to delete (Space to tick, Enter to delete):",
             display_records,
         )
+        .with_formatter(&|opts| format!("{} bundle(s) selected", opts.len()))
         .prompt() {
             Ok(s) => s,
             Err(_) => return Ok(()),
