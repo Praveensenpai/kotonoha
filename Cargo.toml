@@ -33,9 +33,15 @@ futures = "0.3"
 sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git" }
 crossterm = "0.25"
 ratatui = "0.29"
-zip = "2.2"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 unicode-width = "0.1"
 unicode-segmentation = "1.11"
 rayon = "1.10"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 2
 
 
