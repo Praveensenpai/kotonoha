@@ -116,13 +116,13 @@ impl MediaExtractor {
         let status = Command::new("ffmpeg")
             .args([
                 "-y",
+                "-noautorotate",
                 "-ss",
                 &format!("{:.3}", sec),
                 "-i",
                 &video_path.to_string_lossy(),
                 "-vf",
                 "scale=-1:360:flags=fast_bilinear",
-                "-noautorotate",
                 "-vframes",
                 "1",
                 "-q:v",
