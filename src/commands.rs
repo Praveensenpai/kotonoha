@@ -222,7 +222,7 @@ pub fn find_paired_media_for_bundling(input_path: &Path) -> Result<(PathBuf, Pat
 }
 
 pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
-    if arg == "--version" || arg == "-v" {
+    if arg == "--version" || arg == "-v" || arg == "-V" {
         println!("kotonoha {}", env!("CARGO_PKG_VERSION"));
         return Ok(true);
     }
@@ -232,23 +232,21 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
             env!("CARGO_PKG_VERSION")
         );
         println!("\nUSAGE:");
-        println!("  kotonoha                       Launch interactive TUI file picker");
-        println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video/koto file");
-        println!("  kotonoha --bundle [MEDIA_FILE] Pre-save video into lightweight .koto package (~18MB)");
-        println!("  kotonoha --bundles | -B        View, inspect and manage saved .koto bundles");
-        println!("  kotonoha --clean-bundled       Select & remove original source files of bundled media");
-        println!("  kotonoha --config              Interactive TUI configuration manager");
-        println!("  kotonoha --show-config         Display active configuration settings");
-        println!(
-            "  kotonoha --inspect [FILE]      Inspect sentences (Space plays selected audio; ★=i+1)"
-        );
-        println!("  kotonoha --manage-known        View & remove words from the known database");
-        println!("  kotonoha --manage-mined        View & remove words from the mined list");
-        println!("  kotonoha --manage-ignored      View & remove words from the ignore list");
-        println!("  kotonoha --sync                Push locally mined cards to Anki");
-        println!("  kotonoha --version | -v        Print version information");
-        println!("  kotonoha --help    | -h | --h  Show help information");
-        println!("  Flags: --force | -f            Force re-bundling or overwriting");
+        println!("  kotonoha                           Launch interactive TUI file picker");
+        println!("  kotonoha <MEDIA_FILE>              Parse specific subtitle/video/koto file");
+        println!("  kotonoha --bundle         | -b     Pre-save video into lightweight .koto package (~18MB)");
+        println!("  kotonoha --bundles        | -B     View, inspect and manage saved .koto bundles");
+        println!("  kotonoha --clean-bundled  | -C     Select & remove original source files of bundled media");
+        println!("  kotonoha --config         | -c     Interactive TUI configuration manager");
+        println!("  kotonoha --show-config    | -S     Display active configuration settings");
+        println!("  kotonoha --inspect [FILE] | -i     Inspect sentences (Space plays selected audio; ★=i+1)");
+        println!("  kotonoha --manage-known   | -k     View & remove words from the known database");
+        println!("  kotonoha --manage-mined   | -m     View & remove words from the mined list");
+        println!("  kotonoha --manage-ignored | -I     View & remove words from the ignore list");
+        println!("  kotonoha --sync           | -s     Push locally mined cards to Anki");
+        println!("  kotonoha --version        | -v     Print version information");
+        println!("  kotonoha --help           | -h     Show help information");
+        println!("  Flags:   --force          | -f     Force re-bundling or overwriting");
         return Ok(true);
     }
     if arg == "--bundle" || arg == "-b" || arg == "bundle" || arg == "--presave" {
@@ -313,29 +311,29 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         TerminalUi::manage_bundles_interactive(&db).await?;
         return Ok(true);
     }
-    if arg == "--clean-bundled" || arg == "--clean-sources" {
+    if arg == "--clean-bundled" || arg == "-C" || arg == "--clean-sources" || arg == "--clean" {
         let cfg = AppConfig::load().unwrap_or_default();
         let db = Database::open(&cfg.db_path).await?;
         TerminalUi::clean_bundled_sources_interactive(&db).await?;
         return Ok(true);
     }
-    if arg == "--config" {
+    if arg == "--config" || arg == "-c" {
         let mut cfg = AppConfig::load()?;
         TerminalUi::configure_interactive(&mut cfg)?;
         return Ok(true);
     }
-    if arg == "--show-config" {
+    if arg == "--show-config" || arg == "-S" {
         let cfg = AppConfig::load()?;
         TerminalUi::show_config(&cfg);
         return Ok(true);
     }
-    if arg == "--sync" {
+    if arg == "--sync" || arg == "-s" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         anki::sync_to_anki(&cfg, &db).await?;
         return Ok(true);
     }
-    if arg == "--inspect" {
+    if arg == "--inspect" || arg == "-i" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         let input_path = match std::env::args().nth(2) {
@@ -376,7 +374,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         })?;
         return Ok(true);
     }
-    if arg == "--manage-ignored" {
+    if arg == "--manage-ignored" || arg == "-I" || arg == "--ignored" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
@@ -390,7 +388,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         }
         return Ok(true);
     }
-    if arg == "--manage-known" {
+    if arg == "--manage-known" || arg == "-k" || arg == "--known" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
@@ -404,7 +402,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         }
         return Ok(true);
     }
-    if arg == "--manage-mined" {
+    if arg == "--manage-mined" || arg == "-m" || arg == "--mined" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
