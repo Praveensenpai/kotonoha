@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// Compare strings naturally, treating consecutive ASCII digits as a number.
-fn natural_cmp(left: &str, right: &str) -> Ordering {
+pub fn natural_cmp(left: &str, right: &str) -> Ordering {
     let mut left_chars = left.chars().peekable();
     let mut right_chars = right.chars().peekable();
 

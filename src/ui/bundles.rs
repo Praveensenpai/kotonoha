@@ -48,11 +48,13 @@ impl TerminalUi {
     }
 
     pub async fn list_bundles_view(db: &Database) -> Result<()> {
-        let records = db.get_all_bundled_media().await?;
+        let mut records = db.get_all_bundled_media().await?;
         if records.is_empty() {
             println!("\n{}", style("ℹ No bundles recorded in the database yet.").yellow());
             return Ok(());
         }
+
+        records.sort_by(|a, b| super::natural_cmp(&a.bundle_path, &b.bundle_path));
 
         println!("\n{}", style(format!("📋 Recorded Bundles ({})", records.len())).bold().cyan());
         println!("{}", style("─".repeat(80)).dim());
@@ -209,11 +211,13 @@ impl TerminalUi {
     }
 
     pub async fn delete_bundles_interactive(db: &Database) -> Result<()> {
-        let records = db.get_all_bundled_media().await?;
+        let mut records = db.get_all_bundled_media().await?;
         if records.is_empty() {
             println!("\n{}", style("ℹ No bundles to delete.").yellow());
             return Ok(());
         }
+
+        records.sort_by(|a, b| super::natural_cmp(&a.bundle_path, &b.bundle_path));
 
         struct BundleRecordWrapper(crate::db::entities::bundled_media::Model);
 

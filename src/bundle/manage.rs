@@ -27,31 +27,63 @@ impl BundledSourceCleanupItem {
     }
 
     pub fn display_name(&self) -> String {
-        let bundle_name = self
+        let stem = self
             .bundle_path
-            .file_name()
+            .file_stem()
             .and_then(|n| n.to_str())
-            .unwrap_or("Unknown Bundle");
+            .unwrap_or_else(|| {
+                self.bundle_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+            });
 
-        let mut parts = Vec::new();
-        if self.video_exists {
-            let vid_name = self
-                .source_video
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            parts.push(format!("video: {} ({})", vid_name, format_size(self.video_size)));
-        }
-        if self.subtitle_exists {
-            let sub_name = self
-                .source_subtitle
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            parts.push(format!("sub: {} ({})", sub_name, format_size(self.subtitle_size)));
-        }
+        let total = format_size(self.total_source_size());
 
-        format!("📦 {} [{}]", bundle_name, parts.join(", "))
+        let types = match (self.video_exists, self.subtitle_exists) {
+            (true, true) => {
+                let vid_ext = self
+                    .source_video
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("video");
+                let sub_ext = if self.source_subtitle.to_string_lossy().ends_with(".ja.srt") {
+                    "ja.srt"
+                } else {
+                    self.source_subtitle
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("sub")
+                };
+                format!(".{} + .{}", vid_ext, sub_ext)
+            }
+            (true, false) => {
+                let vid_ext = self
+                    .source_video
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("video");
+                format!(".{}", vid_ext)
+            }
+            (false, true) => {
+                let sub_ext = if self.source_subtitle.to_string_lossy().ends_with(".ja.srt") {
+                    "ja.srt"
+                } else {
+                    self.source_subtitle
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("sub")
+                };
+                format!(".{}", sub_ext)
+            }
+            (false, false) => String::new(),
+        };
+
+        if types.is_empty() {
+            format!("{}   [{}]", stem, total)
+        } else {
+            format!("{}   [{}] ({})", stem, total, types)
+        }
     }
 }
 
@@ -146,6 +178,13 @@ pub async fn get_bundled_items_with_existing_sources(
             subtitle_exists,
         });
     }
+
+    items.sort_by(|a, b| {
+        crate::ui::natural_cmp(
+            &a.bundle_path.to_string_lossy(),
+            &b.bundle_path.to_string_lossy(),
+        )
+    });
 
     Ok(items)
 }
