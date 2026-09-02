@@ -404,11 +404,15 @@ pub async fn create_bundle(
 
     // Save to database
     if let Some(database) = db {
+        let abs_video = video_path.canonicalize().unwrap_or_else(|_| video_path.to_path_buf());
+        let abs_sub = subtitle_path.canonicalize().unwrap_or_else(|_| subtitle_path.to_path_buf());
+        let abs_output = final_output.canonicalize().unwrap_or_else(|_| final_output.clone());
+
         let _ = database
             .record_bundle(
-                &final_output,
-                &video_path.file_name().unwrap_or_default().to_string_lossy(),
-                &subtitle_path.file_name().unwrap_or_default().to_string_lossy(),
+                &abs_output,
+                &abs_video.to_string_lossy(),
+                &abs_sub.to_string_lossy(),
                 &video_fp,
                 &sub_fp,
             )

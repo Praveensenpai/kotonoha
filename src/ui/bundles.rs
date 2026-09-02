@@ -81,8 +81,27 @@ impl TerminalUi {
                 status_badge,
                 size_str
             );
-            println!("   📹 Source Video: {}", style(&r.source_video).dim());
-            println!("   📝 Source Sub:   {}", style(&r.source_subtitle).dim());
+            let bundle_dir = bundle_path.parent().unwrap_or_else(|| Path::new("."));
+            let vid_path = PathBuf::from(&r.source_video);
+            let vid_exists = (vid_path.is_absolute() && vid_path.exists())
+                || bundle_dir.join(&vid_path).exists()
+                || vid_path.file_name().map(|f| bundle_dir.join(f).exists()).unwrap_or(false);
+
+            let sub_path = PathBuf::from(&r.source_subtitle);
+            let sub_exists = (sub_path.is_absolute() && sub_path.exists())
+                || bundle_dir.join(&sub_path).exists()
+                || sub_path.file_name().map(|f| bundle_dir.join(f).exists()).unwrap_or(false);
+
+            println!(
+                "   📹 Source Video: {} {}",
+                style(&r.source_video).dim(),
+                if vid_exists { style("(on disk)").yellow() } else { style("(cleaned/missing)").dim() }
+            );
+            println!(
+                "   📝 Source Sub:   {} {}",
+                style(&r.source_subtitle).dim(),
+                if sub_exists { style("(on disk)").yellow() } else { style("(cleaned/missing)").dim() }
+            );
             if let Ok(manifest) = read_bundle_manifest(&bundle_path) {
                 println!(
                     "   📊 Sentences: {} | Screenshots: {}",

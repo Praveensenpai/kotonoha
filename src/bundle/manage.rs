@@ -80,11 +80,44 @@ pub async fn get_bundled_items_with_existing_sources(
             continue;
         }
 
-        let source_video = PathBuf::from(&record.source_video);
-        let source_subtitle = PathBuf::from(&record.source_subtitle);
+        let bundle_dir = bundle_path.parent().unwrap_or_else(|| Path::new("."));
 
-        let video_exists = source_video.exists();
-        let subtitle_exists = source_subtitle.exists();
+        // Resolve video path: 1) absolute/literal path, 2) bundle_dir.join, 3) bundle_path.with_file_name
+        let raw_video = PathBuf::from(&record.source_video);
+        let resolved_video = if raw_video.is_absolute() && raw_video.exists() {
+            raw_video
+        } else if bundle_dir.join(&raw_video).exists() {
+            bundle_dir.join(&raw_video)
+        } else if let Some(file_name) = raw_video.file_name() {
+            let candidate = bundle_dir.join(file_name);
+            if candidate.exists() {
+                candidate
+            } else {
+                raw_video
+            }
+        } else {
+            raw_video
+        };
+
+        // Resolve subtitle path: 1) absolute/literal path, 2) bundle_dir.join, 3) bundle_path.with_file_name
+        let raw_sub = PathBuf::from(&record.source_subtitle);
+        let resolved_sub = if raw_sub.is_absolute() && raw_sub.exists() {
+            raw_sub
+        } else if bundle_dir.join(&raw_sub).exists() {
+            bundle_dir.join(&raw_sub)
+        } else if let Some(file_name) = raw_sub.file_name() {
+            let candidate = bundle_dir.join(file_name);
+            if candidate.exists() {
+                candidate
+            } else {
+                raw_sub
+            }
+        } else {
+            raw_sub
+        };
+
+        let video_exists = resolved_video.exists();
+        let subtitle_exists = resolved_sub.exists();
 
         // If neither source exists on disk, nothing to clean
         if !video_exists && !subtitle_exists {
@@ -92,21 +125,21 @@ pub async fn get_bundled_items_with_existing_sources(
         }
 
         let video_size = if video_exists {
-            std::fs::metadata(&source_video).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(&resolved_video).map(|m| m.len()).unwrap_or(0)
         } else {
             0
         };
 
         let subtitle_size = if subtitle_exists {
-            std::fs::metadata(&source_subtitle).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(&resolved_sub).map(|m| m.len()).unwrap_or(0)
         } else {
             0
         };
 
         items.push(BundledSourceCleanupItem {
             bundle_path,
-            source_video,
-            source_subtitle,
+            source_video: resolved_video,
+            source_subtitle: resolved_sub,
             video_size,
             subtitle_size,
             video_exists,
