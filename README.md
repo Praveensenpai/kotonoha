@@ -85,6 +85,19 @@ kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.ja.srt"
 
 `↑`/`↓` moves, `Space` plays or replays the selected subtitle, typing filters lines, and `Backspace` clears the filter. A matching video file enables playback.
 
+### 4. Pre-saving Lightweight Bundles (`.koto`)
+
+Compress large videos (1.2 GB+) into ultra-compact **`.koto`** learning packages (~18 MB, 98.5% space reduction) containing 64kbps Opus audio, 360p screenshots, and subtitles:
+
+```bash
+# Create a .koto bundle from a video + subtitle
+kotonoha --bundle "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
+
+# Mine cards or inspect directly from the lightweight bundle (no MKV needed!)
+kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
+kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
+```
+
 ---
 
 ## 🛠️ Architecture & Tech Stack

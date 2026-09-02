@@ -32,6 +32,112 @@ pub fn words_with_readings(
 }
 
 pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
+    if crate::bundle::is_bundle_file(input_path) {
+        let unpacked = crate::bundle::unpack_bundle(input_path)?;
+        return Ok((unpacked.subtitle_path, unpacked.audio_path));
+    }
+
+    if crate::bundle::is_bundle_dir(input_path) {
+        let manifest_data = std::fs::read_to_string(input_path.join("manifest.json"))?;
+        let manifest: crate::bundle::BundleManifest = serde_json::from_str(&manifest_data)?;
+        return Ok((input_path.join(manifest.subtitle_file), input_path.join(manifest.audio_file)));
+    }
+
+    let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
+    let ext = input_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let is_sub = matches!(ext.as_str(), "srt" | "ass" | "vtt");
+    let is_vid = matches!(ext.as_str(), "mkv" | "mp4" | "webm" | "avi" | "opus" | "mp3" | "m4a");
+
+    let stem = input_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let clean_stem = stem
+        .trim_end_matches(".ja")
+        .trim_end_matches(".jp")
+        .trim_end_matches(".ja-JP")
+        .trim_end_matches(".japanese")
+        .trim_end_matches(".en");
+
+    if is_sub {
+        let sub_path = input_path.to_path_buf();
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if crate::bundle::is_bundle_file(&p) {
+                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    if p_stem == stem
+                        || p_stem == clean_stem
+                        || stem.starts_with(p_stem)
+                        || p_stem.starts_with(clean_stem)
+                    {
+                        let unpacked = crate::bundle::unpack_bundle(&p)?;
+                        return Ok((sub_path, unpacked.audio_path));
+                    }
+                }
+                let p_ext = p
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if matches!(p_ext.as_str(), "mkv" | "mp4" | "webm" | "avi" | "opus" | "mp3" | "m4a") {
+                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    if p_stem == stem
+                        || p_stem == clean_stem
+                        || stem.starts_with(p_stem)
+                        || p_stem.starts_with(clean_stem)
+                    {
+                        return Ok((sub_path, p));
+                    }
+                }
+            }
+        }
+        anyhow::bail!(
+            "No matching video file (.mkv, .mp4, .koto) found for subtitle: {}\n   Place the video file in the same folder to mine cards.",
+            input_path.display()
+        );
+    } else if is_vid {
+        let vid_path = input_path.to_path_buf();
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let p_ext = p
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if matches!(p_ext.as_str(), "srt" | "ass" | "vtt") {
+                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let p_clean = p_stem
+                        .trim_end_matches(".ja")
+                        .trim_end_matches(".jp")
+                        .trim_end_matches(".ja-JP")
+                        .trim_end_matches(".japanese");
+                    if p_stem == stem
+                        || p_clean == stem
+                        || p_stem.starts_with(stem)
+                        || stem.starts_with(p_clean)
+                    {
+                        return Ok((p, vid_path));
+                    }
+                }
+            }
+        }
+        anyhow::bail!(
+            "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   Place the subtitle file in the same folder to mine cards.\n\n   Need to generate an .srt subtitle? Try SubSink:\n   https://github.com/Praveensenpai/subsink",
+            input_path.display()
+        );
+    } else {
+        anyhow::bail!("Unsupported file format: {}", input_path.display());
+    }
+}
+
+pub fn find_paired_media_for_bundling(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let parent = input_path.parent().unwrap_or_else(|| Path::new("."));
     let ext = input_path
         .extension()
@@ -76,7 +182,7 @@ pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
             }
         }
         anyhow::bail!(
-            "No matching video file (.mkv, .mp4) found for subtitle: {}\n   Place the video file in the same folder to mine cards.",
+            "No matching video file (.mkv, .mp4) found for subtitle: {}\n   A video file is required to pre-save audio and screenshots into a .koto bundle.",
             input_path.display()
         );
     } else if is_vid {
@@ -107,11 +213,11 @@ pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
             }
         }
         anyhow::bail!(
-            "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   Place the subtitle file in the same folder to mine cards.\n\n   Need to generate an .srt subtitle? Try SubSink:\n   https://github.com/Praveensenpai/subsink",
+            "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   A subtitle file is required to pre-save into a .koto bundle.",
             input_path.display()
         );
     } else {
-        anyhow::bail!("Unsupported file format: {}", input_path.display());
+        anyhow::bail!("Unsupported file format for bundling: {}", input_path.display());
     }
 }
 
@@ -127,7 +233,8 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         );
         println!("\nUSAGE:");
         println!("  kotonoha                       Launch interactive TUI file picker");
-        println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video file");
+        println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video/koto file");
+        println!("  kotonoha --bundle [MEDIA_FILE] Pre-save video into lightweight .koto package (~18MB)");
         println!("  kotonoha --config              Interactive TUI configuration manager");
         println!("  kotonoha --show-config         Display active configuration settings");
         println!(
@@ -139,6 +246,17 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --sync                Push locally mined cards to Anki");
         println!("  kotonoha --version | -v        Print version information");
         println!("  kotonoha --help    | -h | --h  Show help information");
+        return Ok(true);
+    }
+    if arg == "--bundle" || arg == "-b" || arg == "bundle" || arg == "--presave" {
+        let input_path = match std::env::args().nth(2) {
+            Some(p) => PathBuf::from(p),
+            None => TerminalUi::select_media_file()?,
+        };
+        let custom_out = std::env::args().nth(3).map(PathBuf::from);
+
+        let (sub_path, vid_path) = find_paired_media_for_bundling(&input_path)?;
+        crate::bundle::create_bundle(&vid_path, &sub_path, custom_out.as_deref())?;
         return Ok(true);
     }
     if arg == "--config" {
@@ -164,20 +282,25 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
             Some(p) => PathBuf::from(p),
             None => TerminalUi::select_media_file()?,
         };
-        let video_path = find_paired_media(&input_path).ok().map(|(_, video)| video);
-        let ext = input_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let subtitle_path = if ext == "srt" || ext == "ass" {
-            input_path
-        } else {
-            let srt = input_path.with_extension("ja.srt");
-            if srt.exists() {
-                srt
-            } else {
-                input_path
+        let (subtitle_path, video_path) = match find_paired_media(&input_path) {
+            Ok((sub, vid)) => (sub, Some(vid)),
+            Err(_) => {
+                let ext = input_path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                let sub = if ext == "srt" || ext == "ass" {
+                    input_path
+                } else {
+                    let srt = input_path.with_extension("ja.srt");
+                    if srt.exists() {
+                        srt
+                    } else {
+                        input_path
+                    }
+                };
+                (sub, None)
             }
         };
         let sentences = parse_subtitle(&subtitle_path)?;

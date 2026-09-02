@@ -132,8 +132,12 @@ pub async fn preload_batch_media(
             .media_dir
             .join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
         if !image_path.exists() {
-            let _ =
-                MediaExtractor::extract_screenshot(video_path, cand.sentence.start_ms, &image_path);
+            let _ = MediaExtractor::extract_screenshot_with_index(
+                video_path,
+                cand.sentence.start_ms,
+                Some(cand.sentence.index),
+                &image_path,
+            );
         }
         pb3.inc(1);
     });

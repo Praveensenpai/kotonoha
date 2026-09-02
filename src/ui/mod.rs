@@ -113,7 +113,7 @@ impl TerminalUi {
 
     pub fn select_media_file() -> Result<PathBuf> {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let search_dirs = vec![home.join("Videos")];
+        let search_dirs = vec![PathBuf::from("."), home.join("Videos")];
 
         let mut files = Vec::new();
         for dir in search_dirs {
@@ -125,7 +125,7 @@ impl TerminalUi {
                 if p.is_file() {
                     if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
                         let ext = ext.to_lowercase();
-                        if matches!(ext.as_str(), "srt" | "ass" | "mkv" | "mp4") {
+                        if matches!(ext.as_str(), "srt" | "ass" | "vtt" | "mkv" | "mp4" | "webm" | "koto") {
                             files.push(p.to_path_buf());
                         }
                     }

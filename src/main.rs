@@ -1,5 +1,6 @@
 mod ai;
 mod anki;
+mod bundle;
 mod commands;
 mod config;
 mod db;

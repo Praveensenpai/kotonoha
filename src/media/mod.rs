@@ -18,43 +18,97 @@ impl MediaExtractor {
         let start_sec = (start_ms as f64 / 1000.0 - 0.25).max(0.0);
         let duration_sec = ((end_ms - start_ms) as f64 / 1000.0 + 0.5).max(0.5);
 
-        let status = Command::new("ffmpeg")
-            .args([
-                "-y",
-                "-ss",
-                &format!("{:.3}", start_sec),
-                "-i",
-                &video_path.to_string_lossy(),
-                "-t",
-                &format!("{:.3}", duration_sec),
-                "-vn",
-                "-c:a",
-                "libopus",
-                "-b:a",
-                "64k",
-                "-ar",
-                "48000",
-                &output_path.to_string_lossy(),
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .context("Failed to spawn ffmpeg for audio extraction")?;
+        let is_opus = video_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.eq_ignore_ascii_case("opus"))
+            .unwrap_or(false);
+
+        let mut cmd = Command::new("ffmpeg");
+        cmd.args([
+            "-y",
+            "-ss",
+            &format!("{:.3}", start_sec),
+            "-i",
+            &video_path.to_string_lossy(),
+            "-t",
+            &format!("{:.3}", duration_sec),
+            "-vn",
+        ]);
+
+        if is_opus {
+            cmd.args(["-c:a", "copy"]);
+        } else {
+            cmd.args(["-c:a", "libopus", "-b:a", "64k", "-ar", "48000"]);
+        }
+
+        cmd.arg(output_path);
+        cmd.stdout(Stdio::null()).stderr(Stdio::null());
+
+        let status = cmd.status().context("Failed to spawn ffmpeg for audio extraction")?;
 
         if !status.success() {
-            anyhow::bail!("ffmpeg failed to extract preview audio");
+            // If copy failed on opus, retry with re-encode
+            if is_opus {
+                let status_retry = Command::new("ffmpeg")
+                    .args([
+                        "-y",
+                        "-ss",
+                        &format!("{:.3}", start_sec),
+                        "-i",
+                        &video_path.to_string_lossy(),
+                        "-t",
+                        &format!("{:.3}", duration_sec),
+                        "-vn",
+                        "-c:a",
+                        "libopus",
+                        "-b:a",
+                        "64k",
+                        "-ar",
+                        "48000",
+                        &output_path.to_string_lossy(),
+                    ])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .context("Failed to spawn ffmpeg for audio extraction retry")?;
+                if !status_retry.success() {
+                    anyhow::bail!("ffmpeg failed to extract preview audio from opus source");
+                }
+            } else {
+                anyhow::bail!("ffmpeg failed to extract preview audio");
+            }
         }
 
         Ok(())
     }
 
-    pub fn extract_screenshot(
+    pub fn extract_screenshot_with_index(
         video_path: &Path,
         timestamp_ms: u64,
+        sentence_index: Option<usize>,
         output_path: &Path,
     ) -> Result<()> {
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent)?;
+        }
+
+        // Check if pre-extracted screenshot exists in bundle
+        if let Some(idx) = sentence_index {
+            let direct_shot = video_path.join(format!("screenshots/{}.jpg", idx));
+            if direct_shot.exists() {
+                if std::fs::copy(&direct_shot, output_path).is_ok() {
+                    return Ok(());
+                }
+            }
+            if let Some(parent) = video_path.parent() {
+                let adj_shot = parent.join(format!("screenshots/{}.jpg", idx));
+                if adj_shot.exists() {
+                    if std::fs::copy(&adj_shot, output_path).is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
         }
 
         let sec = timestamp_ms as f64 / 1000.0;
@@ -85,6 +139,14 @@ impl MediaExtractor {
         }
 
         Ok(())
+    }
+
+    pub fn extract_screenshot(
+        video_path: &Path,
+        timestamp_ms: u64,
+        output_path: &Path,
+    ) -> Result<()> {
+        Self::extract_screenshot_with_index(video_path, timestamp_ms, None, output_path)
     }
 
     pub fn play_preview_audio(audio_path: &Path) -> Option<std::process::Child> {
