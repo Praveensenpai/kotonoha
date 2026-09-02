@@ -146,6 +146,51 @@ impl TerminalUi {
         Ok(PathBuf::from(selected))
     }
 
+    pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let search_dirs = vec![PathBuf::from("."), home.join("Videos")];
+
+        let mut files = Vec::new();
+        for dir in search_dirs {
+            if !dir.exists() {
+                continue;
+            }
+            for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if p.is_file() {
+                    if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
+                        let ext = ext.to_lowercase();
+                        if matches!(ext.as_str(), "srt" | "ass" | "vtt" | "mkv" | "mp4" | "webm" | "avi") {
+                            files.push(p.to_path_buf());
+                        }
+                    }
+                }
+            }
+        }
+
+        if files.is_empty() {
+            let input = Text::new("No unbundled media files discovered. Enter file path:").prompt()?;
+            return Ok(vec![PathBuf::from(input)]);
+        }
+
+        files.sort_by(|left, right| natural_cmp(&left.to_string_lossy(), &right.to_string_lossy()));
+        files.dedup();
+
+        let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
+        let selected = MultiSelect::new(
+            "📦 Select Video or Subtitle File(s) to Bundle into .koto (Space to select, Enter to bundle):",
+            items,
+        )
+        .with_page_size(15)
+        .prompt()?;
+
+        if selected.is_empty() {
+            anyhow::bail!("No files selected for bundling.");
+        }
+
+        Ok(selected.into_iter().map(PathBuf::from).collect())
+    }
+
     pub fn bootstrap_known_words(vocab_items: &[(String, usize, String)]) -> Result<Vec<String>> {
         if vocab_items.is_empty() {
             return Ok(Vec::new());

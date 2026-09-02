@@ -249,14 +249,34 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         return Ok(true);
     }
     if arg == "--bundle" || arg == "-b" || arg == "bundle" || arg == "--presave" {
-        let input_path = match std::env::args().nth(2) {
-            Some(p) => PathBuf::from(p),
-            None => TerminalUi::select_media_file()?,
-        };
+        let direct_arg = std::env::args().nth(2).map(PathBuf::from);
         let custom_out = std::env::args().nth(3).map(PathBuf::from);
 
-        let (sub_path, vid_path) = find_paired_media_for_bundling(&input_path)?;
-        crate::bundle::create_bundle(&vid_path, &sub_path, custom_out.as_deref())?;
+        if let Some(input_path) = direct_arg {
+            let (sub_path, vid_path) = find_paired_media_for_bundling(&input_path)?;
+            crate::bundle::create_bundle(&vid_path, &sub_path, custom_out.as_deref())?;
+        } else {
+            let selected_files = TerminalUi::select_bundle_source_files()?;
+            let total = selected_files.len();
+            for (idx, input_path) in selected_files.iter().enumerate() {
+                if total > 1 {
+                    println!(
+                        "\n--- [Batch Item {}/{}] Processing: {} ---",
+                        idx + 1,
+                        total,
+                        input_path.display()
+                    );
+                }
+                match find_paired_media_for_bundling(input_path) {
+                    Ok((sub_path, vid_path)) => {
+                        let _ = crate::bundle::create_bundle(&vid_path, &sub_path, None)?;
+                    }
+                    Err(e) => {
+                        eprintln!(" ✖ Skipping {}: {}", input_path.display(), e);
+                    }
+                }
+            }
+        }
         return Ok(true);
     }
     if arg == "--config" {
