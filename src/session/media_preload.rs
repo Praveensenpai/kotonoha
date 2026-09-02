@@ -132,9 +132,11 @@ pub async fn preload_batch_media(
             .media_dir
             .join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
         if !image_path.exists() {
+            let mid_ms = cand.sentence.start_ms
+                + (cand.sentence.end_ms.saturating_sub(cand.sentence.start_ms)) / 2;
             let _ = MediaExtractor::extract_screenshot_with_index(
                 video_path,
-                cand.sentence.start_ms,
+                mid_ms,
                 Some(cand.sentence.index),
                 &image_path,
             );

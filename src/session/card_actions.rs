@@ -160,9 +160,11 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     "{}_{}.jpg",
                     ctx.cand.target_word, ctx.cand.sentence.index
                 ));
+                let mid_ms = ctx.cand.sentence.start_ms
+                    + (ctx.cand.sentence.end_ms.saturating_sub(ctx.cand.sentence.start_ms)) / 2;
                 let _ = MediaExtractor::extract_screenshot_with_index(
                     ctx.video_path,
-                    ctx.cand.sentence.start_ms,
+                    mid_ms,
                     Some(ctx.cand.sentence.index),
                     &image_path,
                 );

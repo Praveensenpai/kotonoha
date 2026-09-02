@@ -163,7 +163,8 @@ pub async fn create_bundle(
 
     sentences.par_iter().for_each(|s| {
         let shot_path = screenshots_dir.join(format!("{}.jpg", s.index));
-        let _ = MediaExtractor::extract_screenshot(video_path, s.start_ms, &shot_path);
+        let mid_ms = s.start_ms + (s.end_ms.saturating_sub(s.start_ms)) / 2;
+        let _ = MediaExtractor::extract_screenshot(video_path, mid_ms, &shot_path);
         pb_shots.inc(1);
     });
     pb_shots.finish();
