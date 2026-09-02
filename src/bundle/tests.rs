@@ -108,3 +108,60 @@ fn test_fingerprint_generation() {
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[tokio::test]
+async fn test_bundle_management_and_cleanup() {
+    let temp_dir = std::env::temp_dir().join(format!("koto_manage_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let db_path = temp_dir.join("test.db");
+    let db = crate::db::Database::open(&db_path).await.expect("open db");
+
+    let bundle_file = temp_dir.join("Episode 01.koto");
+    std::fs::write(&bundle_file, b"DUMMY_KOTO").unwrap();
+
+    let vid_file = temp_dir.join("Episode 01.mkv");
+    std::fs::write(&vid_file, vec![0x12; 50 * 1024]).unwrap();
+
+    let sub_file = temp_dir.join("Episode 01.ja.srt");
+    std::fs::write(&sub_file, b"DUMMY_SRT").unwrap();
+
+    db.record_bundle(
+        &bundle_file,
+        &vid_file.to_string_lossy(),
+        &sub_file.to_string_lossy(),
+        "fp_vid",
+        "fp_sub",
+    )
+    .await
+    .expect("record bundle");
+
+    let items = get_bundled_items_with_existing_sources(&db)
+        .await
+        .expect("get cleanup items");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].video_size, 50 * 1024);
+    assert!(items[0].video_exists);
+    assert!(items[0].subtitle_exists);
+
+    // Delete source files
+    let freed = delete_source_media_files(&items).expect("delete source files");
+    assert!(freed >= 50 * 1024);
+    assert!(!vid_file.exists());
+    assert!(!sub_file.exists());
+    assert!(bundle_file.exists());
+
+    // After deletion, cleanup items list should be empty
+    let items_after = get_bundled_items_with_existing_sources(&db)
+        .await
+        .expect("get cleanup items after");
+    assert_eq!(items_after.len(), 0);
+
+    // Prune test
+    std::fs::remove_file(&bundle_file).unwrap();
+    let pruned = db.prune_missing_bundles().await.expect("prune");
+    assert_eq!(pruned, 1);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

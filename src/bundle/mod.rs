@@ -15,6 +15,9 @@ use crate::db::Database;
 use crate::media::MediaExtractor;
 use crate::srt::parse_subtitle;
 
+pub mod manage;
+pub use manage::*;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BundleManifest {
     pub version: u32,

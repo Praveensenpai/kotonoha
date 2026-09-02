@@ -1,3 +1,4 @@
+pub mod bundles;
 pub mod card;
 pub mod config_menu;
 pub mod inspector;

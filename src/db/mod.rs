@@ -644,4 +644,41 @@ impl Database {
 
         Ok(())
     }
+
+    pub async fn get_all_bundled_media(&self) -> Result<Vec<bundled_media::Model>> {
+        BundledMedia::find()
+            .order_by_desc(bundled_media::Column::Id)
+            .all(&self.conn)
+            .await
+            .context("Failed to load bundled media list")
+    }
+
+    pub async fn delete_bundled_media_by_id(&self, id: i32) -> Result<()> {
+        BundledMedia::delete_by_id(id)
+            .exec(&self.conn)
+            .await
+            .context("Failed to delete bundled media by id")?;
+        Ok(())
+    }
+
+    pub async fn delete_bundled_media_by_path(&self, bundle_path: &str) -> Result<()> {
+        BundledMedia::delete_many()
+            .filter(bundled_media::Column::BundlePath.eq(bundle_path))
+            .exec(&self.conn)
+            .await
+            .context("Failed to delete bundled media by path")?;
+        Ok(())
+    }
+
+    pub async fn prune_missing_bundles(&self) -> Result<usize> {
+        let all = self.get_all_bundled_media().await?;
+        let mut pruned = 0;
+        for record in all {
+            if !Path::new(&record.bundle_path).exists() {
+                self.delete_bundled_media_by_id(record.id).await?;
+                pruned += 1;
+            }
+        }
+        Ok(pruned)
+    }
 }

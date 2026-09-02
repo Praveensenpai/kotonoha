@@ -235,6 +235,8 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha                       Launch interactive TUI file picker");
         println!("  kotonoha <MEDIA_FILE>          Parse specific subtitle/video/koto file");
         println!("  kotonoha --bundle [MEDIA_FILE] Pre-save video into lightweight .koto package (~18MB)");
+        println!("  kotonoha --bundles | -B        View, inspect and manage saved .koto bundles");
+        println!("  kotonoha --clean-bundled       Select & remove original source files of bundled media");
         println!("  kotonoha --config              Interactive TUI configuration manager");
         println!("  kotonoha --show-config         Display active configuration settings");
         println!(
@@ -303,6 +305,18 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
                 }
             }
         }
+        return Ok(true);
+    }
+    if arg == "--bundles" || arg == "-B" || arg == "--manage-bundles" || arg == "bundles" {
+        let cfg = AppConfig::load().unwrap_or_default();
+        let db = Database::open(&cfg.db_path).await?;
+        TerminalUi::manage_bundles_interactive(&db).await?;
+        return Ok(true);
+    }
+    if arg == "--clean-bundled" || arg == "--clean-sources" {
+        let cfg = AppConfig::load().unwrap_or_default();
+        let db = Database::open(&cfg.db_path).await?;
+        TerminalUi::clean_bundled_sources_interactive(&db).await?;
         return Ok(true);
     }
     if arg == "--config" {
