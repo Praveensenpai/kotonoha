@@ -192,7 +192,7 @@ impl TerminalUi {
             style(&total_size_str).bold().green()
         );
 
-        let confirm = Confirm::new("Are you sure you want to PERMANENTLY delete these original source files?")
+        let confirm = Confirm::new("Are you sure you want to move these original source files to the trash bin?")
             .with_default(false)
             .prompt()?;
 
@@ -200,12 +200,12 @@ impl TerminalUi {
             let freed = delete_source_media_files(&chosen_items)?;
             println!(
                 "{}",
-                style(format!("✔ Successfully deleted source files! Freed {}.", format_size(freed)))
+                style(format!("✔ Successfully moved source files to trash! Freed {}.", format_size(freed)))
                     .bold()
                     .green()
             );
         } else {
-            println!("Deletion aborted.");
+            println!("Operation aborted.");
         }
 
         Ok(())
@@ -242,7 +242,7 @@ impl TerminalUi {
             .collect();
 
         let selected = match MultiSelect::new(
-            "Select .koto bundles to delete (Space to tick, Enter to delete):",
+            "Select .koto bundles to move to trash (Space to tick, Enter to confirm):",
             display_records,
         )
         .with_formatter(&|opts| format!("{} bundle(s) selected", opts.len()))
@@ -257,7 +257,7 @@ impl TerminalUi {
         }
 
         let confirm = Confirm::new(&format!(
-            "Are you sure you want to delete {} bundle(s)?",
+            "Are you sure you want to move {} bundle(s) to the trash bin?",
             selected.len()
         ))
         .with_default(false)
@@ -267,9 +267,9 @@ impl TerminalUi {
             for wrapper in selected {
                 let path = PathBuf::from(&wrapper.0.bundle_path);
                 delete_bundle_archive(&path, Some(db)).await?;
-                println!(" 🗑️ Deleted: {}", path.display());
+                println!(" 🗑️ Moved to trash: {}", path.display());
             }
-            println!("{}", style("✔ Selected bundles deleted.").green());
+            println!("{}", style("✔ Selected bundles moved to trash.").green());
         }
 
         Ok(())

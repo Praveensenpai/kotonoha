@@ -189,6 +189,21 @@ pub async fn get_bundled_items_with_existing_sources(
     Ok(items)
 }
 
+fn move_to_trash_or_delete(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    if let Err(trash_err) = trash::delete(path) {
+        std::fs::remove_file(path).with_context(|| {
+            format!(
+                "Failed to move {} to trash ({trash_err}), and permanent deletion failed",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 pub fn delete_source_media_files(items: &[BundledSourceCleanupItem]) -> Result<u64> {
     let mut total_freed: u64 = 0;
 
@@ -197,13 +212,13 @@ pub fn delete_source_media_files(items: &[BundledSourceCleanupItem]) -> Result<u
             if let Ok(meta) = std::fs::metadata(&item.source_video) {
                 total_freed += meta.len();
             }
-            let _ = std::fs::remove_file(&item.source_video);
+            let _ = move_to_trash_or_delete(&item.source_video);
         }
         if item.subtitle_exists && item.source_subtitle.exists() {
             if let Ok(meta) = std::fs::metadata(&item.source_subtitle) {
                 total_freed += meta.len();
             }
-            let _ = std::fs::remove_file(&item.source_subtitle);
+            let _ = move_to_trash_or_delete(&item.source_subtitle);
         }
     }
 
@@ -212,8 +227,7 @@ pub fn delete_source_media_files(items: &[BundledSourceCleanupItem]) -> Result<u
 
 pub async fn delete_bundle_archive(bundle_path: &Path, db: Option<&Database>) -> Result<()> {
     if bundle_path.exists() {
-        std::fs::remove_file(bundle_path)
-            .with_context(|| format!("Failed to delete bundle file: {}", bundle_path.display()))?;
+        move_to_trash_or_delete(bundle_path)?;
     }
 
     if let Some(database) = db {
