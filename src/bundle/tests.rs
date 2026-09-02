@@ -12,6 +12,8 @@ fn test_bundle_manifest_serialization() {
         subtitle_file: "subtitles.srt".to_string(),
         sentence_count: 42,
         has_screenshots: true,
+        video_fingerprint: Some("test_vid_fp".to_string()),
+        subtitle_fingerprint: Some("test_sub_fp".to_string()),
     };
 
     let serialized = serde_json::to_string(&manifest).expect("serialize");
@@ -54,6 +56,8 @@ fn test_bundle_archive_unpacking() {
             subtitle_file: "subtitles.srt".to_string(),
             sentence_count: 2,
             has_screenshots: true,
+            video_fingerprint: Some("1234_abcd".to_string()),
+            subtitle_fingerprint: Some("sub_5678".to_string()),
         };
         zip.write_all(serde_json::to_string(&manifest).unwrap().as_bytes()).unwrap();
 
@@ -74,9 +78,33 @@ fn test_bundle_archive_unpacking() {
 
     let unpacked = unpack_bundle(&koto_path).expect("unpack bundle");
     assert_eq!(unpacked.manifest.sentence_count, 2);
+    assert_eq!(unpacked.manifest.video_fingerprint.as_deref(), Some("1234_abcd"));
+    assert_eq!(unpacked.manifest.subtitle_fingerprint.as_deref(), Some("sub_5678"));
+    assert!(unpacked.root_dir.exists());
     assert!(unpacked.subtitle_path.exists());
     assert!(unpacked.audio_path.exists());
     assert!(unpacked.screenshots_dir.join("0.jpg").exists());
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_fingerprint_generation() {
+    let temp_dir = std::env::temp_dir().join(format!("koto_fp_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).unwrap();
+
+    let sub_path = temp_dir.join("test.srt");
+    std::fs::write(&sub_path, "1\n00:00:01,000 --> 00:00:02,000\nテスト\n").unwrap();
+
+    let vid_path = temp_dir.join("test.mkv");
+    std::fs::write(&vid_path, vec![0xAB; 100 * 1024]).unwrap();
+
+    let sub_fp = compute_subtitle_fingerprint(&sub_path).expect("sub fp");
+    let vid_fp = compute_video_fingerprint(&vid_path).expect("vid fp");
+
+    assert!(!sub_fp.is_empty());
+    assert!(vid_fp.starts_with("102400_"));
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

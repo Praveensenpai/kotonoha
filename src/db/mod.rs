@@ -73,76 +73,29 @@ impl Database {
     }
 
     async fn init_schema(&self) -> Result<()> {
+        let builder = self.conn.get_database_backend();
+        let schema = sea_orm::Schema::new(builder);
+
+        let table_stmts = [
+            schema.create_table_from_entity(KnownWords).if_not_exists().take(),
+            schema.create_table_from_entity(IgnoredWords).if_not_exists().take(),
+            schema.create_table_from_entity(DictionaryCache).if_not_exists().take(),
+            schema.create_table_from_entity(AllCandidatesCache).if_not_exists().take(),
+            schema.create_table_from_entity(MinedCards).if_not_exists().take(),
+            schema.create_table_from_entity(AiAnalysisCache).if_not_exists().take(),
+            schema.create_table_from_entity(OfflineTerms).if_not_exists().take(),
+            schema.create_table_from_entity(BundledMedia).if_not_exists().take(),
+        ];
+
+        for stmt in table_stmts {
+            self.conn.execute(builder.build(&stmt)).await?;
+        }
+
         self.conn.execute_unprepared(
             "
-            CREATE TABLE IF NOT EXISTS known_words (
-                word TEXT PRIMARY KEY,
-                source TEXT DEFAULT 'known',
-                added_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS ignored_words (
-                word TEXT PRIMARY KEY,
-                added_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS dictionary_cache (
-                expression TEXT PRIMARY KEY,
-                reading TEXT,
-                definition TEXT,
-                pitch_accent TEXT,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS all_candidates_cache (
-                expression TEXT PRIMARY KEY,
-                candidates_json TEXT,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS mined_cards (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sentence TEXT NOT NULL,
-                target_word TEXT NOT NULL,
-                reading TEXT,
-                definition TEXT,
-                pitch_accent TEXT,
-                audio_path TEXT,
-                image_path TEXT,
-                english_natural TEXT,
-                english_literal TEXT,
-                kannada_natural TEXT,
-                kannada_literal TEXT,
-                anki_note_id INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS ai_analysis_cache (
-                cache_key TEXT PRIMARY KEY,
-                english_natural TEXT,
-                english_literal TEXT,
-                kannada_natural TEXT,
-                kannada_literal TEXT,
-                parsing_warning TEXT,
-                recommended_candidate_index INTEGER,
-                recommended_sense_index INTEGER,
-                custom_definition_suggestion TEXT,
-                explanation TEXT,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS offline_terms (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                expression TEXT NOT NULL,
-                reading TEXT NOT NULL,
-                definition TEXT NOT NULL,
-                pitch_accent TEXT NOT NULL,
-                dict_name TEXT NOT NULL,
-                score INTEGER DEFAULT 0
-            );
             CREATE INDEX IF NOT EXISTS idx_offline_terms_expr ON offline_terms(expression);
             CREATE INDEX IF NOT EXISTS idx_offline_terms_reading ON offline_terms(reading);
-
+            CREATE INDEX IF NOT EXISTS idx_bundled_media_fps ON bundled_media(video_fingerprint, subtitle_fingerprint);
             DELETE FROM dictionary_cache WHERE definition LIKE '%[Noun] serif%' OR definition LIKE '%[Wikipedia definition] Serif%';
             ",
         ).await?;
@@ -632,5 +585,63 @@ impl Database {
             }
         }
         Ok(set)
+    }
+
+    pub async fn find_existing_bundle(
+        &self,
+        video_fingerprint: &str,
+        subtitle_fingerprint: &str,
+    ) -> Result<Option<PathBuf>> {
+        let match_record = BundledMedia::find()
+            .filter(bundled_media::Column::VideoFingerprint.eq(video_fingerprint))
+            .filter(bundled_media::Column::SubtitleFingerprint.eq(subtitle_fingerprint))
+            .order_by_desc(bundled_media::Column::Id)
+            .one(&self.conn)
+            .await?;
+
+        if let Some(record) = match_record {
+            let path = PathBuf::from(&record.bundle_path);
+            if path.exists() {
+                return Ok(Some(path));
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub async fn record_bundle(
+        &self,
+        bundle_path: &Path,
+        source_video: &str,
+        source_subtitle: &str,
+        video_fingerprint: &str,
+        subtitle_fingerprint: &str,
+    ) -> Result<()> {
+        let active = bundled_media::ActiveModel {
+            bundle_path: Set(bundle_path.to_string_lossy().to_string()),
+            source_video: Set(source_video.to_string()),
+            source_subtitle: Set(source_subtitle.to_string()),
+            video_fingerprint: Set(video_fingerprint.to_string()),
+            subtitle_fingerprint: Set(subtitle_fingerprint.to_string()),
+            created_at: Set(chrono::Utc::now().to_rfc3339()),
+            ..Default::default()
+        };
+
+        BundledMedia::insert(active)
+            .on_conflict(
+                OnConflict::column(bundled_media::Column::BundlePath)
+                    .update_columns([
+                        bundled_media::Column::SourceVideo,
+                        bundled_media::Column::SourceSubtitle,
+                        bundled_media::Column::VideoFingerprint,
+                        bundled_media::Column::SubtitleFingerprint,
+                        bundled_media::Column::CreatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .exec(&self.conn)
+            .await?;
+
+        Ok(())
     }
 }

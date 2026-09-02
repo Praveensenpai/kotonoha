@@ -246,15 +246,34 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --sync                Push locally mined cards to Anki");
         println!("  kotonoha --version | -v        Print version information");
         println!("  kotonoha --help    | -h | --h  Show help information");
+        println!("  Flags: --force | -f            Force re-bundling or overwriting");
         return Ok(true);
     }
     if arg == "--bundle" || arg == "-b" || arg == "bundle" || arg == "--presave" {
-        let direct_arg = std::env::args().nth(2).map(PathBuf::from);
-        let custom_out = std::env::args().nth(3).map(PathBuf::from);
+        let cfg = AppConfig::load().unwrap_or_default();
+        let db = Database::open(&cfg.db_path).await.ok();
+
+        let raw_args: Vec<String> = std::env::args().skip(2).collect();
+        let force = raw_args.iter().any(|a| a == "--force" || a == "-f");
+        let non_flag_args: Vec<PathBuf> = raw_args
+            .into_iter()
+            .filter(|a| a != "--force" && a != "-f")
+            .map(PathBuf::from)
+            .collect();
+
+        let direct_arg = non_flag_args.get(0).cloned();
+        let custom_out = non_flag_args.get(1).cloned();
 
         if let Some(input_path) = direct_arg {
             let (sub_path, vid_path) = find_paired_media_for_bundling(&input_path)?;
-            crate::bundle::create_bundle(&vid_path, &sub_path, custom_out.as_deref())?;
+            crate::bundle::create_bundle(
+                &vid_path,
+                &sub_path,
+                custom_out.as_deref(),
+                force,
+                db.as_ref(),
+            )
+            .await?;
         } else {
             let selected_files = TerminalUi::select_bundle_source_files()?;
             let total = selected_files.len();
@@ -269,7 +288,14 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
                 }
                 match find_paired_media_for_bundling(input_path) {
                     Ok((sub_path, vid_path)) => {
-                        let _ = crate::bundle::create_bundle(&vid_path, &sub_path, None)?;
+                        let _ = crate::bundle::create_bundle(
+                            &vid_path,
+                            &sub_path,
+                            None,
+                            force,
+                            db.as_ref(),
+                        )
+                        .await?;
                     }
                     Err(e) => {
                         eprintln!(" ✖ Skipping {}: {}", input_path.display(), e);

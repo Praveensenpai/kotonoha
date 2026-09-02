@@ -4,13 +4,14 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
+use crate::db::Database;
 use crate::media::MediaExtractor;
 use crate::srt::parse_subtitle;
 
@@ -24,10 +25,13 @@ pub struct BundleManifest {
     pub subtitle_file: String,
     pub sentence_count: usize,
     pub has_screenshots: bool,
+    #[serde(default)]
+    pub video_fingerprint: Option<String>,
+    #[serde(default)]
+    pub subtitle_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct UnpackedBundle {
     pub root_dir: PathBuf,
     pub subtitle_path: PathBuf,
@@ -130,10 +134,73 @@ pub fn unpack_bundle(koto_path: &Path) -> Result<UnpackedBundle> {
     })
 }
 
-pub fn create_bundle(
+pub fn compute_subtitle_fingerprint(subtitle_path: &Path) -> Result<String> {
+    let content = std::fs::read(subtitle_path)
+        .with_context(|| format!("Failed to read subtitle for fingerprinting: {}", subtitle_path.display()))?;
+    let digest = md5::compute(&content);
+    Ok(format!("{:x}", digest))
+}
+
+pub fn compute_video_fingerprint(video_path: &Path) -> Result<String> {
+    let metadata = std::fs::metadata(video_path)
+        .with_context(|| format!("Failed to stat video for fingerprinting: {}", video_path.display()))?;
+    let file_len = metadata.len();
+
+    let mut file = File::open(video_path)
+        .with_context(|| format!("Failed to open video for fingerprinting: {}", video_path.display()))?;
+
+    // Fast block sampling: 64KB from start, 64KB from middle, 64KB from end
+    const CHUNK_SIZE: usize = 64 * 1024;
+    let mut sample_bytes = Vec::with_capacity(CHUNK_SIZE * 3 + 16);
+    sample_bytes.extend_from_slice(&file_len.to_le_bytes());
+
+    let mut head = vec![0u8; CHUNK_SIZE.min(file_len as usize)];
+    if let Ok(n) = file.read(&mut head) {
+        sample_bytes.extend_from_slice(&head[..n]);
+    }
+
+    if file_len > (CHUNK_SIZE * 2) as u64 {
+        let mid_offset = (file_len / 2).saturating_sub((CHUNK_SIZE / 2) as u64);
+        if file.seek(SeekFrom::Start(mid_offset)).is_ok() {
+            let mut mid = vec![0u8; CHUNK_SIZE];
+            if let Ok(n) = file.read(&mut mid) {
+                sample_bytes.extend_from_slice(&mid[..n]);
+            }
+        }
+
+        let tail_offset = file_len.saturating_sub(CHUNK_SIZE as u64);
+        if file.seek(SeekFrom::Start(tail_offset)).is_ok() {
+            let mut tail = vec![0u8; CHUNK_SIZE];
+            if let Ok(n) = file.read(&mut tail) {
+                sample_bytes.extend_from_slice(&tail[..n]);
+            }
+        }
+    }
+
+    let digest = md5::compute(&sample_bytes);
+    Ok(format!("{}_{:x}", file_len, digest))
+}
+
+pub fn read_bundle_manifest(koto_path: &Path) -> Result<BundleManifest> {
+    let file = File::open(koto_path)
+        .with_context(|| format!("Failed to open bundle: {}", koto_path.display()))?;
+    let mut archive = ZipArchive::new(file)
+        .with_context(|| format!("Failed to read bundle zip: {}", koto_path.display()))?;
+    let mut manifest_file = archive
+        .by_name("manifest.json")
+        .with_context(|| "manifest.json not found in bundle archive")?;
+    let mut contents = String::new();
+    manifest_file.read_to_string(&mut contents)?;
+    let manifest: BundleManifest = serde_json::from_str(&contents)?;
+    Ok(manifest)
+}
+
+pub async fn create_bundle(
     video_path: &Path,
     subtitle_path: &Path,
     output_path: Option<&Path>,
+    force: bool,
+    db: Option<&Database>,
 ) -> Result<PathBuf> {
     let sub_stem = subtitle_path
         .file_stem()
@@ -152,6 +219,58 @@ pub fn create_bundle(
             parent.join(format!("{}.koto", clean_stem))
         }
     };
+
+    let video_fp = compute_video_fingerprint(video_path).unwrap_or_default();
+    let sub_fp = compute_subtitle_fingerprint(subtitle_path).unwrap_or_default();
+
+    // 1. Check if final_output bundle file already exists on disk with matching fingerprints
+    if !force && final_output.exists() {
+        if let Ok(existing_manifest) = read_bundle_manifest(&final_output) {
+            let matches_video = existing_manifest
+                .video_fingerprint
+                .as_deref()
+                .map(|fp| fp == video_fp)
+                .unwrap_or(false);
+            let matches_sub = existing_manifest
+                .subtitle_fingerprint
+                .as_deref()
+                .map(|fp| fp == sub_fp)
+                .unwrap_or(false);
+
+            if matches_video && matches_sub {
+                println!(
+                    "\n ℹ {} {}",
+                    style("Bundle already exists and is up to date:").green().bold(),
+                    style(final_output.display()).cyan().bold()
+                );
+                println!(
+                    "   {} (Use {} to force rebuild)",
+                    style("Skipping redundant re-encoding.").dim(),
+                    style("--force").yellow().bold()
+                );
+                return Ok(final_output);
+            }
+        }
+    }
+
+    // 2. Check if database has record of an existing bundle with matching fingerprints
+    if !force {
+        if let Some(database) = db {
+            if let Ok(Some(existing_path)) = database.find_existing_bundle(&video_fp, &sub_fp).await {
+                println!(
+                    "\n ℹ {} {}",
+                    style("Bundle already exists and is up to date:").green().bold(),
+                    style(existing_path.display()).cyan().bold()
+                );
+                println!(
+                    "   {} (Use {} to force rebuild)",
+                    style("Skipping redundant re-encoding.").dim(),
+                    style("--force").yellow().bold()
+                );
+                return Ok(existing_path);
+            }
+        }
+    }
 
     let temp_dir = std::env::temp_dir().join(format!("kotonoha_bundle_{}_{}", clean_stem, std::process::id()));
     if temp_dir.exists() {
@@ -244,6 +363,8 @@ pub fn create_bundle(
         subtitle_file: sub_filename,
         sentence_count: sentences.len(),
         has_screenshots: true,
+        video_fingerprint: Some(video_fp.clone()),
+        subtitle_fingerprint: Some(sub_fp.clone()),
     };
 
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
@@ -277,6 +398,19 @@ pub fn create_bundle(
 
     // Clean up temporary files
     let _ = std::fs::remove_dir_all(&temp_dir);
+
+    // Save to database
+    if let Some(database) = db {
+        let _ = database
+            .record_bundle(
+                &final_output,
+                &video_path.file_name().unwrap_or_default().to_string_lossy(),
+                &subtitle_path.file_name().unwrap_or_default().to_string_lossy(),
+                &video_fp,
+                &sub_fp,
+            )
+            .await;
+    }
 
     // Calculate compression stats
     let orig_video_size = std::fs::metadata(video_path).map(|m| m.len()).unwrap_or(0);
