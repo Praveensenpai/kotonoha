@@ -14,9 +14,10 @@ pub enum SessionMode {
 
 use anyhow::Result;
 use console::measure_text_width;
+use indicatif::{ProgressBar, ProgressStyle};
 use inquire::{MultiSelect, Select, Text};
 use std::cmp::Ordering;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// Compare strings naturally, treating consecutive ASCII digits as a number.
@@ -111,21 +112,85 @@ impl TerminalUi {
         println!("{}\n", bottom);
     }
 
-    pub fn select_media_file() -> Result<PathBuf> {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let search_dirs = vec![PathBuf::from("."), home.join("Videos")];
+    pub fn is_hidden_or_ignored_entry(entry: &walkdir::DirEntry) -> bool {
+        let name = entry.file_name().to_string_lossy();
+        // Skip hidden dot-files and dot-directories (e.g. .cache, .config, .cargo, .local, .git)
+        if entry.depth() > 0 && name.starts_with('.') {
+            return false;
+        }
+        // Skip common large non-media build/cache directories
+        if matches!(
+            name.as_ref(),
+            "node_modules"
+                | "target"
+                | "venv"
+                | ".venv"
+                | "env"
+                | "collection.media"
+                | "__pycache__"
+                | "vendor"
+        ) {
+            return false;
+        }
+        true
+    }
 
+    pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<Vec<PathBuf>> {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template(" {spinner:.green} {msg}")
+                .unwrap(),
+        );
+        pb.set_message(spinner_msg.to_string());
+        pb.enable_steady_tick(std::time::Duration::from_millis(80));
+
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let mut search_dirs = Vec::new();
+
+        // 1. Current working directory
+        search_dirs.push(PathBuf::from("."));
+
+        // 2. Standard user media folders if they exist
+        let videos = home.join("Videos");
+        if videos.exists() && !search_dirs.contains(&videos) {
+            search_dirs.push(videos);
+        }
+        let downloads = home.join("Downloads");
+        if downloads.exists() && !search_dirs.contains(&downloads) {
+            search_dirs.push(downloads);
+        }
+        let anime = home.join("Anime");
+        if anime.exists() && !search_dirs.contains(&anime) {
+            search_dirs.push(anime);
+        }
+
+        let is_cwd_home = std::env::current_dir().map(|cwd| cwd == home).unwrap_or(false);
         let mut files = Vec::new();
+
         for dir in search_dirs {
             if !dir.exists() {
                 continue;
             }
-            for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
+
+            let max_depth = if dir == Path::new(".") && is_cwd_home {
+                // Prevent deep scanning whole home tree when run directly at ~
+                2
+            } else {
+                6
+            };
+
+            for entry in WalkDir::new(&dir)
+                .max_depth(max_depth)
+                .into_iter()
+                .filter_entry(Self::is_hidden_or_ignored_entry)
+                .filter_map(|e| e.ok())
+            {
                 let p = entry.path();
                 if p.is_file() {
                     if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
                         let ext = ext.to_lowercase();
-                        if matches!(ext.as_str(), "srt" | "ass" | "vtt" | "mkv" | "mp4" | "webm" | "koto") {
+                        if allowed_exts.contains(&ext.as_str()) {
                             files.push(p.to_path_buf());
                         }
                     }
@@ -133,13 +198,24 @@ impl TerminalUi {
             }
         }
 
+        pb.finish_and_clear();
+
+        files.sort_by(|left, right| natural_cmp(&left.to_string_lossy(), &right.to_string_lossy()));
+        files.dedup();
+
+        Ok(files)
+    }
+
+    pub fn select_media_file() -> Result<PathBuf> {
+        let files = Self::discover_media_files(
+            &["srt", "ass", "vtt", "mkv", "mp4", "webm", "koto"],
+            "Scanning for media and subtitle files...",
+        )?;
+
         if files.is_empty() {
             let input = Text::new("No media files auto-discovered. Enter file path:").prompt()?;
             return Ok(PathBuf::from(input));
         }
-
-        files.sort_by(|left, right| natural_cmp(&left.to_string_lossy(), &right.to_string_lossy()));
-        files.dedup();
 
         let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
         let selected = Select::new("Select Subtitle or Anime Video File:", items).prompt()?;
@@ -147,34 +223,15 @@ impl TerminalUi {
     }
 
     pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let search_dirs = vec![PathBuf::from("."), home.join("Videos")];
-
-        let mut files = Vec::new();
-        for dir in search_dirs {
-            if !dir.exists() {
-                continue;
-            }
-            for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
-                let p = entry.path();
-                if p.is_file() {
-                    if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
-                        let ext = ext.to_lowercase();
-                        if matches!(ext.as_str(), "srt" | "ass" | "vtt" | "mkv" | "mp4" | "webm" | "avi") {
-                            files.push(p.to_path_buf());
-                        }
-                    }
-                }
-            }
-        }
+        let files = Self::discover_media_files(
+            &["srt", "ass", "vtt", "mkv", "mp4", "webm", "avi"],
+            "Scanning for unbundled video and subtitle files...",
+        )?;
 
         if files.is_empty() {
             let input = Text::new("No unbundled media files discovered. Enter file path:").prompt()?;
             return Ok(vec![PathBuf::from(input)]);
         }
-
-        files.sort_by(|left, right| natural_cmp(&left.to_string_lossy(), &right.to_string_lossy()));
-        files.dedup();
 
         let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
         let selected = MultiSelect::new(
