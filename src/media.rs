@@ -96,17 +96,13 @@ impl MediaExtractor {
         // Check if pre-extracted screenshot exists in bundle
         if let Some(idx) = sentence_index {
             let direct_shot = video_path.join(format!("screenshots/{}.jpg", idx));
-            if direct_shot.exists() {
-                if std::fs::copy(&direct_shot, output_path).is_ok() {
-                    return Ok(());
-                }
+            if direct_shot.exists() && std::fs::copy(&direct_shot, output_path).is_ok() {
+                return Ok(());
             }
             if let Some(parent) = video_path.parent() {
                 let adj_shot = parent.join(format!("screenshots/{}.jpg", idx));
-                if adj_shot.exists() {
-                    if std::fs::copy(&adj_shot, output_path).is_ok() {
-                        return Ok(());
-                    }
+                if adj_shot.exists() && std::fs::copy(&adj_shot, output_path).is_ok() {
+                    return Ok(());
                 }
             }
         }

@@ -2,202 +2,23 @@ use anyhow::{Context, Result};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
-use zip::{ZipArchive, ZipWriter};
+use zip::ZipWriter;
 
 use crate::db::Database;
 use crate::media::MediaExtractor;
 use crate::srt::parse_subtitle;
 
-pub mod manage;
-pub use manage::*;
+use super::fingerprint::{compute_subtitle_fingerprint, compute_video_fingerprint};
+use super::unpack::read_bundle_manifest;
+use super::BundleManifest;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BundleManifest {
-    pub version: u32,
-    pub source_video: String,
-    pub source_subtitle: String,
-    pub created_at: String,
-    pub audio_file: String,
-    pub subtitle_file: String,
-    pub sentence_count: usize,
-    pub has_screenshots: bool,
-    #[serde(default)]
-    pub video_fingerprint: Option<String>,
-    #[serde(default)]
-    pub subtitle_fingerprint: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct UnpackedBundle {
-    pub root_dir: PathBuf,
-    pub subtitle_path: PathBuf,
-    pub audio_path: PathBuf,
-    pub screenshots_dir: PathBuf,
-    pub manifest: BundleManifest,
-}
-
-pub fn get_bundles_cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".cache"))
-        .join("kotonoha")
-        .join("bundles")
-}
-
-pub fn is_bundle_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|s| s.to_str())
-        .map(|s| s.eq_ignore_ascii_case("koto"))
-        .unwrap_or(false)
-}
-
-pub fn is_bundle_dir(path: &Path) -> bool {
-    path.is_dir() && path.join("manifest.json").exists()
-}
-
-pub fn unpack_bundle(koto_path: &Path) -> Result<UnpackedBundle> {
-    if !koto_path.exists() {
-        anyhow::bail!("Bundle file not found: {}", koto_path.display());
-    }
-
-    let stem = koto_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("bundle");
-
-    let koto_mtime = std::fs::metadata(koto_path)
-        .and_then(|m| m.modified())
-        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-
-    let cache_dir = get_bundles_cache_dir().join(stem);
-    let manifest_path = cache_dir.join("manifest.json");
-
-    let needs_unpack = if manifest_path.exists() {
-        let manifest_mtime = std::fs::metadata(&manifest_path)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        koto_mtime > manifest_mtime
-    } else {
-        true
-    };
-
-    if needs_unpack {
-        if cache_dir.exists() {
-            let _ = std::fs::remove_dir_all(&cache_dir);
-        }
-        std::fs::create_dir_all(&cache_dir)?;
-
-        let file = File::open(koto_path)
-            .with_context(|| format!("Failed to open .koto bundle: {}", koto_path.display()))?;
-        let mut archive = ZipArchive::new(file)
-            .with_context(|| format!("Failed to read .koto zip archive: {}", koto_path.display()))?;
-
-        for i in 0..archive.len() {
-            let mut zip_file = archive.by_index(i)?;
-            let outpath = match zip_file.enclosed_name() {
-                Some(path) => cache_dir.join(path),
-                None => continue,
-            };
-
-            if zip_file.is_dir() {
-                std::fs::create_dir_all(&outpath)?;
-            } else {
-                if let Some(p) = outpath.parent() {
-                    if !p.exists() {
-                        std::fs::create_dir_all(p)?;
-                    }
-                }
-                let mut outfile = File::create(&outpath)?;
-                std::io::copy(&mut zip_file, &mut outfile)?;
-            }
-        }
-    }
-
-    let manifest_data = std::fs::read_to_string(&manifest_path)
-        .with_context(|| format!("Failed to read manifest.json in bundle cache: {}", manifest_path.display()))?;
-    let manifest: BundleManifest = serde_json::from_str(&manifest_data)
-        .with_context(|| "Failed to parse bundle manifest.json")?;
-
-    let subtitle_path = cache_dir.join(&manifest.subtitle_file);
-    let audio_path = cache_dir.join(&manifest.audio_file);
-    let screenshots_dir = cache_dir.join("screenshots");
-
-    Ok(UnpackedBundle {
-        root_dir: cache_dir,
-        subtitle_path,
-        audio_path,
-        screenshots_dir,
-        manifest,
-    })
-}
-
-pub fn compute_subtitle_fingerprint(subtitle_path: &Path) -> Result<String> {
-    let content = std::fs::read(subtitle_path)
-        .with_context(|| format!("Failed to read subtitle for fingerprinting: {}", subtitle_path.display()))?;
-    let digest = md5::compute(&content);
-    Ok(format!("{:x}", digest))
-}
-
-pub fn compute_video_fingerprint(video_path: &Path) -> Result<String> {
-    let metadata = std::fs::metadata(video_path)
-        .with_context(|| format!("Failed to stat video for fingerprinting: {}", video_path.display()))?;
-    let file_len = metadata.len();
-
-    let mut file = File::open(video_path)
-        .with_context(|| format!("Failed to open video for fingerprinting: {}", video_path.display()))?;
-
-    // Fast block sampling: 64KB from start, 64KB from middle, 64KB from end
-    const CHUNK_SIZE: usize = 64 * 1024;
-    let mut sample_bytes = Vec::with_capacity(CHUNK_SIZE * 3 + 16);
-    sample_bytes.extend_from_slice(&file_len.to_le_bytes());
-
-    let mut head = vec![0u8; CHUNK_SIZE.min(file_len as usize)];
-    if let Ok(n) = file.read(&mut head) {
-        sample_bytes.extend_from_slice(&head[..n]);
-    }
-
-    if file_len > (CHUNK_SIZE * 2) as u64 {
-        let mid_offset = (file_len / 2).saturating_sub((CHUNK_SIZE / 2) as u64);
-        if file.seek(SeekFrom::Start(mid_offset)).is_ok() {
-            let mut mid = vec![0u8; CHUNK_SIZE];
-            if let Ok(n) = file.read(&mut mid) {
-                sample_bytes.extend_from_slice(&mid[..n]);
-            }
-        }
-
-        let tail_offset = file_len.saturating_sub(CHUNK_SIZE as u64);
-        if file.seek(SeekFrom::Start(tail_offset)).is_ok() {
-            let mut tail = vec![0u8; CHUNK_SIZE];
-            if let Ok(n) = file.read(&mut tail) {
-                sample_bytes.extend_from_slice(&tail[..n]);
-            }
-        }
-    }
-
-    let digest = md5::compute(&sample_bytes);
-    Ok(format!("{}_{:x}", file_len, digest))
-}
-
-pub fn read_bundle_manifest(koto_path: &Path) -> Result<BundleManifest> {
-    let file = File::open(koto_path)
-        .with_context(|| format!("Failed to open bundle: {}", koto_path.display()))?;
-    let mut archive = ZipArchive::new(file)
-        .with_context(|| format!("Failed to read bundle zip: {}", koto_path.display()))?;
-    let mut manifest_file = archive
-        .by_name("manifest.json")
-        .with_context(|| "manifest.json not found in bundle archive")?;
-    let mut contents = String::new();
-    manifest_file.read_to_string(&mut contents)?;
-    let manifest: BundleManifest = serde_json::from_str(&contents)?;
-    Ok(manifest)
-}
-
+/// Compress video audio, extract screenshots, and create a standalone .koto archive.
 pub async fn create_bundle(
     video_path: &Path,
     subtitle_path: &Path,
@@ -451,6 +272,3 @@ pub async fn create_bundle(
 
     Ok(final_output)
 }
-
-#[cfg(test)]
-mod tests;

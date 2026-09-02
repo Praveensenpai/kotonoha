@@ -1,4 +1,5 @@
-use super::*;
+use super::client::*;
+use super::formatter::*;
 
 #[tokio::test]
 async fn test_anki_not_connected_error() {

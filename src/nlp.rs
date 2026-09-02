@@ -36,9 +36,9 @@ pub fn kata_to_hira(s: &str) -> String {
         .collect()
 }
 
-static CHAR_DEF: &str = include_str!("resources/char.def");
-static REWRITE_DEF: &str = include_str!("resources/rewrite.def");
-static UNK_DEF: &str = include_str!("resources/unk.def");
+static CHAR_DEF: &str = include_str!("nlp/resources/char.def");
+static REWRITE_DEF: &str = include_str!("nlp/resources/rewrite.def");
+static UNK_DEF: &str = include_str!("nlp/resources/unk.def");
 
 pub struct JapaneseTokenizer {
     dict: JapaneseDictionary,

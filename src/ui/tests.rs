@@ -1,4 +1,5 @@
-use super::{natural_cmp, TerminalUi};
+use super::helpers::natural_cmp;
+use super::picker::is_hidden_or_ignored_entry;
 use walkdir::WalkDir;
 
 #[test]
@@ -40,7 +41,7 @@ fn filters_hidden_and_system_directories() {
     let mut found_files = Vec::new();
     for entry in WalkDir::new(&temp)
         .into_iter()
-        .filter_entry(TerminalUi::is_hidden_or_ignored_entry)
+        .filter_entry(is_hidden_or_ignored_entry)
         .filter_map(|e| e.ok())
     {
         if entry.path().is_file() {

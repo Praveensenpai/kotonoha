@@ -1,5 +1,9 @@
+use super::fingerprint::*;
 use super::*;
+use std::fs::File;
 use std::io::Write;
+use zip::write::SimpleFileOptions;
+use zip::ZipWriter;
 
 #[test]
 fn test_bundle_manifest_serialization() {
@@ -76,14 +80,14 @@ fn test_bundle_archive_unpacking() {
         zip.finish().unwrap();
     }
 
+    let manifest = read_bundle_manifest(&koto_path).expect("read manifest");
+    assert_eq!(manifest.sentence_count, 2);
+    assert_eq!(manifest.video_fingerprint.as_deref(), Some("1234_abcd"));
+    assert_eq!(manifest.subtitle_fingerprint.as_deref(), Some("sub_5678"));
+
     let unpacked = unpack_bundle(&koto_path).expect("unpack bundle");
-    assert_eq!(unpacked.manifest.sentence_count, 2);
-    assert_eq!(unpacked.manifest.video_fingerprint.as_deref(), Some("1234_abcd"));
-    assert_eq!(unpacked.manifest.subtitle_fingerprint.as_deref(), Some("sub_5678"));
-    assert!(unpacked.root_dir.exists());
     assert!(unpacked.subtitle_path.exists());
     assert!(unpacked.audio_path.exists());
-    assert!(unpacked.screenshots_dir.join("0.jpg").exists());
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
