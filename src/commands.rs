@@ -40,9 +40,23 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --manage-mined   | -m     View & remove words from the mined list");
         println!("  kotonoha --manage-ignored | -I     View & remove words from the ignore list");
         println!("  kotonoha --sync           | -s     Push locally mined cards to Anki");
+        println!(
+            "  kotonoha --completions [SHELL]     Generate shell completions (bash, zsh, fish)"
+        );
         println!("  kotonoha --version        | -v     Print version information");
         println!("  kotonoha --help           | -h     Show help information");
         println!("  Flags:   --force          | -f     Force re-bundling or overwriting");
+        return Ok(true);
+    }
+    if arg == "--completions" || arg == "completions" {
+        let shell = std::env::args()
+            .nth(2)
+            .unwrap_or_else(|| "bash".to_string());
+        match shell.as_str() {
+            "zsh" => print!("{}", include_str!("../completions/_kotonoha")),
+            "fish" => print!("{}", include_str!("../completions/kotonoha.fish")),
+            _ => print!("{}", include_str!("../completions/kotonoha.bash")),
+        }
         return Ok(true);
     }
     if arg == "--bundle" || arg == "-b" || arg == "bundle" || arg == "--presave" {

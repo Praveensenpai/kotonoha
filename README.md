@@ -87,7 +87,7 @@ kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.ja.srt"
 
 ### 4. Pre-saving Lightweight Bundles (`.koto`)
 
-Compress large videos (1.2 GB+) into ultra-compact **`.koto`** learning packages (~18 MB, 98.5% space reduction) containing 64kbps Opus audio, 360p screenshots, and subtitles:
+Compress large anime videos (1.2 GB+) into ultra-compact **`.koto`** learning packages (~14 MB, >98.5% space saved) with solid Tar + Zstandard compression, 64kbps Opus audio, and 360p screenshots:
 
 ```bash
 # Create a .koto bundle from a video + subtitle
@@ -97,6 +97,56 @@ kotonoha --bundle "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
 kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
 kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
 ```
+
+---
+
+## ⌨️ Shell Autocompletion
+
+`kotonoha` provides full shell autocompletion for flags, subcommands, and media files.
+
+### Instant Generation
+
+```bash
+# Bash:
+source <(kotonoha --completions bash)
+
+# Zsh:
+kotonoha --completions zsh > "${fpath[1]}/_kotonoha"
+
+# Fish:
+kotonoha --completions fish > ~/.config/fish/completions/kotonoha.fish
+```
+
+### Permanent Installation
+
+For Bash users:
+```bash
+mkdir -p ~/.local/share/bash-completion/completions
+kotonoha --completions bash > ~/.local/share/bash-completion/completions/kotonoha
+```
+
+---
+
+## 🛠️ CLI Reference
+
+| Command / Flag | Short | Description |
+| :--- | :--- | :--- |
+| `kotonoha` | | Launch interactive TUI file picker |
+| `kotonoha <FILE>` | | Parse specific subtitle, video, or `.koto` file |
+| `--bundle [FILE]` | `-b` | Pre-save video into lightweight `.koto` archive |
+| `--bundles` | `-B` | Interactive bundle manager (inspect, play, delete) |
+| `--clean-bundled` | `-C` | Remove original source video/sub files of saved bundles |
+| `--config` | `-c` | Interactive configuration editor (storage strategy, AI, Anki) |
+| `--show-config` | `-S` | Display active configuration settings |
+| `--inspect [FILE]` | `-i` | Subtitle inspector with playback (`Space` plays line) |
+| `--manage-known` | `-k` | View and edit known vocabulary database |
+| `--manage-mined` | `-m` | View and edit mined vocabulary cards |
+| `--manage-ignored`| `-I` | View and edit ignored words list |
+| `--sync` | `-s` | Push pending mined cards to AnkiConnect |
+| `--completions [SHELL]` | | Output shell completion script (`bash`, `zsh`, `fish`) |
+| `--force` | `-f` | Force re-encoding or overwriting existing bundles |
+| `--version` | `-v` | Print version information |
+| `--help` | `-h` | Display help screen |
 
 ---
 

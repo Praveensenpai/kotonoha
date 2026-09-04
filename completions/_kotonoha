@@ -1,0 +1,25 @@
+#compdef kotonoha
+
+_kotonoha() {
+    local -a common_args=(
+        '(-b --bundle)'{-b,--bundle}'[Pre-save video into lightweight .koto package]:media file:_files'
+        '(-B --bundles)'{-B,--bundles}'[View, inspect and manage saved .koto bundles]'
+        '(-C --clean-bundled --clean-sources --clean)'{-C,--clean-bundled,--clean-sources,--clean}'[Remove original source files of bundled media]'
+        '(-c --config)'{-c,--config}'[Interactive TUI configuration manager]'
+        '(-S --show-config)'{-S,--show-config}'[Display active configuration settings]'
+        '(-i --inspect)'{-i,--inspect}'[Inspect sentences in media/koto file]:media file:_files'
+        '(-k --manage-known)'{-k,--manage-known}'[View & remove words from the known database]'
+        '(-m --manage-mined)'{-m,--manage-mined}'[View & remove words from the mined list]'
+        '(-I --manage-ignored)'{-I,--manage-ignored}'[View & remove words from the ignore list]'
+        '(-s --sync)'{-s,--sync}'[Push locally mined cards to Anki]'
+        '(-f --force)'{-f,--force}'[Force re-bundling or overwriting]'
+        '(-v -V --version)'{-v,-V,--version}'[Print version information]'
+        '(-h --help)'{-h,--help}'[Show help information]'
+        '--completions[Generate shell completions]:shell:(bash zsh fish)'
+        '*:media file:_files'
+    )
+
+    _arguments -s -S $common_args
+}
+
+_kotonoha "$@"
