@@ -2,6 +2,7 @@ pub mod create;
 pub mod destination;
 pub mod fingerprint;
 pub mod manage;
+pub mod screenshots;
 pub mod unpack;
 
 #[cfg(test)]

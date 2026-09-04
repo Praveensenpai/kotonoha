@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
-use rayon::prelude::*;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -10,7 +9,6 @@ use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use crate::media::MediaExtractor;
 use crate::srt::parse_subtitle;
 
 use super::destination::resolve_bundle_destination;
@@ -183,12 +181,12 @@ pub async fn create_bundle(
             .progress_chars("█▓▒░"),
     );
 
-    sentences.par_iter().for_each(|s| {
-        let shot_path = screenshots_dir.join(format!("{}.jpg", s.index));
-        let mid_ms = s.start_ms + (s.end_ms.saturating_sub(s.start_ms)) / 2;
-        let _ = MediaExtractor::extract_screenshot(video_path, mid_ms, &shot_path);
-        pb_shots.inc(1);
-    });
+    super::screenshots::extract_bundle_screenshots(
+        video_path,
+        &sentences,
+        &screenshots_dir,
+        &pb_shots,
+    )?;
     pb_shots.finish();
 
     // Step 3: Copy subtitle file & write manifest
