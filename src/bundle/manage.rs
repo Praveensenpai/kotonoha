@@ -157,13 +157,17 @@ pub async fn get_bundled_items_with_existing_sources(
         }
 
         let video_size = if video_exists {
-            std::fs::metadata(&resolved_video).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(&resolved_video)
+                .map(|m| m.len())
+                .unwrap_or(0)
         } else {
             0
         };
 
         let subtitle_size = if subtitle_exists {
-            std::fs::metadata(&resolved_sub).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(&resolved_sub)
+                .map(|m| m.len())
+                .unwrap_or(0)
         } else {
             0
         };

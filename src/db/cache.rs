@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sea_orm::{
-    ColumnTrait, Condition, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, sea_query::OnConflict,
+    sea_query::OnConflict, ColumnTrait, Condition, ConnectionTrait, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set,
 };
 
 use super::entities::*;
@@ -20,7 +20,10 @@ impl Database {
         &self,
         expression: &str,
     ) -> Result<Option<(String, String, String)>> {
-        if let Some(m) = DictionaryCache::find_by_id(expression).one(&self.conn).await? {
+        if let Some(m) = DictionaryCache::find_by_id(expression)
+            .one(&self.conn)
+            .await?
+        {
             let reading = m.reading.unwrap_or_default();
             let definition = m.definition.unwrap_or_default();
             let pitch = m.pitch_accent.unwrap_or_default();
@@ -71,8 +74,13 @@ impl Database {
         &self,
         expression: &str,
     ) -> Result<Option<Vec<crate::dict::LookupResult>>> {
-        if let Some(m) = AllCandidatesCache::find_by_id(expression).one(&self.conn).await? {
-            if let Ok(cands) = serde_json::from_str::<Vec<crate::dict::LookupResult>>(&m.candidates_json) {
+        if let Some(m) = AllCandidatesCache::find_by_id(expression)
+            .one(&self.conn)
+            .await?
+        {
+            if let Ok(cands) =
+                serde_json::from_str::<Vec<crate::dict::LookupResult>>(&m.candidates_json)
+            {
                 return Ok(Some(cands));
             }
         }
@@ -181,7 +189,10 @@ impl Database {
             let res = AiAnalysisCache::delete_many().exec(&self.conn).await?;
             return Ok(res.rows_affected as usize);
         }
-        let sql = format!("DELETE FROM ai_analysis_cache WHERE updated_at < datetime('now', '-{} minutes')", ttl_minutes);
+        let sql = format!(
+            "DELETE FROM ai_analysis_cache WHERE updated_at < datetime('now', '-{} minutes')",
+            ttl_minutes
+        );
         let res = self.conn.execute_unprepared(&sql).await?;
         Ok(res.rows_affected() as usize)
     }
@@ -201,19 +212,23 @@ impl Database {
         let total = terms.len();
         let models: Vec<offline_terms::ActiveModel> = terms
             .iter()
-            .map(|(expr, reading, def, pitch, dict, score)| offline_terms::ActiveModel {
-                rowid: sea_orm::ActiveValue::NotSet,
-                expression: Set(expr.clone()),
-                reading: Set(reading.clone()),
-                definition: Set(def.clone()),
-                pitch_accent: Set(pitch.clone()),
-                dict_name: Set(dict.clone()),
-                score: Set(*score as i32),
-            })
+            .map(
+                |(expr, reading, def, pitch, dict, score)| offline_terms::ActiveModel {
+                    rowid: sea_orm::ActiveValue::NotSet,
+                    expression: Set(expr.clone()),
+                    reading: Set(reading.clone()),
+                    definition: Set(def.clone()),
+                    pitch_accent: Set(pitch.clone()),
+                    dict_name: Set(dict.clone()),
+                    score: Set(*score as i32),
+                },
+            )
             .collect();
 
         for chunk in models.chunks(500) {
-            OfflineTerms::insert_many(chunk.to_vec()).exec(&self.conn).await?;
+            OfflineTerms::insert_many(chunk.to_vec())
+                .exec(&self.conn)
+                .await?;
         }
         Ok(total)
     }

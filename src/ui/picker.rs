@@ -8,8 +8,8 @@ use super::helpers::natural_cmp;
 
 pub fn is_hidden_or_ignored_entry(entry: &walkdir::DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
-    // Skip hidden dot-files and dot-directories (e.g. .cache, .config, .cargo, .local, .git)
-    if entry.depth() > 0 && name.starts_with('.') {
+    // Skip hidden dot-files and dot-directories except .koto bundle folders
+    if entry.depth() > 0 && name.starts_with('.') && name != ".koto" {
         return false;
     }
     // Skip common large non-media build/cache directories
@@ -59,7 +59,15 @@ pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<
         search_dirs.push(anime);
     }
 
-    let is_cwd_home = std::env::current_dir().map(|cwd| cwd == home).unwrap_or(false);
+    // 3. Central bundles directory if configured and exists
+    let cfg = crate::config::AppConfig::load().unwrap_or_default();
+    if cfg.bundles_dir.exists() && !search_dirs.contains(&cfg.bundles_dir) {
+        search_dirs.push(cfg.bundles_dir);
+    }
+
+    let is_cwd_home = std::env::current_dir()
+        .map(|cwd| cwd == home)
+        .unwrap_or(false);
     let mut files = Vec::new();
 
     for dir in search_dirs {
@@ -99,6 +107,22 @@ pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<
     Ok(files)
 }
 
+#[derive(Debug, Clone)]
+struct MediaEntry {
+    path: PathBuf,
+    is_bundle: bool,
+}
+
+impl std::fmt::Display for MediaEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_bundle {
+            write!(f, "📦 [BUNDLE] {}", self.path.display())
+        } else {
+            write!(f, "{}", self.path.display())
+        }
+    }
+}
+
 pub fn select_media_file() -> Result<PathBuf> {
     let files = discover_media_files(
         &["srt", "ass", "vtt", "mkv", "mp4", "webm", "koto"],
@@ -110,9 +134,15 @@ pub fn select_media_file() -> Result<PathBuf> {
         return Ok(PathBuf::from(input));
     }
 
-    let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
+    let items: Vec<MediaEntry> = files
+        .into_iter()
+        .map(|p| {
+            let is_bundle = crate::bundle::is_bundle_file(&p);
+            MediaEntry { path: p, is_bundle }
+        })
+        .collect();
     let selected = Select::new("Select Subtitle or Anime Video File:", items).prompt()?;
-    Ok(PathBuf::from(selected))
+    Ok(selected.path)
 }
 
 pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {

@@ -198,7 +198,8 @@ async fn resolve_dict_info(
                         &first.reading,
                         &first.definition,
                         &first.pitch_accent,
-                    ).await?;
+                    )
+                    .await?;
                 }
                 (first.reading, first.definition, first.pitch_accent)
             } else {
@@ -217,7 +218,8 @@ async fn resolve_dict_info(
                         &res.reading,
                         &res.definition,
                         &res.pitch_accent,
-                    ).await?;
+                    )
+                    .await?;
                 }
                 (res.reading, res.definition, res.pitch_accent)
             }
@@ -310,12 +312,14 @@ async fn align_contextual_reading(
                     cfg.dict.max_glosses_per_sense,
                 );
             }
-            let _ = db.cache_definition(
-                &dict_info.expression,
-                &dict_info.reading,
-                &dict_info.definition,
-                &dict_info.pitch_accent,
-            ).await;
+            let _ = db
+                .cache_definition(
+                    &dict_info.expression,
+                    &dict_info.reading,
+                    &dict_info.definition,
+                    &dict_info.pitch_accent,
+                )
+                .await;
         }
     }
 }

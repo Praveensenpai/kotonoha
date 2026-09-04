@@ -26,12 +26,16 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha                           Launch interactive TUI file picker");
         println!("  kotonoha <MEDIA_FILE>              Parse specific subtitle/video/koto file");
         println!("  kotonoha --bundle         | -b     Pre-save video into lightweight .koto package (~18MB)");
-        println!("  kotonoha --bundles        | -B     View, inspect and manage saved .koto bundles");
+        println!(
+            "  kotonoha --bundles        | -B     View, inspect and manage saved .koto bundles"
+        );
         println!("  kotonoha --clean-bundled  | -C     Select & remove original source files of bundled media");
         println!("  kotonoha --config         | -c     Interactive TUI configuration manager");
         println!("  kotonoha --show-config    | -S     Display active configuration settings");
         println!("  kotonoha --inspect [FILE] | -i     Inspect sentences (Space plays selected audio; ★=i+1)");
-        println!("  kotonoha --manage-known   | -k     View & remove words from the known database");
+        println!(
+            "  kotonoha --manage-known   | -k     View & remove words from the known database"
+        );
         println!("  kotonoha --manage-mined   | -m     View & remove words from the mined list");
         println!("  kotonoha --manage-ignored | -I     View & remove words from the ignore list");
         println!("  kotonoha --sync           | -s     Push locally mined cards to Anki");
@@ -57,14 +61,14 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
 
         if let Some(input_path) = direct_arg {
             let (sub_path, vid_path) = find_paired_media_for_bundling(&input_path)?;
-            crate::bundle::create_bundle(
-                &vid_path,
-                &sub_path,
-                custom_out.as_deref(),
+            let options = crate::bundle::CreateBundleOptions {
+                output_path: custom_out.as_deref(),
                 force,
-                db.as_ref(),
-            )
-            .await?;
+                db: db.as_ref(),
+                storage_strategy: cfg.bundle_storage,
+                bundles_dir: &cfg.bundles_dir,
+            };
+            crate::bundle::create_bundle(&vid_path, &sub_path, options).await?;
         } else {
             let selected_files = TerminalUi::select_bundle_source_files()?;
             let total = selected_files.len();
@@ -79,14 +83,14 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
                 }
                 match find_paired_media_for_bundling(input_path) {
                     Ok((sub_path, vid_path)) => {
-                        let _ = crate::bundle::create_bundle(
-                            &vid_path,
-                            &sub_path,
-                            None,
+                        let options = crate::bundle::CreateBundleOptions {
+                            output_path: None,
                             force,
-                            db.as_ref(),
-                        )
-                        .await?;
+                            db: db.as_ref(),
+                            storage_strategy: cfg.bundle_storage,
+                            bundles_dir: &cfg.bundles_dir,
+                        };
+                        let _ = crate::bundle::create_bundle(&vid_path, &sub_path, options).await?;
                     }
                     Err(e) => {
                         eprintln!(" ✖ Skipping {}: {}", input_path.display(), e);
@@ -183,7 +187,10 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("known").await?);
+        let words = words_with_readings(
+            &tokenizer,
+            db.get_known_words_sorted_by_source("known").await?,
+        );
         let to_remove = TerminalUi::manage_known_words(&words)?;
         if !to_remove.is_empty() {
             let count = db.remove_known_words(&to_remove).await?;
@@ -197,7 +204,10 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
         let tokenizer = JapaneseTokenizer::new()?;
-        let words = words_with_readings(&tokenizer, db.get_known_words_sorted_by_source("mined").await?);
+        let words = words_with_readings(
+            &tokenizer,
+            db.get_known_words_sorted_by_source("mined").await?,
+        );
         let to_remove = TerminalUi::manage_mined_words(&words)?;
         if !to_remove.is_empty() {
             let count = db.remove_known_words(&to_remove).await?;

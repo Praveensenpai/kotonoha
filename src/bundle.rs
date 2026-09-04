@@ -1,4 +1,5 @@
 pub mod create;
+pub mod destination;
 pub mod fingerprint;
 pub mod manage;
 pub mod unpack;
@@ -12,6 +13,18 @@ pub use unpack::{read_bundle_manifest, unpack_bundle};
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+use crate::db::Database;
+
+/// Options passed to `create_bundle`.
+#[derive(Debug, Clone)]
+pub struct CreateBundleOptions<'a> {
+    pub output_path: Option<&'a Path>,
+    pub force: bool,
+    pub db: Option<&'a Database>,
+    pub storage_strategy: crate::config::BundleStorageStrategy,
+    pub bundles_dir: &'a Path,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BundleManifest {
@@ -37,7 +50,11 @@ pub struct UnpackedBundle {
 
 pub fn get_bundles_cache_dir() -> PathBuf {
     dirs::cache_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".cache"))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".cache")
+        })
         .join("kotonoha")
         .join("bundles")
 }

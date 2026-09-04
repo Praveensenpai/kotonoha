@@ -1,8 +1,5 @@
 use anyhow::Result;
-use sea_orm::{
-    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-    sea_query::OnConflict,
-};
+use sea_orm::{sea_query::OnConflict, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use std::collections::HashSet;
 
 use super::entities::*;
@@ -26,7 +23,11 @@ impl Database {
         self.add_known_words_with_source(words, "known").await
     }
 
-    pub async fn add_known_words_with_source(&self, words: &[String], source: &str) -> Result<usize> {
+    pub async fn add_known_words_with_source(
+        &self,
+        words: &[String],
+        source: &str,
+    ) -> Result<usize> {
         let now = chrono::Utc::now().to_rfc3339();
         let mut added = 0;
         for w in words {
@@ -62,7 +63,11 @@ impl Database {
     }
 
     pub async fn remove_known_words(&self, words: &[String]) -> Result<usize> {
-        let clean_words: Vec<&str> = words.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let clean_words: Vec<&str> = words
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
         if clean_words.is_empty() {
             return Ok(0);
         }
@@ -89,7 +94,11 @@ impl Database {
             added_at: Set(now),
         };
         let _ = IgnoredWords::insert(active)
-            .on_conflict(OnConflict::column(ignored_words::Column::Word).do_nothing().to_owned())
+            .on_conflict(
+                OnConflict::column(ignored_words::Column::Word)
+                    .do_nothing()
+                    .to_owned(),
+            )
             .exec(&self.conn)
             .await;
         Ok(())
@@ -104,7 +113,11 @@ impl Database {
     }
 
     pub async fn remove_ignored_words(&self, words: &[String]) -> Result<usize> {
-        let clean_words: Vec<&str> = words.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let clean_words: Vec<&str> = words
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
         if clean_words.is_empty() {
             return Ok(0);
         }

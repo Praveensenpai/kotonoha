@@ -63,7 +63,8 @@ fn test_bundle_archive_unpacking() {
             video_fingerprint: Some("1234_abcd".to_string()),
             subtitle_fingerprint: Some("sub_5678".to_string()),
         };
-        zip.write_all(serde_json::to_string(&manifest).unwrap().as_bytes()).unwrap();
+        zip.write_all(serde_json::to_string(&manifest).unwrap().as_bytes())
+            .unwrap();
 
         // Write subtitle
         zip.start_file("subtitles.srt", options).unwrap();

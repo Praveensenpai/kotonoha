@@ -53,4 +53,3 @@ fn filters_hidden_and_system_directories() {
 
     let _ = std::fs::remove_dir_all(&temp);
 }
-

@@ -260,7 +260,8 @@ pub async fn run_session(
         &mut db,
         &known_words,
         &ignored_words,
-    ).await?;
+    )
+    .await?;
 
     let known_words = db.get_known_words().await?;
     let ignored_words = db.get_ignored_words().await?;

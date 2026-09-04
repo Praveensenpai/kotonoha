@@ -13,6 +13,12 @@ media_dir = "~/.local/share/kotonoha/media"
 # SQLite database file path
 db_path = "~/.config/kotonoha/kotonoha.db"
 
+# Bundle (.koto) storage strategy: "colocated" (same folder), "central" (~/.local/share/kotonoha/bundles), or "subfolder" (.koto/)
+bundle_storage = "colocated"
+
+# Central directory for .koto archives when bundle_storage = "central" or as fallback for read-only sources
+bundles_dir = "~/.local/share/kotonoha/bundles"
+
 # Audio padding around sentence timestamps (seconds)
 audio_padding_secs = 0.25
 

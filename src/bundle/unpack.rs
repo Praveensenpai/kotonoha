@@ -41,8 +41,9 @@ pub fn unpack_bundle(koto_path: &Path) -> Result<UnpackedBundle> {
 
         let file = File::open(koto_path)
             .with_context(|| format!("Failed to open .koto bundle: {}", koto_path.display()))?;
-        let mut archive = ZipArchive::new(file)
-            .with_context(|| format!("Failed to read .koto zip archive: {}", koto_path.display()))?;
+        let mut archive = ZipArchive::new(file).with_context(|| {
+            format!("Failed to read .koto zip archive: {}", koto_path.display())
+        })?;
 
         for i in 0..archive.len() {
             let mut zip_file = archive.by_index(i)?;
@@ -65,8 +66,12 @@ pub fn unpack_bundle(koto_path: &Path) -> Result<UnpackedBundle> {
         }
     }
 
-    let manifest_data = std::fs::read_to_string(&manifest_path)
-        .with_context(|| format!("Failed to read manifest.json in bundle cache: {}", manifest_path.display()))?;
+    let manifest_data = std::fs::read_to_string(&manifest_path).with_context(|| {
+        format!(
+            "Failed to read manifest.json in bundle cache: {}",
+            manifest_path.display()
+        )
+    })?;
     let manifest: BundleManifest = serde_json::from_str(&manifest_data)
         .with_context(|| "Failed to parse bundle manifest.json")?;
 

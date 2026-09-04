@@ -127,12 +127,15 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                 });
                 ctx.is_ai_selected = chosen_is_ai;
                 *ctx.dict_info = chosen;
-                let _ = ctx.db.cache_definition(
-                    &ctx.dict_info.expression,
-                    &ctx.dict_info.reading,
-                    &ctx.dict_info.definition,
-                    &ctx.dict_info.pitch_accent,
-                ).await;
+                let _ = ctx
+                    .db
+                    .cache_definition(
+                        &ctx.dict_info.expression,
+                        &ctx.dict_info.reading,
+                        &ctx.dict_info.definition,
+                        &ctx.dict_info.pitch_accent,
+                    )
+                    .await;
                 println!(
                     " ✨ Updated candidate: 【{} ({})】",
                     ctx.dict_info.expression, ctx.dict_info.reading
@@ -161,7 +164,12 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                     ctx.cand.target_word, ctx.cand.sentence.index
                 ));
                 let mid_ms = ctx.cand.sentence.start_ms
-                    + (ctx.cand.sentence.end_ms.saturating_sub(ctx.cand.sentence.start_ms)) / 2;
+                    + (ctx
+                        .cand
+                        .sentence
+                        .end_ms
+                        .saturating_sub(ctx.cand.sentence.start_ms))
+                        / 2;
                 let _ = MediaExtractor::extract_screenshot_with_index(
                     ctx.video_path,
                     mid_ms,
@@ -174,24 +182,29 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
                 let kan_nat = ctx.ai_analysis.and_then(|r| r.kannada_natural.as_deref());
                 let kan_lit = ctx.ai_analysis.and_then(|r| r.kannada_literal.as_deref());
 
-                ctx.db.save_mined_card(SaveMinedCardParams {
-                    sentence: &ctx.cand.sentence.text,
-                    target_word: &ctx.cand.target_word,
-                    reading: &ctx.dict_info.reading,
-                    pitch_accent: &ctx.dict_info.pitch_accent,
-                    definition: &ctx.dict_info.definition,
-                    audio_path: Some(&audio_path.to_string_lossy()),
-                    image_path: Some(&image_path.to_string_lossy()),
-                    english_natural: eng_nat,
-                    english_literal: eng_lit,
-                    kannada_natural: kan_nat,
-                    kannada_literal: kan_lit,
-                }).await?;
+                ctx.db
+                    .save_mined_card(SaveMinedCardParams {
+                        sentence: &ctx.cand.sentence.text,
+                        target_word: &ctx.cand.target_word,
+                        reading: &ctx.dict_info.reading,
+                        pitch_accent: &ctx.dict_info.pitch_accent,
+                        definition: &ctx.dict_info.definition,
+                        audio_path: Some(&audio_path.to_string_lossy()),
+                        image_path: Some(&image_path.to_string_lossy()),
+                        english_natural: eng_nat,
+                        english_literal: eng_lit,
+                        kannada_natural: kan_nat,
+                        kannada_literal: kan_lit,
+                    })
+                    .await?;
 
-                let _ = ctx.db.add_known_words_with_source(
-                    std::slice::from_ref(&ctx.cand.target_word),
-                    "mined",
-                ).await;
+                let _ = ctx
+                    .db
+                    .add_known_words_with_source(
+                        std::slice::from_ref(&ctx.cand.target_word),
+                        "mined",
+                    )
+                    .await;
                 println!(" ✔ Card mined successfully!");
                 if let Some(mut child) = audio_child.take() {
                     let _ = child.kill();

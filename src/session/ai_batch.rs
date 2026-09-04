@@ -25,13 +25,16 @@ pub async fn prepare_ai_batch(
 
     if cfg.ai.enable_ai {
         for (idx, cand) in candidates_to_process.iter().enumerate() {
-            if let Ok(Some(cached_res)) = db.get_cached_ai_analysis(crate::db::GetCachedAiParams {
-                sentence: &cand.sentence.text,
-                target_word: &cand.target_word,
-                model: &cfg.ai.gemini_model,
-                card_index: idx,
-                ttl_minutes: cfg.ai.ai_cache_ttl_minutes,
-            }).await {
+            if let Ok(Some(cached_res)) = db
+                .get_cached_ai_analysis(crate::db::GetCachedAiParams {
+                    sentence: &cand.sentence.text,
+                    target_word: &cand.target_word,
+                    model: &cfg.ai.gemini_model,
+                    card_index: idx,
+                    ttl_minutes: cfg.ai.ai_cache_ttl_minutes,
+                })
+                .await
+            {
                 cached_results.push(cached_res);
             } else {
                 uncached_card_targets.push((
@@ -178,12 +181,14 @@ pub async fn collect_ai_results(
 
                     for res in &fresh_results {
                         let cand = &candidates[res.card_index];
-                        let _ = db.cache_ai_analysis(
-                            &cand.sentence.text,
-                            &cand.target_word,
-                            &cfg.ai.gemini_model,
-                            res,
-                        ).await;
+                        let _ = db
+                            .cache_ai_analysis(
+                                &cand.sentence.text,
+                                &cand.target_word,
+                                &cfg.ai.gemini_model,
+                                res,
+                            )
+                            .await;
                     }
 
                     let mut merged = prep.cached_results;

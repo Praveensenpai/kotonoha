@@ -115,6 +115,18 @@ impl Default for DictionarySettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BundleStorageStrategy {
+    Colocated,
+    Central,
+    Subfolder,
+}
+
+fn default_bundle_storage() -> BundleStorageStrategy {
+    BundleStorageStrategy::Colocated
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_card_limit")]
@@ -123,6 +135,10 @@ pub struct AppConfig {
     pub max_cached_cards: usize,
     pub media_dir: PathBuf,
     pub db_path: PathBuf,
+    #[serde(default = "default_bundle_storage")]
+    pub bundle_storage: BundleStorageStrategy,
+    #[serde(default = "default_bundles_dir")]
+    pub bundles_dir: PathBuf,
     #[serde(default = "default_audio_padding_secs")]
     pub audio_padding_secs: f64,
     #[serde(default)]
@@ -131,6 +147,11 @@ pub struct AppConfig {
     pub ai: AiSettings,
     #[serde(default)]
     pub dict: DictionarySettings,
+}
+
+fn default_bundles_dir() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    home.join(".local/share/kotonoha/bundles")
 }
 
 fn default_card_limit() -> usize {
@@ -170,6 +191,8 @@ impl Default for AppConfig {
             max_cached_cards: default_max_cached_cards(),
             media_dir,
             db_path: config_dir.join("kotonoha.db"),
+            bundle_storage: default_bundle_storage(),
+            bundles_dir: default_bundles_dir(),
             audio_padding_secs: default_audio_padding_secs(),
             anki: AnkiSettings::default(),
             ai: AiSettings::default(),
@@ -193,6 +216,7 @@ impl AppConfig {
             let mut cfg: AppConfig = toml::from_str(&content).unwrap_or_default();
             cfg.media_dir = expand_home_path(cfg.media_dir, &home);
             cfg.db_path = expand_home_path(cfg.db_path, &home);
+            cfg.bundles_dir = expand_home_path(cfg.bundles_dir, &home);
             if cfg.ai.gemini_api_key.is_none() {
                 cfg.ai.gemini_api_key = std::env::var("GEMINI_API_KEY").ok();
             }

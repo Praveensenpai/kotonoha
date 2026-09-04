@@ -78,12 +78,14 @@ pub async fn preload_batch_media(
             if !dict::is_placeholder_definition(&dict_res.definition)
                 && dict_res.definition != "No dictionary definition found"
             {
-                let _ = db.cache_definition(
-                    &dict_res.expression,
-                    &dict_res.reading,
-                    &dict_res.definition,
-                    &dict_res.pitch_accent,
-                ).await;
+                let _ = db
+                    .cache_definition(
+                        &dict_res.expression,
+                        &dict_res.reading,
+                        &dict_res.definition,
+                        &dict_res.pitch_accent,
+                    )
+                    .await;
             }
             if !cands_res.is_empty() {
                 let _ = db.cache_candidates(&dict_res.expression, &cands_res).await;

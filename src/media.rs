@@ -45,7 +45,9 @@ impl MediaExtractor {
         cmd.arg(output_path);
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
 
-        let status = cmd.status().context("Failed to spawn ffmpeg for audio extraction")?;
+        let status = cmd
+            .status()
+            .context("Failed to spawn ffmpeg for audio extraction")?;
 
         if !status.success() {
             // If copy failed on opus, retry with re-encode

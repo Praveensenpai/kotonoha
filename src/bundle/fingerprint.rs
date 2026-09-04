@@ -5,20 +5,32 @@ use std::path::Path;
 
 /// Compute MD5 fingerprint of a subtitle file.
 pub fn compute_subtitle_fingerprint(subtitle_path: &Path) -> Result<String> {
-    let content = std::fs::read(subtitle_path)
-        .with_context(|| format!("Failed to read subtitle for fingerprinting: {}", subtitle_path.display()))?;
+    let content = std::fs::read(subtitle_path).with_context(|| {
+        format!(
+            "Failed to read subtitle for fingerprinting: {}",
+            subtitle_path.display()
+        )
+    })?;
     let digest = md5::compute(&content);
     Ok(format!("{:x}", digest))
 }
 
 /// Compute fast multi-chunk sampled fingerprint for large video files.
 pub fn compute_video_fingerprint(video_path: &Path) -> Result<String> {
-    let metadata = std::fs::metadata(video_path)
-        .with_context(|| format!("Failed to stat video for fingerprinting: {}", video_path.display()))?;
+    let metadata = std::fs::metadata(video_path).with_context(|| {
+        format!(
+            "Failed to stat video for fingerprinting: {}",
+            video_path.display()
+        )
+    })?;
     let file_len = metadata.len();
 
-    let mut file = File::open(video_path)
-        .with_context(|| format!("Failed to open video for fingerprinting: {}", video_path.display()))?;
+    let mut file = File::open(video_path).with_context(|| {
+        format!(
+            "Failed to open video for fingerprinting: {}",
+            video_path.display()
+        )
+    })?;
 
     // Fast block sampling: 64KB from start, 64KB from middle, 64KB from end
     const CHUNK_SIZE: usize = 64 * 1024;

@@ -3,12 +3,12 @@ use console::style;
 use inquire::{Confirm, MultiSelect, Select};
 use std::path::{Path, PathBuf};
 
+use super::TerminalUi;
 use crate::bundle::{
     delete_bundle_archive, delete_source_media_files, format_size,
     get_bundled_items_with_existing_sources, read_bundle_manifest,
 };
 use crate::db::Database;
-use super::TerminalUi;
 
 impl TerminalUi {
     pub async fn manage_bundles_interactive(db: &Database) -> Result<()> {
@@ -50,13 +50,21 @@ impl TerminalUi {
     pub async fn list_bundles_view(db: &Database) -> Result<()> {
         let mut records = db.get_all_bundled_media().await?;
         if records.is_empty() {
-            println!("\n{}", style("ℹ No bundles recorded in the database yet.").yellow());
+            println!(
+                "\n{}",
+                style("ℹ No bundles recorded in the database yet.").yellow()
+            );
             return Ok(());
         }
 
         records.sort_by(|a, b| super::natural_cmp(&a.bundle_path, &b.bundle_path));
 
-        println!("\n{}", style(format!("📋 Recorded Bundles ({})", records.len())).bold().cyan());
+        println!(
+            "\n{}",
+            style(format!("📋 Recorded Bundles ({})", records.len()))
+                .bold()
+                .cyan()
+        );
         println!("{}", style("─".repeat(80)).dim());
 
         for (idx, r) in records.iter().enumerate() {
@@ -87,22 +95,36 @@ impl TerminalUi {
             let vid_path = PathBuf::from(&r.source_video);
             let vid_exists = (vid_path.is_absolute() && vid_path.exists())
                 || bundle_dir.join(&vid_path).exists()
-                || vid_path.file_name().map(|f| bundle_dir.join(f).exists()).unwrap_or(false);
+                || vid_path
+                    .file_name()
+                    .map(|f| bundle_dir.join(f).exists())
+                    .unwrap_or(false);
 
             let sub_path = PathBuf::from(&r.source_subtitle);
             let sub_exists = (sub_path.is_absolute() && sub_path.exists())
                 || bundle_dir.join(&sub_path).exists()
-                || sub_path.file_name().map(|f| bundle_dir.join(f).exists()).unwrap_or(false);
+                || sub_path
+                    .file_name()
+                    .map(|f| bundle_dir.join(f).exists())
+                    .unwrap_or(false);
 
             println!(
                 "   📹 Source Video: {} {}",
                 style(&r.source_video).dim(),
-                if vid_exists { style("(on disk)").yellow() } else { style("(cleaned/missing)").dim() }
+                if vid_exists {
+                    style("(on disk)").yellow()
+                } else {
+                    style("(cleaned/missing)").dim()
+                }
             );
             println!(
                 "   📝 Source Sub:   {} {}",
                 style(&r.source_subtitle).dim(),
-                if sub_exists { style("(on disk)").yellow() } else { style("(cleaned/missing)").dim() }
+                if sub_exists {
+                    style("(on disk)").yellow()
+                } else {
+                    style("(cleaned/missing)").dim()
+                }
             );
             if let Ok(manifest) = read_bundle_manifest(&bundle_path) {
                 println!(
@@ -134,7 +156,12 @@ impl TerminalUi {
             return Ok(());
         }
 
-        println!("\n{}", style("🧹 Clean Original Source Files (Reclaim Space)").bold().yellow());
+        println!(
+            "\n{}",
+            style("🧹 Clean Original Source Files (Reclaim Space)")
+                .bold()
+                .yellow()
+        );
         println!(
             "{}",
             style("The following source videos and subtitles are safely bundled into standalone .koto files.")
@@ -155,17 +182,16 @@ impl TerminalUi {
             }
         }
 
-        let display_items: Vec<DisplayWrapper> = cleanup_items
-            .into_iter()
-            .map(DisplayWrapper)
-            .collect();
+        let display_items: Vec<DisplayWrapper> =
+            cleanup_items.into_iter().map(DisplayWrapper).collect();
 
         let selected = match MultiSelect::new(
             "Select source files to delete (Space to tick/untick, Enter to proceed):",
             display_items,
         )
         .with_formatter(&|opts| format!("{} item(s) selected", opts.len()))
-        .prompt() {
+        .prompt()
+        {
             Ok(s) => s,
             Err(_) => {
                 println!("Deletion cancelled.");
@@ -178,12 +204,13 @@ impl TerminalUi {
             return Ok(());
         }
 
-        let chosen_items: Vec<crate::bundle::BundledSourceCleanupItem> = selected
-            .into_iter()
-            .map(|w| w.0)
-            .collect();
+        let chosen_items: Vec<crate::bundle::BundledSourceCleanupItem> =
+            selected.into_iter().map(|w| w.0).collect();
 
-        let total_size: u64 = chosen_items.iter().map(|item| item.total_source_size()).sum();
+        let total_size: u64 = chosen_items
+            .iter()
+            .map(|item| item.total_source_size())
+            .sum();
         let total_size_str = format_size(total_size);
 
         println!(
@@ -192,17 +219,22 @@ impl TerminalUi {
             style(&total_size_str).bold().green()
         );
 
-        let confirm = Confirm::new("Are you sure you want to move these original source files to the trash bin?")
-            .with_default(false)
-            .prompt()?;
+        let confirm = Confirm::new(
+            "Are you sure you want to move these original source files to the trash bin?",
+        )
+        .with_default(false)
+        .prompt()?;
 
         if confirm {
             let freed = delete_source_media_files(&chosen_items)?;
             println!(
                 "{}",
-                style(format!("✔ Successfully moved source files to trash! Freed {}.", format_size(freed)))
-                    .bold()
-                    .green()
+                style(format!(
+                    "✔ Successfully moved source files to trash! Freed {}.",
+                    format_size(freed)
+                ))
+                .bold()
+                .green()
             );
         } else {
             println!("Operation aborted.");
@@ -225,10 +257,15 @@ impl TerminalUi {
         impl std::fmt::Display for BundleRecordWrapper {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let p = Path::new(&self.0.bundle_path);
-                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or(&self.0.bundle_path);
+                let name = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&self.0.bundle_path);
                 let exists = p.exists();
                 let size = if exists {
-                    std::fs::metadata(p).map(|m| format!(" [{}]", format_size(m.len()))).unwrap_or_default()
+                    std::fs::metadata(p)
+                        .map(|m| format!(" [{}]", format_size(m.len())))
+                        .unwrap_or_default()
                 } else {
                     " [MISSING]".to_string()
                 };
@@ -236,17 +273,16 @@ impl TerminalUi {
             }
         }
 
-        let display_records: Vec<BundleRecordWrapper> = records
-            .into_iter()
-            .map(BundleRecordWrapper)
-            .collect();
+        let display_records: Vec<BundleRecordWrapper> =
+            records.into_iter().map(BundleRecordWrapper).collect();
 
         let selected = match MultiSelect::new(
             "Select .koto bundles to move to trash (Space to tick, Enter to confirm):",
             display_records,
         )
         .with_formatter(&|opts| format!("{} bundle(s) selected", opts.len()))
-        .prompt() {
+        .prompt()
+        {
             Ok(s) => s,
             Err(_) => return Ok(()),
         };
@@ -280,12 +316,18 @@ impl TerminalUi {
         if pruned > 0 {
             println!(
                 "{}",
-                style(format!("✔ Pruned {} missing bundle records from the database.", pruned))
-                    .bold()
-                    .green()
+                style(format!(
+                    "✔ Pruned {} missing bundle records from the database.",
+                    pruned
+                ))
+                .bold()
+                .green()
             );
         } else {
-            println!("{}", style("✔ All database bundle records are up to date with disk.").green());
+            println!(
+                "{}",
+                style("✔ All database bundle records are up to date with disk.").green()
+            );
         }
         Ok(())
     }

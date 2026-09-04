@@ -25,14 +25,27 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
         "  • Database Path:         {}",
         dim.apply_to(cfg.db_path.display())
     );
-    println!(
-        "  • Enable AI:             {}",
-        if cfg.ai.enable_ai {
-            green.apply_to("true")
-        } else {
-            yellow.apply_to("false")
+    let storage_label = match cfg.bundle_storage {
+        crate::config::BundleStorageStrategy::Colocated => "colocated (same folder)",
+        crate::config::BundleStorageStrategy::Central => {
+            "central (~/.local/share/kotonoha/bundles)"
         }
+        crate::config::BundleStorageStrategy::Subfolder => "subfolder (.koto/)",
+    };
+    println!(
+        "  • Bundle Storage:        {}",
+        cyan.apply_to(storage_label)
     );
+    println!(
+        "  • Bundles Directory:     {}",
+        dim.apply_to(cfg.bundles_dir.display())
+    );
+    let ai_status = if cfg.ai.enable_ai {
+        green.apply_to("true")
+    } else {
+        yellow.apply_to("false")
+    };
+    println!("  • Enable AI:             {ai_status}");
     println!(
         "  • Gemini Model:          {}",
         cyan.apply_to(&cfg.ai.gemini_model)
@@ -45,14 +58,12 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
         _ => "Not set (Set GEMINI_API_KEY env var or in config)".to_string(),
     };
     println!("  • Gemini API Key:        {}", yellow.apply_to(key_status));
-    println!(
-        "  • Anki Sync Enabled:     {}",
-        if cfg.anki.enable_sync {
-            green.apply_to("true")
-        } else {
-            yellow.apply_to("false")
-        }
-    );
+    let anki_status = if cfg.anki.enable_sync {
+        green.apply_to("true")
+    } else {
+        yellow.apply_to("false")
+    };
+    println!("  • Anki Sync Enabled:     {anki_status}");
     println!(
         "  • AnkiConnect URL:       {}",
         dim.apply_to(&cfg.anki.connect_url)
@@ -96,6 +107,12 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             _ => "Not Set".to_string(),
         };
 
+        let storage_name = match cfg.bundle_storage {
+            crate::config::BundleStorageStrategy::Colocated => "colocated",
+            crate::config::BundleStorageStrategy::Central => "central",
+            crate::config::BundleStorageStrategy::Subfolder => "subfolder",
+        };
+
         let options = vec![
             format!(
                 "🎴  Default Card Limit         [Current: {}]",
@@ -113,6 +130,10 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             format!(
                 "⚡  Enable AI Disambiguation   [Current: {}]",
                 cfg.ai.enable_ai
+            ),
+            format!(
+                "📦  Bundle Storage Strategy     [Current: {}]",
+                storage_name
             ),
             format!(
                 "📦  Anki Deck Name             [Current: {}]",
@@ -249,6 +270,8 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
                 cfg.ai.ai_cache_ttl_minutes = num;
                 println!(" ✔ AI Cache TTL set to {} minutes", cyan.apply_to(num));
             }
+        } else if choice.contains("Bundle Storage Strategy") {
+            edit_bundle_storage(cfg, &cyan)?;
         } else if choice.contains("Reset to Default Values") {
             *cfg = crate::config::AppConfig::default();
             println!(" 🔄 Config reset to default values.");
@@ -257,6 +280,26 @@ pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
             println!(" ✨ Configuration saved to ~/.config/kotonoha/config.toml!");
             break;
         }
+    }
+    Ok(())
+}
+
+fn edit_bundle_storage(cfg: &mut crate::config::AppConfig, cyan: &Style) -> Result<()> {
+    let storage_options = vec![
+        "colocated - Save .koto alongside original source file",
+        "central - Save to central bundles directory (~/.local/share/kotonoha/bundles)",
+        "subfolder - Save to .koto/ subfolder inside source folder",
+    ];
+    if let Ok(picked) = Select::new("Choose bundle storage strategy:", storage_options).prompt() {
+        if picked.starts_with("colocated") {
+            cfg.bundle_storage = crate::config::BundleStorageStrategy::Colocated;
+        } else if picked.starts_with("central") {
+            cfg.bundle_storage = crate::config::BundleStorageStrategy::Central;
+        } else if picked.starts_with("subfolder") {
+            cfg.bundle_storage = crate::config::BundleStorageStrategy::Subfolder;
+        }
+        let label = picked.split_whitespace().next().unwrap_or("");
+        println!(" ✔ Bundle storage strategy set to {}", cyan.apply_to(label));
     }
     Ok(())
 }

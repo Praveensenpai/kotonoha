@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
-use sea_orm::{
-    ConnectionTrait, Database as SeaDatabase, DatabaseConnection,
-};
+use sea_orm::{ConnectionTrait, Database as SeaDatabase, DatabaseConnection};
 use std::path::Path;
 
 pub mod bundles;
@@ -46,14 +44,38 @@ impl Database {
         let schema = sea_orm::Schema::new(builder);
 
         let table_stmts = [
-            schema.create_table_from_entity(KnownWords).if_not_exists().take(),
-            schema.create_table_from_entity(IgnoredWords).if_not_exists().take(),
-            schema.create_table_from_entity(DictionaryCache).if_not_exists().take(),
-            schema.create_table_from_entity(AllCandidatesCache).if_not_exists().take(),
-            schema.create_table_from_entity(MinedCards).if_not_exists().take(),
-            schema.create_table_from_entity(AiAnalysisCache).if_not_exists().take(),
-            schema.create_table_from_entity(OfflineTerms).if_not_exists().take(),
-            schema.create_table_from_entity(BundledMedia).if_not_exists().take(),
+            schema
+                .create_table_from_entity(KnownWords)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(IgnoredWords)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(DictionaryCache)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(AllCandidatesCache)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(MinedCards)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(AiAnalysisCache)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(OfflineTerms)
+                .if_not_exists()
+                .take(),
+            schema
+                .create_table_from_entity(BundledMedia)
+                .if_not_exists()
+                .take(),
         ];
 
         for stmt in table_stmts {
@@ -70,17 +92,56 @@ impl Database {
         ).await?;
 
         // Run migrations for any existing databases that might miss new columns
-        let _ = self.conn.execute_unprepared("ALTER TABLE mined_cards ADD COLUMN anki_note_id INTEGER").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE mined_cards ADD COLUMN pitch_accent TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE mined_cards ADD COLUMN english_natural TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE mined_cards ADD COLUMN english_literal TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE mined_cards ADD COLUMN kannada_natural TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE ai_analysis_cache ADD COLUMN recommended_candidate_index INTEGER").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE ai_analysis_cache ADD COLUMN recommended_sense_index INTEGER").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE ai_analysis_cache ADD COLUMN custom_definition_suggestion TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE ai_analysis_cache ADD COLUMN explanation TEXT").await;
-        let _ = self.conn.execute_unprepared("ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'").await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE mined_cards ADD COLUMN anki_note_id INTEGER")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE mined_cards ADD COLUMN pitch_accent TEXT")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE mined_cards ADD COLUMN english_natural TEXT")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE mined_cards ADD COLUMN english_literal TEXT")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE mined_cards ADD COLUMN kannada_natural TEXT")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE mined_cards ADD COLUMN kannada_literal TEXT")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN recommended_candidate_index INTEGER",
+            )
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN recommended_sense_index INTEGER",
+            )
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared(
+                "ALTER TABLE ai_analysis_cache ADD COLUMN custom_definition_suggestion TEXT",
+            )
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE ai_analysis_cache ADD COLUMN explanation TEXT")
+            .await;
+        let _ = self
+            .conn
+            .execute_unprepared("ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'")
+            .await;
 
         Ok(())
     }

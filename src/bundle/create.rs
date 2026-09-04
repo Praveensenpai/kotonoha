@@ -10,21 +10,19 @@ use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use crate::db::Database;
 use crate::media::MediaExtractor;
 use crate::srt::parse_subtitle;
 
+use super::destination::resolve_bundle_destination;
 use super::fingerprint::{compute_subtitle_fingerprint, compute_video_fingerprint};
 use super::unpack::read_bundle_manifest;
-use super::BundleManifest;
+use super::{BundleManifest, CreateBundleOptions};
 
 /// Compress video audio, extract screenshots, and create a standalone .koto archive.
 pub async fn create_bundle(
     video_path: &Path,
     subtitle_path: &Path,
-    output_path: Option<&Path>,
-    force: bool,
-    db: Option<&Database>,
+    options: CreateBundleOptions<'_>,
 ) -> Result<PathBuf> {
     let sub_stem = subtitle_path
         .file_stem()
@@ -36,19 +34,21 @@ pub async fn create_bundle(
         .trim_end_matches(".ja-JP")
         .trim_end_matches(".japanese");
 
-    let final_output = match output_path {
+    let final_output = match options.output_path {
         Some(p) => p.to_path_buf(),
-        None => {
-            let parent = subtitle_path.parent().unwrap_or_else(|| Path::new("."));
-            parent.join(format!("{}.koto", clean_stem))
-        }
+        None => resolve_bundle_destination(
+            subtitle_path,
+            clean_stem,
+            options.storage_strategy,
+            options.bundles_dir,
+        )?,
     };
 
     let video_fp = compute_video_fingerprint(video_path).unwrap_or_default();
     let sub_fp = compute_subtitle_fingerprint(subtitle_path).unwrap_or_default();
 
     // 1. Check if final_output bundle file already exists on disk with matching fingerprints
-    if !force && final_output.exists() {
+    if !options.force && final_output.exists() {
         if let Ok(existing_manifest) = read_bundle_manifest(&final_output) {
             let matches_video = existing_manifest
                 .video_fingerprint
@@ -64,7 +64,9 @@ pub async fn create_bundle(
             if matches_video && matches_sub {
                 println!(
                     "\n ℹ {} {}",
-                    style("Bundle already exists and is up to date:").green().bold(),
+                    style("Bundle already exists and is up to date:")
+                        .green()
+                        .bold(),
                     style(final_output.display()).cyan().bold()
                 );
                 println!(
@@ -78,12 +80,15 @@ pub async fn create_bundle(
     }
 
     // 2. Check if database has record of an existing bundle with matching fingerprints
-    if !force {
-        if let Some(database) = db {
-            if let Ok(Some(existing_path)) = database.find_existing_bundle(&video_fp, &sub_fp).await {
+    if !options.force {
+        if let Some(database) = options.db {
+            if let Ok(Some(existing_path)) = database.find_existing_bundle(&video_fp, &sub_fp).await
+            {
                 println!(
                     "\n ℹ {} {}",
-                    style("Bundle already exists and is up to date:").green().bold(),
+                    style("Bundle already exists and is up to date:")
+                        .green()
+                        .bold(),
                     style(existing_path.display()).cyan().bold()
                 );
                 println!(
@@ -96,21 +101,38 @@ pub async fn create_bundle(
         }
     }
 
-    let temp_dir = std::env::temp_dir().join(format!("kotonoha_bundle_{}_{}", clean_stem, std::process::id()));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "kotonoha_bundle_{}_{}",
+        clean_stem,
+        std::process::id()
+    ));
     if temp_dir.exists() {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
     std::fs::create_dir_all(&temp_dir)?;
 
-    let sentences = parse_subtitle(subtitle_path)
-        .with_context(|| format!("Failed to parse subtitle for bundling: {}", subtitle_path.display()))?;
+    let sentences = parse_subtitle(subtitle_path).with_context(|| {
+        format!(
+            "Failed to parse subtitle for bundling: {}",
+            subtitle_path.display()
+        )
+    })?;
 
     println!(
         "\n 📦 {} {}",
         style("Pre-saving Kotonoha Bundle:").cyan().bold(),
-        style(final_output.file_name().unwrap_or_default().to_string_lossy()).bold()
+        style(
+            final_output
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        )
+        .bold()
     );
-    println!(" ℹ Subtitle Lines: {}", style(sentences.len()).yellow().bold());
+    println!(
+        " ℹ Subtitle Lines: {}",
+        style(sentences.len()).yellow().bold()
+    );
 
     // Step 1: Compress full audio to Opus 64k
     let audio_dest = temp_dir.join("audio.opus");
@@ -181,8 +203,16 @@ pub async fn create_bundle(
 
     let manifest = BundleManifest {
         version: 1,
-        source_video: video_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
-        source_subtitle: subtitle_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        source_video: video_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
+        source_subtitle: subtitle_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
         audio_file: "audio.opus".to_string(),
         subtitle_file: sub_filename,
@@ -200,7 +230,7 @@ pub async fn create_bundle(
     let file = File::create(&final_output)
         .with_context(|| format!("Failed to create .koto file: {}", final_output.display()))?;
     let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default()
+    let zip_opts = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o644);
 
@@ -210,13 +240,13 @@ pub async fn create_bundle(
         let rel_path = path.strip_prefix(&temp_dir)?;
 
         if path.is_file() {
-            zip.start_file(rel_path.to_string_lossy(), options)?;
+            zip.start_file(rel_path.to_string_lossy(), zip_opts)?;
             let mut f = File::open(path)?;
             let mut buffer = Vec::new();
             f.read_to_end(&mut buffer)?;
             zip.write_all(&buffer)?;
         } else if !rel_path.as_os_str().is_empty() {
-            zip.add_directory(rel_path.to_string_lossy(), options)?;
+            zip.add_directory(rel_path.to_string_lossy(), zip_opts)?;
         }
     }
     zip.finish()?;
@@ -225,10 +255,16 @@ pub async fn create_bundle(
     let _ = std::fs::remove_dir_all(&temp_dir);
 
     // Save to database
-    if let Some(database) = db {
-        let abs_video = video_path.canonicalize().unwrap_or_else(|_| video_path.to_path_buf());
-        let abs_sub = subtitle_path.canonicalize().unwrap_or_else(|_| subtitle_path.to_path_buf());
-        let abs_output = final_output.canonicalize().unwrap_or_else(|_| final_output.clone());
+    if let Some(database) = options.db {
+        let abs_video = video_path
+            .canonicalize()
+            .unwrap_or_else(|_| video_path.to_path_buf());
+        let abs_sub = subtitle_path
+            .canonicalize()
+            .unwrap_or_else(|_| subtitle_path.to_path_buf());
+        let abs_output = final_output
+            .canonicalize()
+            .unwrap_or_else(|_| final_output.clone());
 
         let _ = database
             .record_bundle(
@@ -243,7 +279,9 @@ pub async fn create_bundle(
 
     // Calculate compression stats
     let orig_video_size = std::fs::metadata(video_path).map(|m| m.len()).unwrap_or(0);
-    let koto_size = std::fs::metadata(&final_output).map(|m| m.len()).unwrap_or(0);
+    let koto_size = std::fs::metadata(&final_output)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     let orig_mb = orig_video_size as f64 / (1024.0 * 1024.0);
     let koto_mb = koto_size as f64 / (1024.0 * 1024.0);
@@ -253,8 +291,16 @@ pub async fn create_bundle(
         0.0
     };
 
-    println!("\n {}", style("✨ Pre-saving completed successfully!").green().bold());
-    println!(" 📦 Saved:    {}", style(final_output.display()).cyan().bold());
+    println!(
+        "\n {}",
+        style("✨ Pre-saving completed successfully!")
+            .green()
+            .bold()
+    );
+    println!(
+        " 📦 Saved:    {}",
+        style(final_output.display()).cyan().bold()
+    );
     println!(
         " 📊 Size:     {} (Original Video: {})",
         style(format!("{:.1} MB", koto_mb)).green().bold(),
@@ -268,7 +314,9 @@ pub async fn create_bundle(
     }
     println!(
         " 💡 You can now run: {}",
-        style(format!("kotonoha \"{}\"", final_output.display())).yellow().bold()
+        style(format!("kotonoha \"{}\"", final_output.display()))
+            .yellow()
+            .bold()
     );
 
     Ok(final_output)

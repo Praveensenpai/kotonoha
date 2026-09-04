@@ -1,8 +1,5 @@
 use anyhow::{Context, Result};
-use sea_orm::{
-    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-    sea_query::OnConflict,
-};
+use sea_orm::{sea_query::OnConflict, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use std::path::{Path, PathBuf};
 
 use super::entities::*;
