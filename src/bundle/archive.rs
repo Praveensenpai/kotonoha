@@ -2,12 +2,11 @@ use anyhow::{Context, Result};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use tar::Builder;
 use walkdir::WalkDir;
-use zip::write::SimpleFileOptions;
-use zip::ZipWriter;
+use zstd::Encoder;
 
 use super::unpack::read_bundle_manifest;
 use super::CreateBundleOptions;
@@ -68,27 +67,27 @@ pub fn package_bundle_archive(temp_dir: &Path, final_output: &Path) -> Result<Du
 
     let file = File::create(final_output)
         .with_context(|| format!("Failed to create .koto file: {}", final_output.display()))?;
-    let mut zip = ZipWriter::new(file);
-    let zip_opts = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644);
+    let zstd_encoder = Encoder::new(file, 3).context("Failed to initialize Zstandard encoder")?;
+    let mut tar_builder = Builder::new(zstd_encoder);
 
     for entry in WalkDir::new(temp_dir) {
         let entry = entry?;
         let path = entry.path();
         let rel_path = path.strip_prefix(temp_dir)?;
+        if rel_path.as_os_str().is_empty() {
+            continue;
+        }
 
         if path.is_file() {
-            zip.start_file(rel_path.to_string_lossy(), zip_opts)?;
             let mut f = File::open(path)?;
-            let mut buffer = Vec::new();
-            f.read_to_end(&mut buffer)?;
-            zip.write_all(&buffer)?;
-        } else if !rel_path.as_os_str().is_empty() {
-            zip.add_directory(rel_path.to_string_lossy(), zip_opts)?;
+            tar_builder.append_file(rel_path, &mut f)?;
+        } else if path.is_dir() {
+            tar_builder.append_dir(rel_path, path)?;
         }
     }
-    zip.finish()?;
+
+    let zstd_encoder = tar_builder.into_inner()?;
+    zstd_encoder.finish()?;
 
     let dur = start.elapsed();
     pb.finish_and_clear();

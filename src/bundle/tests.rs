@@ -94,6 +94,61 @@ fn test_bundle_archive_unpacking() {
 }
 
 #[test]
+fn test_bundle_tar_zstd_packaging_and_unpacking() {
+    use super::archive::package_bundle_archive;
+
+    let temp_dir = std::env::temp_dir().join(format!("koto_zstd_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+    let bundle_content_dir = temp_dir.join("content");
+    std::fs::create_dir_all(bundle_content_dir.join("screenshots")).unwrap();
+
+    let manifest = BundleManifest {
+        version: 1,
+        source_video: "sample_zstd.mkv".to_string(),
+        source_subtitle: "sample_zstd.srt".to_string(),
+        created_at: "2026-09-05T00:00:00Z".to_string(),
+        audio_file: "audio.opus".to_string(),
+        subtitle_file: "subtitles.srt".to_string(),
+        sentence_count: 5,
+        has_screenshots: true,
+        video_fingerprint: Some("vid_fp_zstd".to_string()),
+        subtitle_fingerprint: Some("sub_fp_zstd".to_string()),
+    };
+    std::fs::write(
+        bundle_content_dir.join("manifest.json"),
+        serde_json::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        bundle_content_dir.join("subtitles.srt"),
+        "1\n00:00:01,000 --> 00:00:02,000\nテスト\n",
+    )
+    .unwrap();
+    std::fs::write(bundle_content_dir.join("audio.opus"), b"DUMMY_OPUS_AUDIO").unwrap();
+    std::fs::write(
+        bundle_content_dir.join("screenshots").join("1.jpg"),
+        b"DUMMY_SHOT_1",
+    )
+    .unwrap();
+
+    let koto_path = temp_dir.join("output.koto");
+    package_bundle_archive(&bundle_content_dir, &koto_path).expect("package tar.zst bundle");
+    assert!(koto_path.exists());
+
+    let read_manifest = read_bundle_manifest(&koto_path).expect("read manifest from tar.zst");
+    assert_eq!(read_manifest.source_video, "sample_zstd.mkv");
+    assert_eq!(read_manifest.sentence_count, 5);
+
+    let unpacked = unpack_bundle(&koto_path).expect("unpack tar.zst bundle");
+    assert!(unpacked.subtitle_path.exists());
+    assert!(unpacked.audio_path.exists());
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn test_fingerprint_generation() {
     let temp_dir = std::env::temp_dir().join(format!("koto_fp_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);
