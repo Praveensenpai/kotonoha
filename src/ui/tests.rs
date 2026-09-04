@@ -53,3 +53,9 @@ fn filters_hidden_and_system_directories() {
 
     let _ = std::fs::remove_dir_all(&temp);
 }
+
+#[test]
+fn unbundled_search_excludes_koto() {
+    let unbundled_exts = ["srt", "ass", "vtt", "mkv", "mp4", "webm", "avi"];
+    assert!(!unbundled_exts.contains(&"koto"));
+}

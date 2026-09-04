@@ -59,12 +59,6 @@ pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<
         search_dirs.push(anime);
     }
 
-    // 3. Central bundles directory if configured and exists
-    let cfg = crate::config::AppConfig::load().unwrap_or_default();
-    if cfg.bundles_dir.exists() && !search_dirs.contains(&cfg.bundles_dir) {
-        search_dirs.push(cfg.bundles_dir);
-    }
-
     let is_cwd_home = std::env::current_dir()
         .map(|cwd| cwd == home)
         .unwrap_or(false);
@@ -93,6 +87,21 @@ pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<
                     let ext = ext.to_lowercase();
                     if allowed_exts.contains(&ext.as_str()) {
                         files.push(p.to_path_buf());
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Central bundles directory: only discover top-level .koto files when requested
+    if allowed_exts.contains(&"koto") {
+        let cfg = crate::config::AppConfig::load().unwrap_or_default();
+        if cfg.bundles_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&cfg.bundles_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() && crate::bundle::is_bundle_file(&p) {
+                        files.push(p);
                     }
                 }
             }
