@@ -59,3 +59,16 @@ fn unbundled_search_excludes_koto() {
     let unbundled_exts = ["srt", "ass", "vtt", "mkv", "mp4", "webm", "avi"];
     assert!(!unbundled_exts.contains(&"koto"));
 }
+
+#[test]
+fn test_format_duration() {
+    use super::helpers::format_duration;
+    use std::time::Duration;
+
+    assert_eq!(format_duration(Duration::from_millis(850)), "0.8s");
+    assert_eq!(format_duration(Duration::from_millis(4200)), "4.2s");
+    assert_eq!(format_duration(Duration::from_secs(59)), "59.0s");
+    assert_eq!(format_duration(Duration::from_secs(60)), "1m 0.0s");
+    assert_eq!(format_duration(Duration::from_millis(84_500)), "1m 24.5s");
+    assert_eq!(format_duration(Duration::from_secs(135)), "2m 15.0s");
+}

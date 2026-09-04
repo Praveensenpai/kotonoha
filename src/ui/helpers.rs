@@ -66,6 +66,17 @@ pub fn format_timestamp(start_ms: u64) -> String {
     }
 }
 
+pub fn format_duration(d: std::time::Duration) -> String {
+    let total_secs = d.as_secs_f64();
+    if total_secs < 60.0 {
+        format!("{:.1}s", total_secs)
+    } else {
+        let mins = d.as_secs() / 60;
+        let secs = total_secs % 60.0;
+        format!("{}m {:.1}s", mins, secs)
+    }
+}
+
 /// Prints a full-width box with the app title centered inside.
 pub fn print_banner() {
     let bw = box_width();

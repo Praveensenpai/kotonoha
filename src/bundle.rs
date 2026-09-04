@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod create;
 pub mod destination;
 pub mod fingerprint;

@@ -2,6 +2,7 @@ mod pairing;
 pub use pairing::*;
 
 use anyhow::Result;
+use console::style;
 use std::path::PathBuf;
 
 use crate::anki;
@@ -72,6 +73,8 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             let selected_files = TerminalUi::select_bundle_source_files()?;
             let total = selected_files.len();
+            let batch_start = std::time::Instant::now();
+            let mut completed_count = 0;
             for (idx, input_path) in selected_files.iter().enumerate() {
                 if total > 1 {
                     println!(
@@ -90,12 +93,37 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
                             storage_strategy: cfg.bundle_storage,
                             bundles_dir: &cfg.bundles_dir,
                         };
-                        let _ = crate::bundle::create_bundle(&vid_path, &sub_path, options).await?;
+                        if crate::bundle::create_bundle(&vid_path, &sub_path, options)
+                            .await
+                            .is_ok()
+                        {
+                            completed_count += 1;
+                        }
                     }
                     Err(e) => {
                         eprintln!(" ✖ Skipping {}: {}", input_path.display(), e);
                     }
                 }
+            }
+            if total > 1 {
+                let batch_dur = batch_start.elapsed();
+                let avg_dur = if completed_count > 0 {
+                    batch_dur / (completed_count as u32)
+                } else {
+                    std::time::Duration::ZERO
+                };
+                println!(
+                    "\n {}",
+                    style(format!(
+                        "✨ Batch completed: {}/{} bundles processed in {} (avg {}/bundle)",
+                        completed_count,
+                        total,
+                        crate::ui::format_duration(batch_dur),
+                        crate::ui::format_duration(avg_dur),
+                    ))
+                    .green()
+                    .bold()
+                );
             }
         }
         return Ok(true);

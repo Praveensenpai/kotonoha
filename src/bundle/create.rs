@@ -1,20 +1,89 @@
 use anyhow::{Context, Result};
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::File;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use walkdir::WalkDir;
-use zip::write::SimpleFileOptions;
-use zip::ZipWriter;
+use std::time::{Duration, Instant};
 
-use crate::srt::parse_subtitle;
+use crate::srt::{parse_subtitle, SubtitleSentence};
+use crate::ui::format_duration;
 
+use super::archive::{
+    find_matching_bundle, package_bundle_archive, print_bundle_summary, BundleDurations,
+};
 use super::destination::resolve_bundle_destination;
 use super::fingerprint::{compute_subtitle_fingerprint, compute_video_fingerprint};
-use super::unpack::read_bundle_manifest;
 use super::{BundleManifest, CreateBundleOptions};
+
+fn compress_bundle_audio(video_path: &Path, audio_dest: &Path) -> Result<Duration> {
+    let start = Instant::now();
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template(" {spinner:.green} [1/3] Compressing audio track (.opus @ 64kbps)...")
+            .unwrap(),
+    );
+    pb.enable_steady_tick(Duration::from_millis(80));
+
+    let status = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            &video_path.to_string_lossy(),
+            "-vn",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "64k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            &audio_dest.to_string_lossy(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("Failed to spawn ffmpeg for full audio extraction")?;
+
+    if !status.success() {
+        anyhow::bail!("ffmpeg failed to compress full audio track to Opus 64kbps");
+    }
+    let dur = start.elapsed();
+    pb.finish_and_clear();
+    println!(
+        " {} [1/3] Audio compressed (.opus @ 64kbps): {}",
+        style("✔").green().bold(),
+        style(format_duration(dur)).cyan().bold()
+    );
+    Ok(dur)
+}
+
+fn extract_bundle_screenshots_step(
+    video_path: &Path,
+    sentences: &[SubtitleSentence],
+    dest_dir: &Path,
+) -> Result<Duration> {
+    let start = Instant::now();
+    let pb = ProgressBar::new(sentences.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template(" ℹ [2/3] Extracting 360p screenshots [{bar:35.yellow/blue}] {pos}/{len} ({percent}%)")
+            .unwrap()
+            .progress_chars("█▓▒░"),
+    );
+
+    super::screenshots::extract_bundle_screenshots(video_path, sentences, dest_dir, &pb)?;
+    let dur = start.elapsed();
+    pb.finish_and_clear();
+    println!(
+        " {} [2/3] Extracted {} screenshots: {}",
+        style("✔").green().bold(),
+        sentences.len(),
+        style(format_duration(dur)).cyan().bold()
+    );
+    Ok(dur)
+}
 
 /// Compress video audio, extract screenshots, and create a standalone .koto archive.
 pub async fn create_bundle(
@@ -22,6 +91,7 @@ pub async fn create_bundle(
     subtitle_path: &Path,
     options: CreateBundleOptions<'_>,
 ) -> Result<PathBuf> {
+    let total_start = Instant::now();
     let sub_stem = subtitle_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -45,58 +115,21 @@ pub async fn create_bundle(
     let video_fp = compute_video_fingerprint(video_path).unwrap_or_default();
     let sub_fp = compute_subtitle_fingerprint(subtitle_path).unwrap_or_default();
 
-    // 1. Check if final_output bundle file already exists on disk with matching fingerprints
-    if !options.force && final_output.exists() {
-        if let Ok(existing_manifest) = read_bundle_manifest(&final_output) {
-            let matches_video = existing_manifest
-                .video_fingerprint
-                .as_deref()
-                .map(|fp| fp == video_fp)
-                .unwrap_or(false);
-            let matches_sub = existing_manifest
-                .subtitle_fingerprint
-                .as_deref()
-                .map(|fp| fp == sub_fp)
-                .unwrap_or(false);
-
-            if matches_video && matches_sub {
-                println!(
-                    "\n ℹ {} {}",
-                    style("Bundle already exists and is up to date:")
-                        .green()
-                        .bold(),
-                    style(final_output.display()).cyan().bold()
-                );
-                println!(
-                    "   {} (Use {} to force rebuild)",
-                    style("Skipping redundant re-encoding.").dim(),
-                    style("--force").yellow().bold()
-                );
-                return Ok(final_output);
-            }
-        }
-    }
-
-    // 2. Check if database has record of an existing bundle with matching fingerprints
-    if !options.force {
-        if let Some(database) = options.db {
-            if let Ok(Some(existing_path)) = database.find_existing_bundle(&video_fp, &sub_fp).await
-            {
-                println!(
-                    "\n ℹ {} {}",
-                    style("Bundle already exists and is up to date:")
-                        .green()
-                        .bold(),
-                    style(existing_path.display()).cyan().bold()
-                );
-                println!(
-                    "   {} (Use {} to force rebuild)",
-                    style("Skipping redundant re-encoding.").dim(),
-                    style("--force").yellow().bold()
-                );
-                return Ok(existing_path);
-            }
-        }
+    if let Some(existing) = find_matching_bundle(&final_output, &video_fp, &sub_fp, &options).await
+    {
+        println!(
+            "\n ℹ {} {}",
+            style("Bundle already exists and is up to date:")
+                .green()
+                .bold(),
+            style(existing.display()).cyan().bold()
+        );
+        println!(
+            "   {} (Use {} to force rebuild)",
+            style("Skipping redundant re-encoding.").dim(),
+            style("--force").yellow().bold()
+        );
+        return Ok(existing);
     }
 
     let temp_dir = std::env::temp_dir().join(format!(
@@ -132,62 +165,27 @@ pub async fn create_bundle(
         style(sentences.len()).yellow().bold()
     );
 
-    // Step 1: Compress full audio to Opus 64k
+    // Step 1: Compress audio
     let audio_dest = temp_dir.join("audio.opus");
-    let pb_audio = ProgressBar::new_spinner();
-    pb_audio.set_style(
-        ProgressStyle::default_spinner()
-            .template(" {spinner:.green} [1/3] Compressing audio track (.opus @ 64kbps)... {msg}")
-            .unwrap(),
-    );
-    pb_audio.enable_steady_tick(std::time::Duration::from_millis(80));
+    let audio_dur = match compress_bundle_audio(video_path, &audio_dest) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(e);
+        }
+    };
 
-    let status = Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-i",
-            &video_path.to_string_lossy(),
-            "-vn",
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "64k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            &audio_dest.to_string_lossy(),
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("Failed to spawn ffmpeg for full audio extraction")?;
-
-    if !status.success() {
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        anyhow::bail!("ffmpeg failed to compress full audio track to Opus 64kbps");
-    }
-    pb_audio.finish_with_message("Done ✔");
-
-    // Step 2: Extract 360p screenshots for each subtitle sentence
+    // Step 2: Extract screenshots
     let screenshots_dir = temp_dir.join("screenshots");
     std::fs::create_dir_all(&screenshots_dir)?;
-
-    let pb_shots = ProgressBar::new(sentences.len() as u64);
-    pb_shots.set_style(
-        ProgressStyle::default_bar()
-            .template(" ℹ [2/3] Extracting 360p screenshots [{bar:35.yellow/blue}] {pos}/{len} ({percent}%)")
-            .unwrap()
-            .progress_chars("█▓▒░"),
-    );
-
-    super::screenshots::extract_bundle_screenshots(
-        video_path,
-        &sentences,
-        &screenshots_dir,
-        &pb_shots,
-    )?;
-    pb_shots.finish();
+    let shots_dur = match extract_bundle_screenshots_step(video_path, &sentences, &screenshots_dir)
+    {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(e);
+        }
+    };
 
     // Step 3: Copy subtitle file & write manifest
     let sub_ext = subtitle_path
@@ -219,37 +217,18 @@ pub async fn create_bundle(
         video_fingerprint: Some(video_fp.clone()),
         subtitle_fingerprint: Some(sub_fp.clone()),
     };
-
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
     std::fs::write(temp_dir.join("manifest.json"), manifest_json)?;
 
     // Step 4: Package into .koto zip file
-    println!(" ℹ [3/3] Packaging into standalone .koto archive...");
-    let file = File::create(&final_output)
-        .with_context(|| format!("Failed to create .koto file: {}", final_output.display()))?;
-    let mut zip = ZipWriter::new(file);
-    let zip_opts = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644);
-
-    for entry in WalkDir::new(&temp_dir) {
-        let entry = entry?;
-        let path = entry.path();
-        let rel_path = path.strip_prefix(&temp_dir)?;
-
-        if path.is_file() {
-            zip.start_file(rel_path.to_string_lossy(), zip_opts)?;
-            let mut f = File::open(path)?;
-            let mut buffer = Vec::new();
-            f.read_to_end(&mut buffer)?;
-            zip.write_all(&buffer)?;
-        } else if !rel_path.as_os_str().is_empty() {
-            zip.add_directory(rel_path.to_string_lossy(), zip_opts)?;
+    let zip_dur = match package_bundle_archive(&temp_dir, &final_output) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(e);
         }
-    }
-    zip.finish()?;
+    };
 
-    // Clean up temporary files
     let _ = std::fs::remove_dir_all(&temp_dir);
 
     // Save to database
@@ -275,46 +254,16 @@ pub async fn create_bundle(
             .await;
     }
 
-    // Calculate compression stats
-    let orig_video_size = std::fs::metadata(video_path).map(|m| m.len()).unwrap_or(0);
-    let koto_size = std::fs::metadata(&final_output)
-        .map(|m| m.len())
-        .unwrap_or(0);
-
-    let orig_mb = orig_video_size as f64 / (1024.0 * 1024.0);
-    let koto_mb = koto_size as f64 / (1024.0 * 1024.0);
-    let ratio = if orig_video_size > 0 {
-        (1.0 - (koto_size as f64 / orig_video_size as f64)) * 100.0
-    } else {
-        0.0
-    };
-
-    println!(
-        "\n {}",
-        style("✨ Pre-saving completed successfully!")
-            .green()
-            .bold()
-    );
-    println!(
-        " 📦 Saved:    {}",
-        style(final_output.display()).cyan().bold()
-    );
-    println!(
-        " 📊 Size:     {} (Original Video: {})",
-        style(format!("{:.1} MB", koto_mb)).green().bold(),
-        style(format!("{:.1} MB", orig_mb)).dim()
-    );
-    if ratio > 0.0 {
-        println!(
-            " 🚀 Savings:  {} space saved!",
-            style(format!("{:.1}%", ratio)).green().bold()
-        );
-    }
-    println!(
-        " 💡 You can now run: {}",
-        style(format!("kotonoha \"{}\"", final_output.display()))
-            .yellow()
-            .bold()
+    let total_dur = total_start.elapsed();
+    print_bundle_summary(
+        &final_output,
+        video_path,
+        BundleDurations {
+            total: total_dur,
+            audio: audio_dur,
+            screenshots: shots_dur,
+            packaging: zip_dur,
+        },
     );
 
     Ok(final_output)
