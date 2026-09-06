@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   release:
@@ -34,6 +37,7 @@ jobs:
         run: cargo build --release
 
       - name: Create Release Package
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           mkdir -p staging/completions
           cp target/release/kotonoha staging/
@@ -42,6 +46,7 @@ jobs:
           tar -czvf kotonoha-x86_64-unknown-linux-gnu.tar.gz -C staging .
 
       - name: Generate Dynamic Changelog
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 ${{ github.ref_name }}^ 2>/dev/null || echo "")
           echo "## 🌸 言の葉 (kotonoha) ${{ github.ref_name }}" > RELEASE_NOTES.md
@@ -56,6 +61,7 @@ jobs:
           echo "" >> RELEASE_NOTES.md
 
       - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: "🌸 kotonoha ${{ github.ref_name }}"
