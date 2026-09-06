@@ -1,6 +1,6 @@
 # Rust Codebase Rules
 
-Goal: every file readable in one sitting, every module has one job, nothing hidden behind `#[allow(...)]`.
+Drop this in as `CLAUDE.md` / `.cursor/rules` / `RULES.md`. Goal: every file readable in one sitting, every module has one job, nothing hidden behind `#[allow(...)]`.
 
 ---
 
@@ -161,4 +161,4 @@ find src -name '*.rs' | xargs wc -l | awk '$1 > 400 {print; found=1} END {exit f
 - [ ] New logic lives in `domain/` if it's business rules, `infra/` if it touches the outside world, `api/` if it's an entrypoint
 - [ ] No copy-pasted block that exists elsewhere — check before writing, not after
 - [ ] Every new `pub` item has a doc comment
-- [ ] No dead code left "just in case"
+- [ ] No dead code left "just in case" for kbuild
