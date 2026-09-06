@@ -1,6 +1,6 @@
 [package]
 name = "kotonoha"
-version = "0.0.60"
+version = "0.0.61"
 edition = "2021"
 description = "言の葉 — Blazing-fast CLI Japanese $i+1$ sentence miner & card generator"
 authors = ["Praveensenpai"]
@@ -46,6 +46,13 @@ debug = 1
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
 
 [lints.rust]
 unused = "deny"
