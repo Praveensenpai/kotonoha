@@ -19,10 +19,16 @@ jobs:
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "kotonoha-release"
+          save-if: true
+
       - name: Install Build Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev clang mold
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config libssl-dev libsqlite3-dev clang mold
 
       - name: Build Release Binary
         run: cargo build --release
