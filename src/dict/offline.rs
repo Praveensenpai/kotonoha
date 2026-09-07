@@ -2,6 +2,37 @@ use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Read;
 
+fn locate_or_migrate_dict_dir() -> std::path::PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let data_dir = dirs::data_dir()
+        .map(|p| p.join("kotonoha"))
+        .unwrap_or_else(|| home.join(".local/share/kotonoha"));
+    let dict_dir = data_dir.join("dicts");
+
+    let legacy_config_dir = dirs::config_dir()
+        .map(|p| p.join("kotonoha"))
+        .unwrap_or_else(|| home.join(".config/kotonoha"));
+    let legacy_dict_dir = legacy_config_dir.join("dicts");
+
+    if legacy_dict_dir.exists() && !dict_dir.exists() {
+        let _ = std::fs::create_dir_all(&data_dir);
+        let _ = std::fs::rename(&legacy_dict_dir, &dict_dir);
+    } else if legacy_dict_dir.exists() && dict_dir.exists() {
+        for name in ["JMdict_english.zip", "kanjium_pitch_accents.zip"] {
+            let old_file = legacy_dict_dir.join(name);
+            let new_file = dict_dir.join(name);
+            if old_file.exists() && !new_file.exists() {
+                let _ = std::fs::rename(&old_file, &new_file);
+            } else if old_file.exists() {
+                let _ = std::fs::remove_file(&old_file);
+            }
+        }
+        let _ = std::fs::remove_dir(&legacy_dict_dir);
+    }
+
+    dict_dir
+}
+
 pub async fn ensure_offline_dictionaries_ready(
     client: &reqwest::Client,
     db: &mut crate::db::Database,
@@ -10,9 +41,7 @@ pub async fn ensure_offline_dictionaries_ready(
         return Ok(());
     }
 
-    let dict_dir = dirs::config_dir()
-        .map(|p| p.join("kotonoha").join("dicts"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".config/kotonoha/dicts"));
+    let dict_dir = locate_or_migrate_dict_dir();
     std::fs::create_dir_all(&dict_dir)?;
 
     let jmdict_path = dict_dir.join("JMdict_english.zip");

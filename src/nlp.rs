@@ -44,50 +44,83 @@ pub struct JapaneseTokenizer {
     dict: JapaneseDictionary,
 }
 
+fn locate_or_migrate_system_dic(
+    sudachi_dir: &std::path::Path,
+    legacy_config_dir: &std::path::Path,
+) -> PathBuf {
+    let dict_path = sudachi_dir.join("system.dic");
+    if dict_path.exists() {
+        return dict_path;
+    }
+
+    let legacy_dic = legacy_config_dir.join("system.dic");
+    if legacy_dic.exists() && std::fs::rename(&legacy_dic, &dict_path).is_ok() {
+        return dict_path;
+    }
+
+    let possible_roots = [
+        dirs::cache_dir().map(|p| p.join("uv")),
+        dirs::home_dir().map(|p| p.join(".cache/uv")),
+    ];
+    for root in possible_roots.into_iter().flatten() {
+        if !root.exists() {
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(root)
+            .max_depth(6)
+            .into_iter()
+            .flatten()
+        {
+            if entry.file_name() == "system.dic" && entry.path().is_file() {
+                let _ = std::fs::copy(entry.path(), &dict_path);
+                return dict_path;
+            }
+        }
+    }
+    dict_path
+}
+
+fn clean_legacy_config_defs(legacy_config_dir: &std::path::Path) {
+    for def in ["char.def", "rewrite.def", "unk.def", "system.dic"] {
+        let p = legacy_config_dir.join(def);
+        if p.exists() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
 impl JapaneseTokenizer {
     pub fn new() -> Result<Self> {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let kotonoha_dir = home.join(".config/kotonoha");
-        std::fs::create_dir_all(&kotonoha_dir)?;
+        let data_dir = dirs::data_dir()
+            .map(|p| p.join("kotonoha"))
+            .unwrap_or_else(|| home.join(".local/share/kotonoha"));
+        let sudachi_dir = data_dir.join("sudachi");
+        std::fs::create_dir_all(&sudachi_dir)?;
 
-        let dict_path = kotonoha_dir.join("system.dic");
-        if !dict_path.exists() {
-            let possible_roots = [
-                dirs::cache_dir().map(|p| p.join("uv")),
-                dirs::home_dir().map(|p| p.join(".cache/uv")),
-            ];
-            'find_dic: for root in possible_roots.into_iter().flatten() {
-                if root.exists() {
-                    for entry in walkdir::WalkDir::new(root)
-                        .max_depth(6)
-                        .into_iter()
-                        .flatten()
-                    {
-                        if entry.file_name() == "system.dic" && entry.path().is_file() {
-                            let _ = std::fs::copy(entry.path(), &dict_path);
-                            break 'find_dic;
-                        }
-                    }
-                }
-            }
-        }
+        let legacy_config_dir = dirs::config_dir()
+            .map(|p| p.join("kotonoha"))
+            .unwrap_or_else(|| home.join(".config/kotonoha"));
 
-        let char_dst = kotonoha_dir.join("char.def");
+        let dict_path = locate_or_migrate_system_dic(&sudachi_dir, &legacy_config_dir);
+        clean_legacy_config_defs(&legacy_config_dir);
+
+        let char_dst = sudachi_dir.join("char.def");
         if !char_dst.exists() {
             let _ = std::fs::write(&char_dst, CHAR_DEF);
         }
 
-        let rewrite_dst = kotonoha_dir.join("rewrite.def");
+        let rewrite_dst = sudachi_dir.join("rewrite.def");
         if !rewrite_dst.exists() {
             let _ = std::fs::write(&rewrite_dst, REWRITE_DEF);
         }
 
-        let unk_dst = kotonoha_dir.join("unk.def");
+        let unk_dst = sudachi_dir.join("unk.def");
         if !unk_dst.exists() {
             let _ = std::fs::write(&unk_dst, UNK_DEF);
         }
 
-        let config = Config::minimal_at(&kotonoha_dir).with_system_dic(&dict_path);
+        let config = Config::minimal_at(&sudachi_dir).with_system_dic(&dict_path);
         let dict = JapaneseDictionary::from_cfg(&config)?;
         Ok(Self { dict })
     }

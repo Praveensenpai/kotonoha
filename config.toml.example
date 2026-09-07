@@ -11,7 +11,7 @@ max_cached_cards = 50
 media_dir = "~/.local/share/kotonoha/media"
 
 # SQLite database file path
-db_path = "~/.config/kotonoha/kotonoha.db"
+db_path = "~/.local/share/kotonoha/kotonoha.db"
 
 # Bundle (.koto) storage strategy: "colocated" (same folder), "central" (~/.local/share/kotonoha/bundles), or "subfolder" (.koto/)
 bundle_storage = "colocated"

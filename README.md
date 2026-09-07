@@ -30,7 +30,7 @@
 - **🎧 Non-Blocking Preview Audio**: Background audio playback via `mpv` daemon—zero terminal freeze or input locking.
 - **🔎 Subtitle Inspector Playback**: In `kotonoha --inspect`, press `Space` to hear the selected subtitle line without leaving the inspector.
 - **🎬 Single-Pass Media Extraction**: Extracts precise audio snippets (`.mp3`) and screenshot thumbnails (`.jpg`) via `ffmpeg`.
-- **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.config/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
+- **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.local/share/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
 
 ---
 

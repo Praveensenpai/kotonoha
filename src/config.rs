@@ -149,9 +149,22 @@ pub struct AppConfig {
     pub dict: DictionarySettings,
 }
 
-fn default_bundles_dir() -> PathBuf {
+pub fn default_data_dir() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".local/share/kotonoha/bundles")
+    dirs::data_dir()
+        .map(|p| p.join("kotonoha"))
+        .unwrap_or_else(|| home.join(".local/share/kotonoha"))
+}
+
+pub fn default_config_dir() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    dirs::config_dir()
+        .map(|p| p.join("kotonoha"))
+        .unwrap_or_else(|| home.join(".config/kotonoha"))
+}
+
+fn default_bundles_dir() -> PathBuf {
+    default_data_dir().join("bundles")
 }
 
 fn default_card_limit() -> usize {
@@ -177,20 +190,42 @@ fn expand_home_path(path: PathBuf, home: &std::path::Path) -> PathBuf {
     }
 }
 
+fn migrate_legacy_db(config_dir: &std::path::Path, data_dir: &std::path::Path) {
+    let legacy_db = config_dir.join("kotonoha.db");
+    let new_db = data_dir.join("kotonoha.db");
+
+    if legacy_db.exists() && !new_db.exists() {
+        let _ = std::fs::create_dir_all(data_dir);
+        if std::fs::rename(&legacy_db, &new_db).is_ok() {
+            println!(
+                " 📦 Auto-migrated database from {} to {}",
+                legacy_db.display(),
+                new_db.display()
+            );
+            let legacy_wal = config_dir.join("kotonoha.db-wal");
+            let new_wal = data_dir.join("kotonoha.db-wal");
+            if legacy_wal.exists() {
+                let _ = std::fs::rename(legacy_wal, new_wal);
+            }
+            let legacy_shm = config_dir.join("kotonoha.db-shm");
+            let new_shm = data_dir.join("kotonoha.db-shm");
+            if legacy_shm.exists() {
+                let _ = std::fs::rename(legacy_shm, new_shm);
+            }
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let config_dir = dirs::config_dir()
-            .map(|p| p.join("kotonoha"))
-            .unwrap_or_else(|| home.join(".config/kotonoha"));
-
-        let media_dir = home.join(".local/share/kotonoha/media");
+        let data_dir = default_data_dir();
+        let media_dir = data_dir.join("media");
 
         Self {
             default_card_limit: default_card_limit(),
             max_cached_cards: default_max_cached_cards(),
             media_dir,
-            db_path: config_dir.join("kotonoha.db"),
+            db_path: data_dir.join("kotonoha.db"),
             bundle_storage: default_bundle_storage(),
             bundles_dir: default_bundles_dir(),
             audio_padding_secs: default_audio_padding_secs(),
@@ -204,12 +239,16 @@ impl Default for AppConfig {
 impl AppConfig {
     pub fn load() -> Result<Self> {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let config_dir = dirs::config_dir()
-            .map(|p| p.join("kotonoha"))
-            .unwrap_or_else(|| home.join(".config/kotonoha"));
+        let config_dir = default_config_dir();
+        let data_dir = default_data_dir();
 
         std::fs::create_dir_all(&config_dir)?;
+        std::fs::create_dir_all(&data_dir)?;
+        migrate_legacy_db(&config_dir, &data_dir);
+
         let config_file = config_dir.join("config.toml");
+        let legacy_db = config_dir.join("kotonoha.db");
+        let new_db = data_dir.join("kotonoha.db");
 
         if config_file.exists() {
             let content = std::fs::read_to_string(&config_file)?;
@@ -217,6 +256,10 @@ impl AppConfig {
             cfg.media_dir = expand_home_path(cfg.media_dir, &home);
             cfg.db_path = expand_home_path(cfg.db_path, &home);
             cfg.bundles_dir = expand_home_path(cfg.bundles_dir, &home);
+            if cfg.db_path == legacy_db && new_db.exists() {
+                cfg.db_path = new_db;
+                let _ = cfg.save();
+            }
             if cfg.ai.gemini_api_key.is_none() {
                 cfg.ai.gemini_api_key = std::env::var("GEMINI_API_KEY").ok();
             }
@@ -229,11 +272,7 @@ impl AppConfig {
     }
 
     pub fn save(&self) -> Result<()> {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let config_dir = dirs::config_dir()
-            .map(|p| p.join("kotonoha"))
-            .unwrap_or_else(|| home.join(".config/kotonoha"));
-
+        let config_dir = default_config_dir();
         std::fs::create_dir_all(&config_dir)?;
         let config_file = config_dir.join("config.toml");
 
