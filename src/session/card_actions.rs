@@ -37,6 +37,15 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
         ctx.cand.target_word, ctx.cand.sentence.index
     ));
 
+    if !audio_path.exists() && !ctx.video_path.as_os_str().is_empty() {
+        let _ = MediaExtractor::extract_preview_audio(
+            ctx.video_path,
+            ctx.cand.sentence.start_ms,
+            ctx.cand.sentence.end_ms,
+            &audio_path,
+        );
+    }
+
     let mut audio_child = if audio_path.exists() {
         MediaExtractor::play_preview_audio(&audio_path)
     } else {

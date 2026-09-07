@@ -1,6 +1,5 @@
 use anyhow::Result;
 use console::style;
-use std::path::Path;
 use std::sync::Arc;
 
 use super::ai_batch::{collect_ai_results, prepare_ai_batch};
@@ -18,7 +17,6 @@ use crate::ui::TerminalUi;
 
 pub async fn run_mining_loop(
     all_candidates: Vec<CandidateSentence>,
-    video_path: &Path,
     cfg: &AppConfig,
     db: &mut Database,
     http_client: reqwest::Client,
@@ -60,7 +58,7 @@ pub async fn run_mining_loop(
         let ai_prep = prepare_ai_batch(&candidates_to_process, cfg, db, &http_client).await;
 
         if !candidates_to_process.is_empty() {
-            preload_batch_media(&candidates_to_process, video_path, cfg, db, &http_client).await;
+            preload_batch_media(&candidates_to_process, cfg, db, &http_client).await;
         }
 
         let ai_results_map =
@@ -98,7 +96,7 @@ pub async fn run_mining_loop(
                 dict_info: &mut dict_info,
                 ai_analysis,
                 is_ai_selected,
-                video_path,
+                video_path: &cand.video_path,
                 cfg,
                 db,
                 http_client: &http_client,

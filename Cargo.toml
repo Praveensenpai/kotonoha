@@ -1,6 +1,6 @@
 [package]
 name = "kotonoha"
-version = "0.0.64"
+version = "0.0.65"
 edition = "2021"
 description = "言の葉 — Blazing-fast CLI Japanese $i+1$ sentence miner & card generator"
 authors = ["Praveensenpai"]
@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1.38", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 inquire = "0.7"

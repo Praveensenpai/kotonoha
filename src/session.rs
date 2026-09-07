@@ -6,7 +6,6 @@ pub mod mining;
 use anyhow::Result;
 use console::style;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 use crate::config::AppConfig;
 use crate::db::Database;
@@ -226,6 +225,7 @@ pub fn collect_review_known_candidates(
                 if let Some(target_word) = target {
                     seen_words.insert(target_word.clone());
                     let target_reading = reading.unwrap_or_else(|| target_word.clone());
+                    let video_path = sub.video_path.clone().unwrap_or_default();
                     known_candidates.push(CandidateSentence {
                         sentence: sub.clone(),
                         target_word,
@@ -235,6 +235,7 @@ pub fn collect_review_known_candidates(
                         ignored_context_words: ignored_context,
                         episode_freq: 1,
                         density_tier: 1,
+                        video_path,
                     });
                 }
             }
@@ -245,7 +246,6 @@ pub fn collect_review_known_candidates(
 
 pub async fn run_session(
     sentences: Vec<SubtitleSentence>,
-    video_path: &Path,
     cfg: &AppConfig,
     mut db: Database,
     http_client: reqwest::Client,
@@ -306,5 +306,5 @@ pub async fn run_session(
         return Ok(());
     }
 
-    mining::run_mining_loop(all_candidates, video_path, cfg, &mut db, http_client).await
+    mining::run_mining_loop(all_candidates, cfg, &mut db, http_client).await
 }

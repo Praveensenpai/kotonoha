@@ -27,6 +27,7 @@ pub struct SubtitleSentence {
     pub start_ms: u64,
     pub end_ms: u64,
     pub text: String,
+    pub video_path: Option<std::path::PathBuf>,
 }
 
 pub fn parse_subtitle(path: &Path) -> Result<Vec<SubtitleSentence>> {
@@ -92,6 +93,7 @@ fn parse_srt(content: &str) -> Result<Vec<SubtitleSentence>> {
                 start_ms,
                 end_ms,
                 text,
+                video_path: None,
             });
         }
     }
@@ -121,6 +123,7 @@ fn parse_ass(content: &str) -> Result<Vec<SubtitleSentence>> {
                     start_ms,
                     end_ms,
                     text,
+                    video_path: None,
                 });
                 idx += 1;
             }

@@ -21,22 +21,8 @@ use srt::parse_subtitle;
 use std::path::PathBuf;
 use ui::TerminalUi;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    if let Some(arg) = std::env::args().nth(1) {
-        if commands::handle_cli_flag(&arg).await? {
-            return Ok(());
-        }
-    }
-
-    TerminalUi::print_banner();
-
-    let cfg = AppConfig::load()?;
-    let mut db = Database::open(&cfg.db_path).await?;
-    let http_client = reqwest::Client::new();
-
-    // AnkiConnect status
-    if anki::anki_connected(&cfg.anki.connect_url).await {
+fn print_service_status(cfg: &AppConfig, anki_connected: bool, unsynced_count: usize) {
+    if anki_connected {
         println!(
             " {}  Anki connected (Deck: {})",
             style("✔").green().bold(),
@@ -50,7 +36,6 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Gemini AI status
     if cfg.ai.enable_ai {
         if cfg.ai.has_valid_api_key() {
             println!(
@@ -68,56 +53,121 @@ async fn main() -> Result<()> {
         }
     }
 
-    let unsynced = db.get_unsynced_mined_cards().await.unwrap_or_default();
-    if !unsynced.is_empty() {
+    if unsynced_count > 0 {
         println!(
             " {}  {} unsynced card{} in database. Please run {} so old media can be cleaned up.",
             style("⚠").yellow().bold(),
-            style(unsynced.len()).yellow().bold(),
-            if unsynced.len() == 1 { "" } else { "s" },
+            style(unsynced_count).yellow().bold(),
+            if unsynced_count == 1 { "" } else { "s" },
             style("kotonoha --sync").cyan()
         );
     }
+}
 
-    if cfg.max_cached_cards > 0 {
-        let protected = db.get_unsynced_media_paths().await.unwrap_or_default();
-        if let Ok(cleaned) =
-            media::MediaExtractor::clean_old_media(&cfg.media_dir, cfg.max_cached_cards, &protected)
-        {
-            if cleaned > 0 {
-                println!(" 🧹 Auto-cleaned {} old cached media file(s).", cleaned);
+async fn clean_cache_if_needed(cfg: &AppConfig, db: &Database) {
+    if cfg.max_cached_cards == 0 {
+        return;
+    }
+    let protected = db.get_unsynced_media_paths().await.unwrap_or_default();
+    if let Ok(cleaned) =
+        media::MediaExtractor::clean_old_media(&cfg.media_dir, cfg.max_cached_cards, &protected)
+    {
+        if cleaned > 0 {
+            println!(" 🧹 Auto-cleaned {} old cached media file(s).", cleaned);
+        }
+    }
+}
+
+fn load_and_pair_inputs(input_paths: &[PathBuf]) -> Result<Vec<srt::SubtitleSentence>> {
+    let mut all_sentences = Vec::new();
+    let mut paired_count = 0;
+
+    for input_path in input_paths {
+        let (sub_path, vid_path) = match commands::find_paired_media(input_path) {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!(
+                    " {} Skipping {}: {}",
+                    style("⚠").yellow(),
+                    input_path.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        match parse_subtitle(&sub_path) {
+            Ok(mut sentences) => {
+                for s in &mut sentences {
+                    s.video_path = Some(vid_path.clone());
+                }
+                println!(
+                    " ✔ [{}] Parsed {} lines (paired with {})",
+                    style(sub_path.file_name().and_then(|n| n.to_str()).unwrap_or("")).cyan(),
+                    sentences.len(),
+                    style(vid_path.file_name().and_then(|n| n.to_str()).unwrap_or("")).green()
+                );
+                all_sentences.extend(sentences);
+                paired_count += 1;
+            }
+            Err(e) => {
+                eprintln!(
+                    " {} Failed to parse subtitle {}: {}",
+                    style("⚠").yellow(),
+                    sub_path.display(),
+                    e
+                );
             }
         }
     }
+
+    if all_sentences.is_empty() {
+        anyhow::bail!("No valid subtitle lines found from selected file(s).");
+    }
+
+    if paired_count > 1 {
+        println!(
+            "\n ℹ Total: {} files, {} subtitle lines combined.\n",
+            style(paired_count).cyan().bold(),
+            style(all_sentences.len()).green().bold()
+        );
+    }
+
+    Ok(all_sentences)
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    if let Some(arg) = std::env::args().nth(1) {
+        if commands::handle_cli_flag(&arg).await? {
+            return Ok(());
+        }
+    }
+
+    TerminalUi::print_banner();
+
+    let cfg = AppConfig::load()?;
+    let mut db = Database::open(&cfg.db_path).await?;
+    let http_client = reqwest::Client::new();
+
+    let anki_connected = anki::anki_connected(&cfg.anki.connect_url).await;
+    let unsynced = db.get_unsynced_mined_cards().await.unwrap_or_default();
+    print_service_status(&cfg, anki_connected, unsynced.len());
+
+    clean_cache_if_needed(&cfg, &db).await;
     println!();
 
     let _ = DictionaryService::ensure_offline_dictionaries_ready(&http_client, &mut db).await;
 
-    let input_path = match std::env::args().nth(1) {
-        Some(arg) => PathBuf::from(arg),
-        None => TerminalUi::select_media_file()?,
-    };
-
-    let (subtitle_path, video_path) = match commands::find_paired_media(&input_path) {
-        Ok(pair) => pair,
-        Err(e) => {
-            eprintln!("\n {} {}", style("❌ Error:").red().bold(), e);
-            std::process::exit(1);
+    let input_paths = {
+        let args: Vec<PathBuf> = std::env::args().skip(1).map(PathBuf::from).collect();
+        if args.is_empty() {
+            TerminalUi::select_media_files()?
+        } else {
+            args
         }
     };
 
-    println!(
-        " ℹ Subtitle File: {}",
-        style(subtitle_path.display()).cyan()
-    );
-    println!(
-        " ℹ Video File:    {} ({})",
-        style(video_path.display()).cyan(),
-        style("✔ Video paired").green().bold()
-    );
-
-    let sentences = parse_subtitle(&subtitle_path)?;
-    println!(" ✔ Parsed {} subtitle lines", sentences.len());
-
-    session::run_session(sentences, &video_path, &cfg, db, http_client).await
+    let sentences = load_and_pair_inputs(&input_paths)?;
+    session::run_session(sentences, &cfg, db, http_client).await
 }

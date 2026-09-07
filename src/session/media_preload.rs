@@ -1,6 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::config::AppConfig;
@@ -13,7 +12,6 @@ const RAW_SENSE_LIMIT: usize = 12;
 
 pub async fn preload_batch_media(
     candidates_to_process: &[CandidateSentence],
-    video_path: &Path,
     cfg: &AppConfig,
     db: &mut Database,
     http_client: &Arc<reqwest::Client>,
@@ -108,9 +106,9 @@ pub async fn preload_batch_media(
         let audio_path = cfg
             .media_dir
             .join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
-        if !audio_path.exists() {
+        if !audio_path.exists() && !cand.video_path.as_os_str().is_empty() {
             let _ = MediaExtractor::extract_preview_audio(
-                video_path,
+                &cand.video_path,
                 cand.sentence.start_ms,
                 cand.sentence.end_ms,
                 &audio_path,
@@ -133,11 +131,11 @@ pub async fn preload_batch_media(
         let image_path = cfg
             .media_dir
             .join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
-        if !image_path.exists() {
+        if !image_path.exists() && !cand.video_path.as_os_str().is_empty() {
             let mid_ms = cand.sentence.start_ms
                 + (cand.sentence.end_ms.saturating_sub(cand.sentence.start_ms)) / 2;
             let _ = MediaExtractor::extract_screenshot_with_index(
-                video_path,
+                &cand.video_path,
                 mid_ms,
                 Some(cand.sentence.index),
                 &image_path,

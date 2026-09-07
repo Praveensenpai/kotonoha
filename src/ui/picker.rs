@@ -154,6 +154,38 @@ pub fn select_media_file() -> Result<PathBuf> {
     Ok(selected.path)
 }
 
+pub fn select_media_files() -> Result<Vec<PathBuf>> {
+    let files = discover_media_files(
+        &["srt", "ass", "vtt", "mkv", "mp4", "webm", "koto"],
+        "Scanning for media and subtitle files...",
+    )?;
+
+    if files.is_empty() {
+        let input = Text::new("No media files auto-discovered. Enter file path:").prompt()?;
+        return Ok(vec![PathBuf::from(input)]);
+    }
+
+    let items: Vec<MediaEntry> = files
+        .into_iter()
+        .map(|p| {
+            let is_bundle = crate::bundle::is_bundle_file(&p);
+            MediaEntry { path: p, is_bundle }
+        })
+        .collect();
+    let selected = MultiSelect::new(
+        "Select Subtitle, Video, or Bundle File(s) (Space to select, Enter to confirm):",
+        items,
+    )
+    .with_page_size(15)
+    .prompt()?;
+
+    if selected.is_empty() {
+        anyhow::bail!("No files selected.");
+    }
+
+    Ok(selected.into_iter().map(|e| e.path).collect())
+}
+
 pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
     let files = discover_media_files(
         &["srt", "ass", "vtt", "mkv", "mp4", "webm", "avi"],

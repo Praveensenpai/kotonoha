@@ -35,6 +35,10 @@ impl TerminalUi {
         picker::select_media_file()
     }
 
+    pub fn select_media_files() -> Result<Vec<PathBuf>> {
+        picker::select_media_files()
+    }
+
     pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
         picker::select_bundle_source_files()
     }
