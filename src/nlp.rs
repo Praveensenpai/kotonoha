@@ -1,3 +1,4 @@
+pub mod dictionary;
 pub mod mergers;
 
 use anyhow::Result;
@@ -47,37 +48,19 @@ pub struct JapaneseTokenizer {
 fn locate_or_migrate_system_dic(
     sudachi_dir: &std::path::Path,
     legacy_config_dir: &std::path::Path,
-) -> PathBuf {
+) -> Result<PathBuf> {
     let dict_path = sudachi_dir.join("system.dic");
     if dict_path.exists() {
-        return dict_path;
+        return Ok(dict_path);
     }
 
     let legacy_dic = legacy_config_dir.join("system.dic");
     if legacy_dic.exists() && std::fs::rename(&legacy_dic, &dict_path).is_ok() {
-        return dict_path;
+        return Ok(dict_path);
     }
 
-    let possible_roots = [
-        dirs::cache_dir().map(|p| p.join("uv")),
-        dirs::home_dir().map(|p| p.join(".cache/uv")),
-    ];
-    for root in possible_roots.into_iter().flatten() {
-        if !root.exists() {
-            continue;
-        }
-        for entry in walkdir::WalkDir::new(root)
-            .max_depth(6)
-            .into_iter()
-            .flatten()
-        {
-            if entry.file_name() == "system.dic" && entry.path().is_file() {
-                let _ = std::fs::copy(entry.path(), &dict_path);
-                return dict_path;
-            }
-        }
-    }
-    dict_path
+    dictionary::ensure_system_dict(&dict_path)?;
+    Ok(dict_path)
 }
 
 fn clean_legacy_config_defs(legacy_config_dir: &std::path::Path) {
@@ -102,7 +85,7 @@ impl JapaneseTokenizer {
             .map(|p| p.join("kotonoha"))
             .unwrap_or_else(|| home.join(".config/kotonoha"));
 
-        let dict_path = locate_or_migrate_system_dic(&sudachi_dir, &legacy_config_dir);
+        let dict_path = locate_or_migrate_system_dic(&sudachi_dir, &legacy_config_dir)?;
         clean_legacy_config_defs(&legacy_config_dir);
 
         let char_dst = sudachi_dir.join("char.def");
