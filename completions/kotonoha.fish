@@ -5,6 +5,7 @@ complete -c kotonoha -s C -l clean-bundled -l clean-sources -l clean -d "Remove 
 complete -c kotonoha -s c -l config -d "Interactive TUI configuration manager"
 complete -c kotonoha -s S -l show-config -d "Display active configuration settings"
 complete -c kotonoha -s i -l inspect -d "Inspect sentences in media/koto file" -r -F
+complete -c kotonoha -s e -l explore -d "Explore sentences sorted by difficulty (i+0 → i+n)" -r -F
 complete -c kotonoha -s k -l manage-known -d "View & remove words from known database"
 complete -c kotonoha -s m -l manage-mined -d "View & remove words from mined list"
 complete -c kotonoha -s I -l manage-ignored -d "View & remove words from ignore list"

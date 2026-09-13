@@ -2,6 +2,7 @@ pub mod bootstrap;
 pub mod bundles;
 pub mod card;
 pub mod config_menu;
+pub mod explorer;
 pub mod helpers;
 pub mod inspector;
 pub mod picker;
@@ -20,6 +21,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionMode {
     MineI1Candidates,
+    Explore,
     ReviewKnownLines,
     Exit,
 }
@@ -128,6 +130,10 @@ impl TerminalUi {
 
     pub fn show_config(cfg: &crate::config::AppConfig) {
         config_menu::show_config(cfg);
+    }
+
+    pub async fn run_explorer(p: explorer::ExplorerParams<'_>) -> Result<()> {
+        explorer::run_explorer(p).await
     }
 
     pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {

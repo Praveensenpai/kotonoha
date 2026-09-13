@@ -6,6 +6,7 @@ use super::SessionMode;
 pub fn select_session_mode(i1_count: usize, known_lines_count: usize) -> Result<SessionMode> {
     let options = vec![
         format!("🎯  Mine i+1 Candidate Cards ({} candidates)", i1_count),
+        "🧭  Explore Subtitles by Difficulty (i+0 → i+n Browser)".to_string(),
         format!(
             "🔍  Review & Verify Known Sentences ({} lines)",
             known_lines_count
@@ -16,6 +17,8 @@ pub fn select_session_mode(i1_count: usize, known_lines_count: usize) -> Result<
     let choice = Select::new("Select session mode:", options).prompt()?;
     if choice.contains("Mine i+1 Candidate") {
         Ok(SessionMode::MineI1Candidates)
+    } else if choice.contains("Explore Subtitles") {
+        Ok(SessionMode::Explore)
     } else if choice.contains("Review & Verify Known") {
         Ok(SessionMode::ReviewKnownLines)
     } else {

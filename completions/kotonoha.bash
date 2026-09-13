@@ -17,6 +17,7 @@ _kotonoha_completions() {
         --config
         --show-config
         --inspect
+        --explore
         --manage-known
         --manage-mined
         --manage-ignored
@@ -27,11 +28,11 @@ _kotonoha_completions() {
         --completions
     "
 
-    local short_opts="-b -B -C -c -S -i -k -m -I -s -f -v -h"
+    local short_opts="-b -B -C -c -S -i -e -k -m -I -s -f -v -h"
     local subcommands="bundle bundles"
 
     case "${prev}" in
-        --bundle|-b|bundle|--inspect|-i)
+        --bundle|-b|bundle|--inspect|-i|--explore|-e)
             if [[ "${cur}" == -* ]]; then
                 COMPREPLY=($(compgen -W "--force -f --help -h" -- "${cur}"))
                 return 0

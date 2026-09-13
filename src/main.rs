@@ -159,15 +159,40 @@ async fn main() -> Result<()> {
 
     let _ = DictionaryService::ensure_offline_dictionaries_ready(&http_client, &mut db).await;
 
-    let input_paths = {
-        let args: Vec<PathBuf> = std::env::args().skip(1).map(PathBuf::from).collect();
-        if args.is_empty() {
-            TerminalUi::select_media_files()?
-        } else {
-            args
-        }
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let is_explore = raw_args.iter().any(|a| a == "--explore" || a == "-e");
+    let input_paths: Vec<PathBuf> = raw_args
+        .into_iter()
+        .filter(|a| a != "--explore" && a != "-e")
+        .map(PathBuf::from)
+        .collect();
+
+    let input_paths = if input_paths.is_empty() {
+        TerminalUi::select_media_files()?
+    } else {
+        input_paths
     };
 
     let sentences = load_and_pair_inputs(&input_paths)?;
+
+    if is_explore {
+        let tokenizer = nlp::JapaneseTokenizer::new()?;
+        let mut known_words = db.get_known_words().await?;
+        let mut ignored_words = db.get_ignored_words().await?;
+        let video_path = sentences.iter().find_map(|s| s.video_path.as_deref());
+        TerminalUi::run_explorer(ui::explorer::ExplorerParams {
+            sentences: &sentences,
+            tokenizer: &tokenizer,
+            known_words: &mut known_words,
+            ignored_words: &mut ignored_words,
+            video_path,
+            cfg: &cfg,
+            db: &db,
+            http_client: &http_client,
+        })
+        .await?;
+        return Ok(());
+    }
+
     session::run_session(sentences, &cfg, db, http_client).await
 }

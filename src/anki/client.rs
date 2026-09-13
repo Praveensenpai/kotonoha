@@ -82,12 +82,22 @@ pub async fn find_existing_anki_note(
     url: &str,
     model_name: &str,
     sentence: &str,
+    target_word: Option<&str>,
 ) -> Result<Option<i64>> {
+    let query = if let Some(target) = target_word {
+        format!(
+            "SentKanji:\"{}\" VocabKanji:\"{}\"",
+            anki_search_text(sentence),
+            anki_search_text(target)
+        )
+    } else {
+        format!("SentKanji:\"{}\"", anki_search_text(sentence))
+    };
     let note_ids = anki_request(
         client,
         url,
         "findNotes",
-        serde_json::json!({"query": format!("SentKanji:\"{}\"", anki_search_text(sentence))}),
+        serde_json::json!({"query": query}),
     )
     .await?;
     let Some(note_ids) = note_ids.as_array() else {
@@ -119,12 +129,22 @@ pub async fn find_existing_anki_note(
         if note.get("modelName").and_then(serde_json::Value::as_str) != Some(model_name) {
             return None;
         }
-        let value = note
+        let sent_matches = note
             .get("fields")
             .and_then(|fields| fields.get("SentKanji"))
             .and_then(|field| field.get("value"))
-            .and_then(serde_json::Value::as_str);
-        (value == Some(sentence))
+            .and_then(serde_json::Value::as_str)
+            == Some(sentence);
+        let vocab_matches = if let Some(target) = target_word {
+            note.get("fields")
+                .and_then(|fields| fields.get("VocabKanji"))
+                .and_then(|field| field.get("value"))
+                .and_then(serde_json::Value::as_str)
+                == Some(target)
+        } else {
+            true
+        };
+        (sent_matches && vocab_matches)
             .then(|| note.get("noteId").and_then(serde_json::Value::as_i64))
             .flatten()
     }))
@@ -210,6 +230,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                 &cfg.anki.connect_url,
                 &cfg.anki.model_name,
                 &card.sentence,
+                Some(&card.target_word),
             )
             .await?;
 
@@ -281,6 +302,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                             &cfg.anki.connect_url,
                             &cfg.anki.model_name,
                             &card.sentence,
+                            Some(&card.target_word),
                         )
                         .await?
                         .ok_or(error)?

@@ -34,6 +34,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --config         | -c     Interactive TUI configuration manager");
         println!("  kotonoha --show-config    | -S     Display active configuration settings");
         println!("  kotonoha --inspect [FILE] | -i     Inspect sentences (Space plays selected audio; ★=i+1)");
+        println!("  kotonoha --explore [FILE] | -e     Explore sentences sorted by difficulty (i+0 → i+n)");
         println!(
             "  kotonoha --manage-known   | -k     View & remove words from the known database"
         );
@@ -209,6 +210,58 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
             ignored_words: &ignored_words,
             video_path: video_path.as_deref(),
         })?;
+        return Ok(true);
+    }
+    if arg == "--explore" || arg == "-e" || arg == "explore" {
+        let cfg = AppConfig::load()?;
+        let mut db = Database::open(&cfg.db_path).await?;
+        let http_client = reqwest::Client::new();
+        let _ = crate::dict::DictionaryService::ensure_offline_dictionaries_ready(
+            &http_client,
+            &mut db,
+        )
+        .await;
+
+        let input_path = match std::env::args().nth(2) {
+            Some(p) if !p.starts_with('-') => PathBuf::from(p),
+            _ => TerminalUi::select_media_file()?,
+        };
+        let (subtitle_path, video_path) = match find_paired_media(&input_path) {
+            Ok((sub, vid)) => (sub, Some(vid)),
+            Err(_) => {
+                let ext = input_path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                let sub = if ext == "srt" || ext == "ass" {
+                    input_path
+                } else {
+                    let srt = input_path.with_extension("ja.srt");
+                    if srt.exists() {
+                        srt
+                    } else {
+                        input_path
+                    }
+                };
+                (sub, None)
+            }
+        };
+        let sentences = parse_subtitle(&subtitle_path)?;
+        let tokenizer = JapaneseTokenizer::new()?;
+        let mut known_words = db.get_known_words().await?;
+        let mut ignored_words = db.get_ignored_words().await?;
+        TerminalUi::run_explorer(crate::ui::explorer::ExplorerParams {
+            sentences: &sentences,
+            tokenizer: &tokenizer,
+            known_words: &mut known_words,
+            ignored_words: &mut ignored_words,
+            video_path: video_path.as_deref(),
+            cfg: &cfg,
+            db: &db,
+            http_client: &http_client,
+        })
+        .await?;
         return Ok(true);
     }
     if arg == "--manage-ignored" || arg == "-I" || arg == "--ignored" {
