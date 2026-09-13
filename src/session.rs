@@ -183,14 +183,11 @@ pub fn collect_review_known_candidates(
             for t in &tokens {
                 let dict_form = &t.dictionary_form;
                 if ignored_words.contains(dict_form) {
-                    let entry = format!("{} (Ignored)", dict_form);
-                    if !ignored_context.contains(&entry) {
-                        ignored_context.push(entry);
-                    }
-                    continue;
-                }
-                if t.is_proper_noun {
-                    let entry = format!("{} (Name)", dict_form);
+                    let entry = if t.is_proper_noun {
+                        format!("{} (Name)", dict_form)
+                    } else {
+                        format!("{} (Ignored)", dict_form)
+                    };
                     if !ignored_context.contains(&entry) {
                         ignored_context.push(entry);
                     }
@@ -287,6 +284,24 @@ pub async fn run_session(
     let all_candidates = match session_mode {
         SessionMode::Exit => {
             println!(" 🚪 Exiting kotonoha.");
+            return Ok(());
+        }
+        SessionMode::Explore => {
+            let mode_tokenizer = JapaneseTokenizer::new()?;
+            let mut known_set = known_words.clone();
+            let mut ignored_set = ignored_words.clone();
+            let video_path = sentences.iter().find_map(|s| s.video_path.as_deref());
+            TerminalUi::run_explorer(crate::ui::explorer::ExplorerParams {
+                sentences: &sentences,
+                tokenizer: &mode_tokenizer,
+                known_words: &mut known_set,
+                ignored_words: &mut ignored_set,
+                video_path,
+                cfg,
+                db: &db,
+                http_client: &http_client,
+            })
+            .await?;
             return Ok(());
         }
         SessionMode::MineI1Candidates => candidates,

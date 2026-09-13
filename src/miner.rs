@@ -149,15 +149,11 @@ impl MiningEngine {
             readings.insert(dict_form.clone(), t.reading.clone());
 
             if ignored_words.contains(dict_form) {
-                let entry = format!("{} (Ignored)", dict_form);
-                if !ignored_context.contains(&entry) {
-                    ignored_context.push(entry);
-                }
-                continue;
-            }
-
-            if t.is_proper_noun {
-                let entry = format!("{} (Name)", dict_form);
+                let entry = if t.is_proper_noun {
+                    format!("{} (Name)", dict_form)
+                } else {
+                    format!("{} (Ignored)", dict_form)
+                };
                 if !ignored_context.contains(&entry) {
                     ignored_context.push(entry);
                 }
@@ -187,5 +183,79 @@ impl MiningEngine {
         }
 
         (unknown_words, known_context, ignored_context, readings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::srt::SubtitleSentence;
+
+    #[test]
+    fn unignored_name_is_counted_as_unknown_and_mineable() {
+        let tokenizer = JapaneseTokenizer::new().unwrap();
+        let engine = MiningEngine::new(tokenizer);
+
+        let sentence = SubtitleSentence {
+            index: 1,
+            start_ms: 0,
+            end_ms: 1000,
+            text: "東京へ行く".to_string(),
+            video_path: None,
+        };
+
+        let mut known = HashSet::new();
+        known.insert("行く".to_string());
+        let ignored = HashSet::new();
+
+        let candidates = engine.find_candidates(&[sentence], &known, &ignored);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].target_word, "東京");
+    }
+
+    #[test]
+    fn ignored_name_is_skipped_and_not_counted_as_unknown() {
+        let tokenizer = JapaneseTokenizer::new().unwrap();
+        let engine = MiningEngine::new(tokenizer);
+
+        let sentence = SubtitleSentence {
+            index: 1,
+            start_ms: 0,
+            end_ms: 1000,
+            text: "東京へ行く".to_string(),
+            video_path: None,
+        };
+
+        let mut known = HashSet::new();
+        known.insert("行く".to_string());
+        let mut ignored = HashSet::new();
+        ignored.insert("東京".to_string());
+
+        let candidates = engine.find_candidates(&[sentence], &known, &ignored);
+        // All words are known or ignored -> 0 unknowns, not i+1
+        assert_eq!(candidates.len(), 0);
+    }
+
+    #[test]
+    fn katakana_loanword_is_mineable_as_i1_candidate() {
+        let tokenizer = JapaneseTokenizer::new().unwrap();
+        let engine = MiningEngine::new(tokenizer);
+
+        let sentence = SubtitleSentence {
+            index: 1,
+            start_ms: 0,
+            end_ms: 1000,
+            text: "温かいコーヒーを飲む".to_string(),
+            video_path: None,
+        };
+
+        let mut known = HashSet::new();
+        known.insert("温かい".to_string());
+        known.insert("飲む".to_string());
+        let ignored = HashSet::new();
+
+        let candidates = engine.find_candidates(&[sentence], &known, &ignored);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].target_word, "コーヒー");
     }
 }

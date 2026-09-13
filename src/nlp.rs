@@ -240,15 +240,10 @@ impl JapaneseTokenizer {
                 && has_japanese_char
                 && !is_single_kana;
 
-            let is_proper_noun_pos = pos
-                .iter()
-                .any(|p| p.contains("固有名詞") || p.contains("人名") || p.contains("地名"));
-            let is_katakana_noun = pos_category == "名詞"
-                && dictionary_form.chars().count() >= 2
-                && dictionary_form
-                    .chars()
-                    .all(|c| matches!(c, '\u{30A0}'..='\u{30FF}'));
-            let is_proper_noun = is_content_word && (is_proper_noun_pos || is_katakana_noun);
+            let is_proper_noun = is_content_word
+                && pos
+                    .iter()
+                    .any(|p| p.contains("固有名詞") || p.contains("人名") || p.contains("地名"));
 
             let reading = kata_to_hira(node.reading_form());
             let (dictionary_form, reading) =

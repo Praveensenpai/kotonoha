@@ -80,10 +80,9 @@ pub fn highlight_sentence_tokens(
                     out.push_str(&green.apply_to(surface).to_string());
                 } else if unknown_context.contains(dict) || unknown_context.contains(surface) {
                     out.push_str(&red.apply_to(surface).to_string());
-                } else if t.is_proper_noun
-                    || ignored_context
-                        .iter()
-                        .any(|ig| ig.starts_with(dict) || ig.starts_with(surface))
+                } else if ignored_context
+                    .iter()
+                    .any(|ig| ig.starts_with(dict) || ig.starts_with(surface))
                 {
                     out.push_str(&dim.apply_to(surface).to_string());
                 } else if known_context.contains(dict)

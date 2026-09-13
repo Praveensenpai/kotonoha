@@ -236,3 +236,24 @@ fn filters_standalone_audio_grunt() {
     let otsu = tokens.iter().find(|t| t.surface == "おっ").unwrap();
     assert!(!otsu.is_content_word);
 }
+
+#[test]
+fn does_not_mark_general_katakana_noun_as_proper_noun() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("温かいコーヒーを飲む").unwrap();
+    let coffee = tokens
+        .iter()
+        .find(|t| t.dictionary_form == "コーヒー")
+        .unwrap();
+    assert!(coffee.is_content_word);
+    assert!(!coffee.is_proper_noun);
+}
+
+#[test]
+fn marks_actual_person_or_place_as_proper_noun() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("東京へ行く").unwrap();
+    let tokyo = tokens.iter().find(|t| t.dictionary_form == "東京").unwrap();
+    assert!(tokyo.is_content_word);
+    assert!(tokyo.is_proper_noun);
+}
