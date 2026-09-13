@@ -287,9 +287,10 @@
   - `ui.rs`: Public facade for terminal UI interactions, exposing `TerminalUi::run_explorer` and `SessionMode::Explore`.
   - `explorer/`: Interactive Sentence Explorer & Difficulty Browser (`kotonoha --explore` or `-e`):
     - `model.rs`: Categorizes sentences by unknown count into tiers: $i+0$ (fully known), $i+1$, $i+2$, $i+3+$. Provides difficulty ($i+0 \to i+n$) and chronological timeline sorting.
-    - `state.rs`: Controller state, cache management, single-card mining, and multi-card mining ($N$ separate cards for $i+2+$ sentences).
-    - `render.rs` & `inspector_pane.rs`: Dual-pane ratatui interface. Left pane displays sentences with tier badges and highlighted unknowns (with cursor on the active unknown). Right pane displays active unknown word dictionary definitions and Gemini AI contextual analysis.
-    - `actions.rs`: Media extraction, single-word mining, multi-word batch mining for sentences with multiple unknowns, and debounced audio playback on scroll.
+    - `state.rs`: Controller state, offline caching, and multi-card selection tracking (`selected_cards: HashSet<(usize, String)>`). Handles `toggle_selection`, `toggle_all_in_current_sentence`, and `build_selected_candidates`. Zero AI network calls during browsing.
+    - `render.rs` & `inspector_pane.rs`: Dual-pane ratatui interface. Left pane displays sentences with tier badges, selection checkboxes (`[✓]`, `[~]`, `[ ]`), and highlighted unknowns. Right pane displays active unknown word JMdict definitions and review selection status.
+    - `actions.rs`: Debounced audio snippet playback on scroll.
+    - Two-stage flow: Pressing `Enter` with selected cards transitions seamlessly into standard Kotonoha Card Review (`mining::run_mining_loop`) for candidate refinement, sense switching, custom readings, and Gemini AI analysis.
   - `card.rs`: Unicode box-drawing visual card layout, displaying target word, reading, pitch badge, frequency, highlighted sentence, definitions, AI suggestions, and key shortcuts.
   - `inspector.rs`: Subtitle inspection screen with live audio playback (`Space`), $i+1$ indicator badges (★), and instant text filtering.
   - `picker.rs`: Terminal file picker using `inquire::Select` for subtitles and video files.
@@ -361,6 +362,12 @@ cargo fmt --check
 
 ## 6. Recent Iteration Changes
 
+- **2026-09-14 (v0.0.70: Sentence Explorer Cherry-Picking & Direct Review Flow)**:
+  - Overhauled Sentence Explorer into a snappy two-stage curation workflow: users browse sentences, toggle card selections (`[✓]` with `Space`/`x`, sentence with `X`, clear with `C`), and press `Enter` to directly enter the standard Kotonoha Card Review UI (`mining::run_mining_loop`).
+  - Preserved full interactive card refinement controls: sense selection (`d`), custom reading (`r`), definition editing (`e`), Gemini AI contextual analysis (`g`), audio replay (`p`), and candidate switching (`c`) in the standard review stage.
+  - Completely eliminated AI calls from Explorer browsing; word inspection uses fast, 100% offline JMdict lookups, preventing terminal buffer corruption, rate limits, and scrolling lag.
+  - Added `BuildCandidateParams` and `MiningEngine::build_candidate` in `src/miner.rs` to reconstruct full `CandidateSentence` items from selected Explorer sentences and unknown words.
+  - Added unit tests `test_build_candidate_from_explorer_selection` and `test_multi_unknown_candidate_generation` in `src/ui/explorer/tests.rs` (67/67 tests passing).
 - **2026-09-14 (v0.0.69: Terminal Sanitization & Status Bar Error Surfacing)**:
   - Eliminated raw `eprintln!` writes to stderr during Gemini API batch retries in `src/ai.rs`, preventing Ratatui alternate-screen buffer corruption and top header scroll-off during TUI sessions.
   - Added structured HTTP 429 rate limit detection in `src/ai.rs`.

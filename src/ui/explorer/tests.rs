@@ -124,3 +124,51 @@ fn test_dynamic_refresh_sentence_unknowns() {
     assert_eq!(explorer[0].unknown_count, 0);
     assert!(explorer[0].unknowns.is_empty());
 }
+
+#[test]
+fn test_build_candidate_from_explorer_selection() {
+    let tokenizer = JapaneseTokenizer::new().expect("tokenizer");
+    let known = HashSet::new();
+    let ignored = HashSet::new();
+    let s = make_sentence("林檎を食べる", 1, 1000);
+    let tokens = tokenizer.tokenize(&s.text).expect("tokenize");
+    let candidate =
+        crate::miner::MiningEngine::build_candidate(crate::miner::BuildCandidateParams {
+            sentence: &s,
+            target_word: "林檎",
+            tokens: &tokens,
+            known_words: &known,
+            ignored_words: &ignored,
+        });
+    assert_eq!(candidate.target_word, "林檎");
+    assert_eq!(candidate.target_reading, "りんご");
+    assert_eq!(candidate.sentence.text, "林檎を食べる");
+}
+
+#[test]
+fn test_multi_unknown_candidate_generation() {
+    let tokenizer = JapaneseTokenizer::new().expect("tokenizer");
+    let known = HashSet::new();
+    let ignored = HashSet::new();
+    let s = make_sentence("林檎と蜜柑を食べる", 1, 1000);
+    let tokens = tokenizer.tokenize(&s.text).expect("tokenize");
+
+    let c1 = crate::miner::MiningEngine::build_candidate(crate::miner::BuildCandidateParams {
+        sentence: &s,
+        target_word: "林檎",
+        tokens: &tokens,
+        known_words: &known,
+        ignored_words: &ignored,
+    });
+    let c2 = crate::miner::MiningEngine::build_candidate(crate::miner::BuildCandidateParams {
+        sentence: &s,
+        target_word: "蜜柑",
+        tokens: &tokens,
+        known_words: &known,
+        ignored_words: &ignored,
+    });
+
+    assert_eq!(c1.target_word, "林檎");
+    assert_eq!(c2.target_word, "蜜柑");
+    assert_eq!(c1.sentence.start_ms, c2.sentence.start_ms);
+}

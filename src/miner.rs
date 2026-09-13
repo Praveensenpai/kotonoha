@@ -184,6 +184,41 @@ impl MiningEngine {
 
         (unknown_words, known_context, ignored_context, readings)
     }
+
+    pub fn build_candidate(p: BuildCandidateParams<'_>) -> CandidateSentence {
+        let (unknown_words, known_context, ignored_context, readings) =
+            Self::classify_tokens(p.tokens, p.known_words, p.ignored_words);
+        let target_reading = readings
+            .get(p.target_word)
+            .cloned()
+            .unwrap_or_else(|| p.target_word.to_string());
+        let density_tier = match known_context.len() + 1 {
+            2 => 1,
+            3 => 2,
+            4 => 3,
+            1 => 4,
+            n => n,
+        };
+        CandidateSentence {
+            sentence: p.sentence.clone(),
+            target_word: p.target_word.to_string(),
+            target_reading,
+            known_context_words: known_context,
+            unknown_context_words: unknown_words,
+            ignored_context_words: ignored_context,
+            episode_freq: 1,
+            density_tier,
+            video_path: p.sentence.video_path.clone().unwrap_or_default(),
+        }
+    }
+}
+
+pub struct BuildCandidateParams<'a> {
+    pub sentence: &'a SubtitleSentence,
+    pub target_word: &'a str,
+    pub tokens: &'a [crate::nlp::TokenInfo],
+    pub known_words: &'a HashSet<String>,
+    pub ignored_words: &'a HashSet<String>,
 }
 
 #[cfg(test)]

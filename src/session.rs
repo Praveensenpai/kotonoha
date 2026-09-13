@@ -291,7 +291,7 @@ pub async fn run_session(
             let mut known_set = known_words.clone();
             let mut ignored_set = ignored_words.clone();
             let video_path = sentences.iter().find_map(|s| s.video_path.as_deref());
-            TerminalUi::run_explorer(crate::ui::explorer::ExplorerParams {
+            let selected = TerminalUi::run_explorer(crate::ui::explorer::ExplorerParams {
                 sentences: &sentences,
                 tokenizer: &mode_tokenizer,
                 known_words: &mut known_set,
@@ -302,7 +302,10 @@ pub async fn run_session(
                 http_client: &http_client,
             })
             .await?;
-            return Ok(());
+            if selected.is_empty() {
+                return Ok(());
+            }
+            selected
         }
         SessionMode::MineI1Candidates => candidates,
         SessionMode::ReviewKnownLines => {

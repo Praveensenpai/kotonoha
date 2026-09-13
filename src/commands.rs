@@ -251,7 +251,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let tokenizer = JapaneseTokenizer::new()?;
         let mut known_words = db.get_known_words().await?;
         let mut ignored_words = db.get_ignored_words().await?;
-        TerminalUi::run_explorer(crate::ui::explorer::ExplorerParams {
+        let selected = TerminalUi::run_explorer(crate::ui::explorer::ExplorerParams {
             sentences: &sentences,
             tokenizer: &tokenizer,
             known_words: &mut known_words,
@@ -262,6 +262,9 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
             http_client: &http_client,
         })
         .await?;
+        if !selected.is_empty() {
+            crate::session::mining::run_mining_loop(selected, &cfg, &mut db, http_client).await?;
+        }
         return Ok(true);
     }
     if arg == "--manage-ignored" || arg == "-I" || arg == "--ignored" {

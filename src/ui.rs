@@ -132,7 +132,9 @@ impl TerminalUi {
         config_menu::show_config(cfg);
     }
 
-    pub async fn run_explorer(p: explorer::ExplorerParams<'_>) -> Result<()> {
+    pub async fn run_explorer(
+        p: explorer::ExplorerParams<'_>,
+    ) -> Result<Vec<crate::miner::CandidateSentence>> {
         explorer::run_explorer(p).await
     }
 

@@ -26,6 +26,7 @@
 
 - **⚡ Sub-Millisecond Morphological Analysis**: Powered by the official [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) engine from WorksApplications.
 - **🎯 Smart $i+1$ Candidate Filtering**: Automatically identifies sentences containing 1 unknown content word and ranks them by JPDB frequency and sentence length.
+- **🗺️ Sentence Explorer & Cherry-Picker**: Browse subtitle sentences by difficulty tier ($i+0 \to i+3+$) with snappy offline JMdict lookups, auto-play audio on scroll, and cherry-pick cards (`[✓]`) for batch review.
 - **🖥️ 100% Terminal TUI**: Fully keyboard-driven interactive card review using [`inquire`](https://crates.io/crates/inquire) (arrow keys `↑`/`↓` and `Enter`).
 - **🎧 Non-Blocking Preview Audio**: Background audio playback via `mpv` daemon—zero terminal freeze or input locking.
 - **🔎 Subtitle Inspector Playback**: In `kotonoha --inspect`, press `Space` to hear the selected subtitle line without leaving the inspector.
@@ -98,6 +99,29 @@ kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
 kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
 ```
 
+### 5. Sentence Explorer & Cherry-Picker (`--explore` / `-e`)
+
+Browse all subtitle sentences categorized by difficulty tier ($i+0 \to i+3+$) with instant offline JMdict definitions and auto-play audio on scroll:
+
+```bash
+kotonoha --explore "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
+```
+
+| Key | Action |
+| :--- | :--- |
+| `↑` / `↓` or `k` / `j` | Navigate sentences (debounced background audio snippet playback) |
+| `←` / `→` or `Tab` | Switch target unknown word in multi-unknown sentences |
+| `Space` or `x` | Toggle card selection (`[✓]`) for review |
+| `Shift` + `X` | Toggle all unknown words in active sentence |
+| `Shift` + `C` | Clear all selected cards |
+| `Enter` | Transition selected cards directly to standard Card Review UI |
+| `r` | Replay audio snippet for active sentence |
+| `a` | Toggle auto-play audio on/off |
+| `s` | Toggle sort: Difficulty ($i+0 \to i+3+$) ⇄ Chronological Timeline |
+| `f` | Cycle tier filters: `All`, `[i+0]`, `[i+1] ★`, `[i+2]`, `[i+3+]` |
+| `/` | Live incremental search across subtitle text and unknown words |
+| `Esc` / `q` | Exit Explorer |
+
 ---
 
 ## ⌨️ Shell Autocompletion
@@ -139,6 +163,7 @@ kotonoha --completions bash > ~/.local/share/bash-completion/completions/kotonoh
 | `--config` | `-c` | Interactive configuration editor (storage strategy, AI, Anki) |
 | `--show-config` | `-S` | Display active configuration settings |
 | `--inspect [FILE]` | `-i` | Subtitle inspector with playback (`Space` plays line) |
+| `--explore [FILE]` | `-e` | Sentence difficulty explorer & card cherry-picker |
 | `--manage-known` | `-k` | View and edit known vocabulary database |
 | `--manage-mined` | `-m` | View and edit mined vocabulary cards |
 | `--manage-ignored`| `-I` | View and edit ignored words list |

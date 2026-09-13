@@ -39,7 +39,13 @@ pub struct ExplorerParams<'a> {
     pub http_client: &'a reqwest::Client,
 }
 
-fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> bool {
+enum KeyAction {
+    Continue,
+    Quit,
+    ConfirmReview,
+}
+
+fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> KeyAction {
     if ctrl.search_active {
         match key.code {
             KeyCode::Enter | KeyCode::Esc => ctrl.search_active = false,
@@ -53,7 +59,7 @@ fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> bool {
             }
             _ => {}
         }
-        return false;
+        return KeyAction::Continue;
     }
 
     let visible_len = ctrl.visible_indices().len();
@@ -96,6 +102,9 @@ fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> bool {
                 }
             }
         }
+        KeyCode::Char(' ') | KeyCode::Char('x') => ctrl.toggle_selection(),
+        KeyCode::Char('X') => ctrl.toggle_all_in_current_sentence(),
+        KeyCode::Char('C') => ctrl.clear_selection(),
         KeyCode::Char('a') => {
             ctrl.auto_play = !ctrl.auto_play;
             ctrl.set_status(format!(
@@ -107,7 +116,7 @@ fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> bool {
                 }
             ));
         }
-        KeyCode::Char('r') | KeyCode::Char(' ') => ctrl.trigger_audio_for_current(),
+        KeyCode::Char('r') => ctrl.trigger_audio_for_current(),
         KeyCode::Char('s') => {
             ctrl.sort_order = ctrl.sort_order.toggle();
             sort_sentences(&mut ctrl.sentences, ctrl.sort_order);
@@ -118,25 +127,16 @@ fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> bool {
             ctrl.selected = 0;
         }
         KeyCode::Char('/') => ctrl.search_active = true,
-        KeyCode::Char('q') | KeyCode::Esc => return true,
+        KeyCode::Enter | KeyCode::Char('m') => return KeyAction::ConfirmReview,
+        KeyCode::Char('q') | KeyCode::Esc => return KeyAction::Quit,
         _ => {}
     }
-    false
+    KeyAction::Continue
 }
 
 async fn handle_action_shortcut(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> Result<bool> {
     if ctrl.search_active {
         return Ok(false);
-    }
-    if key.code == KeyCode::Char('m') && !key.modifiers.contains(KeyModifiers::SHIFT) {
-        ctrl.handle_mine_word().await?;
-        return Ok(true);
-    }
-    if key.code == KeyCode::Char('M')
-        || (key.code == KeyCode::Char('m') && key.modifiers.contains(KeyModifiers::SHIFT))
-    {
-        ctrl.handle_mine_all().await?;
-        return Ok(true);
     }
     if key.code == KeyCode::Char('k') && !key.modifiers.contains(KeyModifiers::SHIFT) {
         ctrl.handle_mark_known().await?;
@@ -152,14 +152,10 @@ async fn handle_action_shortcut(ctrl: &mut ExplorerController<'_>, key: KeyEvent
         ctrl.handle_mark_ignored().await?;
         return Ok(true);
     }
-    if key.code == KeyCode::Char('g') {
-        ctrl.handle_request_ai().await?;
-        return Ok(true);
-    }
     Ok(false)
 }
 
-pub async fn run_explorer(p: ExplorerParams<'_>) -> Result<()> {
+pub async fn run_explorer(p: ExplorerParams<'_>) -> Result<Vec<crate::miner::CandidateSentence>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -168,7 +164,7 @@ pub async fn run_explorer(p: ExplorerParams<'_>) -> Result<()> {
 
     let mut ctrl = ExplorerController::new(p);
 
-    loop {
+    let should_review = loop {
         if ctrl
             .audio_child
             .as_mut()
@@ -194,9 +190,6 @@ pub async fn run_explorer(p: ExplorerParams<'_>) -> Result<()> {
         let active_dict = ctrl
             .current_sentence_and_word()
             .and_then(|(_, _, w)| ctrl.cached_dict.get(&w));
-        let active_ai = ctrl
-            .current_sentence_and_word()
-            .and_then(|(s, _, w)| ctrl.cached_ai.get(&(s.sentence.text.clone(), w)));
 
         let status_text = ctrl.status_msg.as_ref().and_then(|(msg, expires)| {
             if Instant::now() < *expires {
@@ -222,7 +215,7 @@ pub async fn run_explorer(p: ExplorerParams<'_>) -> Result<()> {
                     playing_row: ctrl.playing_row,
                     loading_until: ctrl.loading_until,
                     active_dict,
-                    active_ai,
+                    selected_cards: &ctrl.selected_cards,
                     status_message: status_text,
                 },
             );
@@ -242,17 +235,24 @@ pub async fn run_explorer(p: ExplorerParams<'_>) -> Result<()> {
             continue;
         }
 
-        if handle_key_press(&mut ctrl, key) {
-            break;
+        match handle_key_press(&mut ctrl, key) {
+            KeyAction::Continue => {}
+            KeyAction::Quit => break false,
+            KeyAction::ConfirmReview => break true,
         }
-    }
+    };
 
-    if let Some(mut child) = ctrl.audio_child {
+    if let Some(mut child) = ctrl.audio_child.take() {
         let _ = child.kill();
     }
 
     let _ = disable_raw_mode();
     let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
     let _ = terminal.show_cursor();
-    Ok(())
+
+    if should_review {
+        Ok(ctrl.build_selected_candidates())
+    } else {
+        Ok(Vec::new())
+    }
 }

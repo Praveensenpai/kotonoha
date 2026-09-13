@@ -8,7 +8,6 @@ use ratatui::{
 use std::time::Instant;
 
 use super::model::{ExplorerSentence, SentenceStats, SortOrder, Tier, TierFilter};
-use crate::ai::AiAnalysisResult;
 use crate::dict::LookupResult;
 use crate::ui::format_timestamp;
 
@@ -25,7 +24,7 @@ pub struct RenderExplorerContext<'a> {
     pub playing_row: Option<usize>,
     pub loading_until: Option<Instant>,
     pub active_dict: Option<&'a LookupResult>,
-    pub active_ai: Option<&'a AiAnalysisResult>,
+    pub selected_cards: &'a std::collections::HashSet<(usize, String)>,
     pub status_message: Option<&'a str>,
 }
 
@@ -53,7 +52,16 @@ pub fn render_explorer(frame: &mut Frame<'_>, ctx: RenderExplorerContext<'_>) {
 }
 
 fn render_header(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExplorerContext<'_>) {
-    let auto_play_style = if ctx.auto_play {
+    let line1 = build_header_stats_line(ctx);
+    let line2 = build_header_controls_line(ctx);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(TuiStyle::default().fg(Color::DarkGray));
+    frame.render_widget(Paragraph::new(vec![line1, line2]).block(block), area);
+}
+
+fn build_header_stats_line(ctx: &RenderExplorerContext<'_>) -> Line<'static> {
+    let auto_style = if ctx.auto_play {
         TuiStyle::default()
             .fg(Color::LightGreen)
             .add_modifier(Modifier::BOLD)
@@ -61,19 +69,7 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExplorerContext<
         TuiStyle::default().fg(Color::DarkGray)
     };
 
-    let search_disp = if ctx.search.is_empty() {
-        if ctx.search_active {
-            "▌".to_string()
-        } else {
-            "type to search…".to_string()
-        }
-    } else if ctx.search_active {
-        format!("{}▌", ctx.search)
-    } else {
-        ctx.search.to_string()
-    };
-
-    let line1 = Line::from(vec![
+    let mut spans = vec![
         Span::styled(
             " KOTONOHA ",
             TuiStyle::default()
@@ -91,34 +87,44 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExplorerContext<
             format!("Total: {}  •  ", ctx.stats.total),
             TuiStyle::default().fg(Color::Gray),
         ),
-        Span::styled(
-            format!("[i+0]: {}  ", ctx.stats.i0),
-            TuiStyle::default().fg(Color::Cyan),
-        ),
-        Span::styled(
-            format!("[i+1]: {} ★  ", ctx.stats.i1),
-            TuiStyle::default()
-                .fg(Color::LightGreen)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            format!("[i+2]: {}  ", ctx.stats.i2),
-            TuiStyle::default().fg(Color::Yellow),
-        ),
-        Span::styled(
-            format!("[i+3+]: {}  •  ", ctx.stats.i3_plus),
-            TuiStyle::default().fg(Color::LightRed),
-        ),
-        Span::styled(
-            format!(
-                "[Auto-Play: {} (a)]",
-                if ctx.auto_play { "ON" } else { "OFF" }
-            ),
-            auto_play_style,
-        ),
-    ]);
+    ];
 
-    let line2 = Line::from(vec![
+    let tiers = [
+        ("[i+0]", ctx.stats.i0, Color::Cyan),
+        ("[i+1] ★", ctx.stats.i1, Color::LightGreen),
+        ("[i+2]", ctx.stats.i2, Color::Yellow),
+        ("[i+3+]", ctx.stats.i3_plus, Color::LightRed),
+    ];
+    for (name, count, color) in tiers {
+        spans.push(Span::styled(
+            format!("{name}: {count}  "),
+            TuiStyle::default().fg(color).add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.push(Span::styled(
+        format!(
+            "[Auto-Play: {} (a)]",
+            if ctx.auto_play { "ON" } else { "OFF" }
+        ),
+        auto_style,
+    ));
+    Line::from(spans)
+}
+
+fn build_header_controls_line(ctx: &RenderExplorerContext<'_>) -> Line<'static> {
+    let search_disp = if ctx.search.is_empty() {
+        if ctx.search_active {
+            "▌".to_string()
+        } else {
+            "type to search…".to_string()
+        }
+    } else if ctx.search_active {
+        format!("{}▌", ctx.search)
+    } else {
+        ctx.search.to_string()
+    };
+
+    let mut spans = vec![
         Span::styled(" Sort: ", TuiStyle::default().fg(Color::DarkGray)),
         Span::styled(
             ctx.sort_order.label(),
@@ -146,35 +152,95 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExplorerContext<
             format!("  ({} matches)", ctx.visible_indices.len()),
             TuiStyle::default().fg(Color::DarkGray),
         ),
-    ]);
+    ];
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(TuiStyle::default().fg(Color::DarkGray));
-    frame.render_widget(Paragraph::new(vec![line1, line2]).block(block), area);
+    if !ctx.selected_cards.is_empty() {
+        spans.push(Span::styled(
+            format!(
+                "  •  Selected: {} cards [Enter to Review]",
+                ctx.selected_cards.len()
+            ),
+            TuiStyle::default()
+                .fg(Color::Black)
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    Line::from(spans)
 }
 
-fn build_sentence_line(s: &ExplorerSentence, is_selected: bool, is_playing: bool) -> Line<'static> {
-    let mut spans = Vec::new();
-    let prefix = if is_playing {
-        "▶ "
-    } else if is_selected {
-        "› "
+fn build_checkbox_span(
+    s: &ExplorerSentence,
+    selected: &std::collections::HashSet<(usize, String)>,
+) -> Span<'static> {
+    let any = s
+        .unknowns
+        .iter()
+        .any(|u| selected.contains(&(s.sentence.index, u.dictionary_form.clone())));
+    let all = !s.unknowns.is_empty()
+        && s.unknowns
+            .iter()
+            .all(|u| selected.contains(&(s.sentence.index, u.dictionary_form.clone())));
+
+    let (label, color) = if all {
+        ("[✓] ", Color::LightGreen)
+    } else if any {
+        ("[~] ", Color::Yellow)
     } else {
-        "  "
+        return Span::styled("[ ] ", TuiStyle::default().fg(Color::DarkGray));
     };
-    let prefix_style = if is_playing {
-        TuiStyle::default()
-            .fg(Color::LightGreen)
-            .add_modifier(Modifier::BOLD)
-    } else if is_selected {
-        TuiStyle::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+    Span::styled(
+        label,
+        TuiStyle::default().fg(color).add_modifier(Modifier::BOLD),
+    )
+}
+
+fn build_word_span(surface: &str, is_active: bool, is_card_selected: bool) -> Span<'static> {
+    let text = if is_card_selected {
+        format!("{surface}[✓]")
     } else {
-        TuiStyle::default()
+        surface.to_string()
+    };
+    let (fg, bg) = match (is_active, is_card_selected) {
+        (true, true) => (Color::Black, Some(Color::LightGreen)),
+        (true, false) => (Color::Black, Some(Color::Cyan)),
+        (false, true) => (Color::LightGreen, None),
+        (false, false) => (Color::Yellow, None),
+    };
+    let mut style = TuiStyle::default().fg(fg).add_modifier(Modifier::BOLD);
+    if let Some(bg) = bg {
+        style = style.bg(bg);
+    }
+    Span::styled(text, style)
+}
+
+fn build_sentence_line(
+    s: &ExplorerSentence,
+    is_selected: bool,
+    is_playing: bool,
+    selected_cards: &std::collections::HashSet<(usize, String)>,
+) -> Line<'static> {
+    let mut spans = Vec::new();
+    let (prefix, prefix_style) = if is_playing {
+        (
+            "▶ ",
+            TuiStyle::default()
+                .fg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if is_selected {
+        (
+            "› ",
+            TuiStyle::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        ("  ", TuiStyle::default())
     };
     spans.push(Span::styled(prefix, prefix_style));
+    spans.push(build_checkbox_span(s, selected_cards));
 
     let (tier_str, tier_color) = match s.tier {
         Tier::I0 => ("[i+0] ", Color::Cyan),
@@ -203,18 +269,10 @@ fn build_sentence_line(s: &ExplorerSentence, is_selected: bool, is_playing: bool
             if abs_pos > cursor {
                 spans.push(Span::raw(text[cursor..abs_pos].to_string()));
             }
-            let is_active_target = is_selected && u_idx == s.selected_unknown;
-            let style = if is_active_target {
-                TuiStyle::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                TuiStyle::default()
-                    .fg(Color::LightGreen)
-                    .add_modifier(Modifier::BOLD)
-            };
-            spans.push(Span::styled(u.surface.clone(), style));
+            let is_active = is_selected && u_idx == s.selected_unknown;
+            let is_card_sel =
+                selected_cards.contains(&(s.sentence.index, u.dictionary_form.clone()));
+            spans.push(build_word_span(&u.surface, is_active, is_card_sel));
             cursor = abs_pos + u.surface.len();
         }
     }
@@ -239,7 +297,7 @@ fn render_sentence_list(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExplorerC
             let s = &ctx.sentences[s_idx];
             let is_selected = pos == ctx.selected;
             let is_playing = ctx.playing_row == Some(s_idx);
-            let line = build_sentence_line(s, is_selected, is_playing);
+            let line = build_sentence_line(s, is_selected, is_playing, ctx.selected_cards);
             let item_style = if is_selected {
                 TuiStyle::default().bg(Color::Rgb(25, 30, 40))
             } else if is_playing {
@@ -307,8 +365,16 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExplorerContext<
         )
     };
 
+    let count_disp = if ctx.selected_cards.is_empty() {
+        "Enter Review (Current)".to_string()
+    } else {
+        format!("Enter Review ({})", ctx.selected_cards.len())
+    };
     let help_line = Line::styled(
-        "↑↓ Scroll  ←→/Tab Unknown Word  m Mine Word  M Mine All (Multi-card)  k Known  K All Known  a Auto-Play  r Replay  s Sort  f Filter  / Search  Esc Exit",
+        format!(
+            "↑↓ Scroll  ←→/Tab Target  Space/x Select  X Line  C Clear  {}  k Known  i Ignore  r Replay  a Auto-Play  s Sort  f Filter  / Search  Esc Exit",
+            count_disp
+        ),
         TuiStyle::default().fg(Color::DarkGray),
     );
 

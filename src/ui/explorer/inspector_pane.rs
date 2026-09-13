@@ -13,7 +13,7 @@ pub fn render_word_inspector(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExpl
         .borders(Borders::ALL)
         .border_style(TuiStyle::default().fg(Color::DarkGray))
         .title(Span::styled(
-            " Target Word & AI Context ",
+            " Target Word & Dictionary ",
             TuiStyle::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -44,7 +44,7 @@ pub fn render_word_inspector(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExpl
                 TuiStyle::default().fg(Color::DarkGray),
             )]),
             Line::from(vec![Span::styled(
-                "Press 'k' or 'm' if you wish to review or re-mine.",
+                "Press 'k' to re-confirm or 's' to sort.",
                 TuiStyle::default().fg(Color::DarkGray),
             )]),
         ];
@@ -88,6 +88,43 @@ pub fn render_word_inspector(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExpl
     }
     lines.push(Line::raw(""));
 
+    let is_selected = ctx
+        .selected_cards
+        .contains(&(s.sentence.index, active_word.dictionary_form.clone()));
+
+    lines.push(Line::styled(
+        "🎯 Card Review Selection:",
+        TuiStyle::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    ));
+    if is_selected {
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  [✓] Selected for Card Review ",
+                TuiStyle::default()
+                    .fg(Color::LightGreen)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "(Space/x to deselect)",
+                TuiStyle::default().fg(Color::DarkGray),
+            ),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  [ ] Not selected ",
+                TuiStyle::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                "(Space/x to select for review)",
+                TuiStyle::default().fg(Color::DarkGray),
+            ),
+        ]));
+    }
+    lines.push(Line::raw(""));
+
     lines.push(Line::styled(
         "📖 Local Dictionary (JMdict):",
         TuiStyle::default()
@@ -95,7 +132,7 @@ pub fn render_word_inspector(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExpl
             .add_modifier(Modifier::BOLD),
     ));
     if let Some(dict) = ctx.active_dict {
-        for def_line in dict.definition.lines().take(4) {
+        for def_line in dict.definition.lines().take(6) {
             lines.push(Line::styled(
                 format!("  {def_line}"),
                 TuiStyle::default().fg(Color::Gray),
@@ -110,41 +147,19 @@ pub fn render_word_inspector(frame: &mut Frame<'_>, area: Rect, ctx: &RenderExpl
     lines.push(Line::raw(""));
 
     lines.push(Line::styled(
-        "🤖 AI Contextual Analysis (Gemini):",
+        "💡 Review Workflow:",
         TuiStyle::default()
-            .fg(Color::Magenta)
+            .fg(Color::DarkGray)
             .add_modifier(Modifier::BOLD),
     ));
-    if let Some(ai) = ctx.active_ai {
-        if let Some(ref sug) = ai.custom_definition_suggestion {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    "  Contextual Meaning: ",
-                    TuiStyle::default()
-                        .fg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(sug, TuiStyle::default().fg(Color::White)),
-            ]));
-        }
-        if let Some(ref exp) = ai.explanation {
-            lines.push(Line::from(vec![
-                Span::styled("  Nuance: ", TuiStyle::default().fg(Color::LightCyan)),
-                Span::styled(exp, TuiStyle::default().fg(Color::DarkGray)),
-            ]));
-        }
-        if let Some(ref warn) = ai.parsing_warning {
-            lines.push(Line::from(vec![
-                Span::styled("  ⚠ Parse Note: ", TuiStyle::default().fg(Color::LightRed)),
-                Span::styled(warn, TuiStyle::default().fg(Color::LightRed)),
-            ]));
-        }
-    } else {
-        lines.push(Line::styled(
-            "  Press 'g' to request AI analysis for this sentence.",
-            TuiStyle::default().fg(Color::DarkGray),
-        ));
-    }
+    lines.push(Line::styled(
+        "  Select cards with Space/x, then press Enter to launch",
+        TuiStyle::default().fg(Color::DarkGray),
+    ));
+    lines.push(Line::styled(
+        "  standard card review with AI, reading edit, & Anki sync.",
+        TuiStyle::default().fg(Color::DarkGray),
+    ));
 
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
