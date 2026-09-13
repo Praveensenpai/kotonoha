@@ -361,6 +361,11 @@ cargo fmt --check
 
 ## 6. Recent Iteration Changes
 
+- **2026-09-14 (v0.0.69: Terminal Sanitization & Status Bar Error Surfacing)**:
+  - Eliminated raw `eprintln!` writes to stderr during Gemini API batch retries in `src/ai.rs`, preventing Ratatui alternate-screen buffer corruption and top header scroll-off during TUI sessions.
+  - Added structured HTTP 429 rate limit detection in `src/ai.rs`.
+  - Routed AI contextual analysis errors into the bottom status bar (`ctrl.set_status`) in `src/ui/explorer/state.rs` with clean user-facing diagnostics.
+  - Bumped crate version to `0.0.69`.
 - **2026-09-14 (Sentence Explorer & Multi-Card Generation)**:
   - Added interactive Sentence Explorer & Difficulty Browser (`kotonoha --explore [FILE]` or `-e`, also selectable from session mode prompt).
   - Implemented sentence categorization by unknown count into difficulty tiers ($i+0 \to i+n$): $i+0$ (fully known), $i+1$, $i+2$, $i+3+$.

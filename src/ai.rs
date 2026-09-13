@@ -155,8 +155,13 @@ impl GeminiAiService {
                     return Ok(parsed.results);
                 }
                 Ok(response) => {
+                    let status = response.status();
                     let err_text = response.text().await.unwrap_or_default();
-                    last_error = format!("Gemini API error: {}", err_text);
+                    last_error = if status.as_u16() == 429 {
+                        "Gemini API rate limit exceeded (429 Too Many Requests)".to_string()
+                    } else {
+                        format!("Gemini API error ({}): {}", status, err_text)
+                    };
                 }
                 Err(e) => {
                     last_error = e.to_string();
@@ -165,10 +170,6 @@ impl GeminiAiService {
 
             if attempt < max_attempts {
                 let delay = attempt as u64; // 1s, 2s, 3s, 4s, 5s
-                eprintln!(
-                    " ⚠️  Gemini API busy (attempt {}/{}). Retrying in {}s...",
-                    attempt, max_attempts, delay
-                );
                 tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
             }
         }

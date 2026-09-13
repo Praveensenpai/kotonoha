@@ -315,7 +315,7 @@ impl<'a> ExplorerController<'a> {
         }];
         self.set_status("🤖 Requesting Gemini AI contextual analysis…");
         if let Some(ref key) = self.p.cfg.ai.gemini_api_key {
-            if let Ok(results) = GeminiAiService::analyze_batch(
+            match GeminiAiService::analyze_batch(
                 self.p.http_client,
                 key,
                 &self.p.cfg.ai.gemini_model,
@@ -323,19 +323,32 @@ impl<'a> ExplorerController<'a> {
             )
             .await
             {
-                if let Some(res) = results.into_iter().next() {
-                    let _ = self
-                        .p
-                        .db
-                        .cache_ai_analysis(
-                            &sentence_text,
-                            &target_word,
-                            &self.p.cfg.ai.gemini_model,
-                            &res,
-                        )
-                        .await;
-                    self.cached_ai.insert((sentence_text, target_word), res);
-                    self.set_status("✨ AI analysis loaded successfully!");
+                Ok(results) => {
+                    if let Some(res) = results.into_iter().next() {
+                        let _ = self
+                            .p
+                            .db
+                            .cache_ai_analysis(
+                                &sentence_text,
+                                &target_word,
+                                &self.p.cfg.ai.gemini_model,
+                                &res,
+                            )
+                            .await;
+                        self.cached_ai.insert((sentence_text, target_word), res);
+                        self.set_status("✨ AI analysis loaded successfully!");
+                    } else {
+                        self.set_status("⚠ Gemini AI returned empty response.");
+                    }
+                }
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    let short_err = if err_msg.contains("429") {
+                        "⚠ Gemini rate-limited (429). Please wait a moment.".to_string()
+                    } else {
+                        format!("⚠ Gemini: {}", err_msg.chars().take(60).collect::<String>())
+                    };
+                    self.set_status(short_err);
                 }
             }
         }
