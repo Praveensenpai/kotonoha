@@ -27,6 +27,46 @@ pub fn words_with_readings(
         .collect()
 }
 
+/// Find a matching Japanese subtitle file for a given video path, if one exists in the same directory.
+pub fn find_paired_subtitle_for_video(vid_path: &Path) -> Option<PathBuf> {
+    let parent = vid_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = vid_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let clean_stem = stem
+        .trim_end_matches(".ja")
+        .trim_end_matches(".jp")
+        .trim_end_matches(".ja-JP")
+        .trim_end_matches(".japanese")
+        .trim_end_matches(".en");
+
+    let entries = std::fs::read_dir(parent).ok()?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let p_ext = p
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if matches!(p_ext.as_str(), "srt" | "ass" | "vtt") {
+            let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let p_clean = p_stem
+                .trim_end_matches(".ja")
+                .trim_end_matches(".jp")
+                .trim_end_matches(".ja-JP")
+                .trim_end_matches(".japanese")
+                .trim_end_matches(".en");
+            if p_stem == stem
+                || p_clean == stem
+                || p_clean == clean_stem
+                || p_stem.starts_with(clean_stem)
+                || clean_stem.starts_with(p_clean)
+            {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
 /// Find paired subtitle and audio/video file for normal playback/mining.
 pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
     if crate::bundle::is_bundle_file(input_path) {
@@ -120,31 +160,8 @@ pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)> {
             input_path.display()
         );
     } else if is_vid {
-        let vid_path = input_path.to_path_buf();
-        if let Ok(entries) = std::fs::read_dir(parent) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                let p_ext = p
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if matches!(p_ext.as_str(), "srt" | "ass" | "vtt") {
-                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                    let p_clean = p_stem
-                        .trim_end_matches(".ja")
-                        .trim_end_matches(".jp")
-                        .trim_end_matches(".ja-JP")
-                        .trim_end_matches(".japanese");
-                    if p_stem == stem
-                        || p_clean == stem
-                        || p_stem.starts_with(stem)
-                        || stem.starts_with(p_clean)
-                    {
-                        return Ok((p, vid_path));
-                    }
-                }
-            }
+        if let Some(sub_path) = find_paired_subtitle_for_video(input_path) {
+            return Ok((sub_path, input_path.to_path_buf()));
         }
         anyhow::bail!(
             "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   Place the subtitle file in the same folder to mine cards.\n\n   Need to generate an .srt subtitle? Try SubSink:\n   https://github.com/Praveensenpai/subsink",
@@ -205,31 +222,8 @@ pub fn find_paired_media_for_bundling(input_path: &Path) -> Result<(PathBuf, Pat
             input_path.display()
         );
     } else if is_vid {
-        let vid_path = input_path.to_path_buf();
-        if let Ok(entries) = std::fs::read_dir(parent) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                let p_ext = p
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if matches!(p_ext.as_str(), "srt" | "ass" | "vtt") {
-                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                    let p_clean = p_stem
-                        .trim_end_matches(".ja")
-                        .trim_end_matches(".jp")
-                        .trim_end_matches(".ja-JP")
-                        .trim_end_matches(".japanese");
-                    if p_stem == stem
-                        || p_clean == stem
-                        || p_stem.starts_with(stem)
-                        || stem.starts_with(p_clean)
-                    {
-                        return Ok((p, vid_path));
-                    }
-                }
-            }
+        if let Some(sub_path) = find_paired_subtitle_for_video(input_path) {
+            return Ok((sub_path, input_path.to_path_buf()));
         }
         anyhow::bail!(
             "No matching Japanese subtitle file (.srt, .ass) found for video: {}\n   A subtitle file is required to pre-save into a .koto bundle.",

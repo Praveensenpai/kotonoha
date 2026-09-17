@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "kotonoha"
-version = "0.0.70"
+version = "0.0.71"
 dependencies = [
  "anyhow",
  "base64",

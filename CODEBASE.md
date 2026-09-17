@@ -93,16 +93,17 @@
 - **Consumers**: `src/main.rs`
 - **Side Effects / I/O**: Terminal printing, runs interactive management subroutines, prints completion scripts.
 
-### `src/commands/pairing.rs` (Role: cli/pairing, Lines: 245)
-- **Responsibility**: Media file association, matching subtitle (`.srt`, `.ass`, `.vtt`) with video (`.mkv`, `.mp4`, `.webm`, `.koto`), handling stem normalization and bundle unpacking.
+### `src/commands/pairing.rs` (Role: cli/pairing, Lines: 238)
+- **Responsibility**: Media file association, matching subtitle (`.srt`, `.ass`, `.vtt`) with video (`.mkv`, `.mp4`, `.webm`, `.koto`), handling stem normalization, bundle unpacking, and video-subtitle pairing lookups.
 - **Imports**: `crate::{bundle, config, nlp::JapaneseTokenizer}`
 - **Public Functions & Signatures**:
   ```rust
   pub fn words_with_readings(tokenizer: &JapaneseTokenizer, words: Vec<String>) -> Vec<(String, String)>
+  pub fn find_paired_subtitle_for_video(vid_path: &Path) -> Option<PathBuf>
   pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)>
   pub fn find_paired_media_for_bundling(input_path: &Path) -> Result<(PathBuf, PathBuf)>
   ```
-- **Consumers**: `src/main.rs`, `src/commands.rs`
+- **Consumers**: `src/main.rs`, `src/commands.rs`, `src/ui/picker.rs`
 - **Side Effects / I/O**: Filesystem directory reads and lookups.
 
 ### `src/config.rs` (Role: domain/config, Lines: 284)
@@ -282,7 +283,7 @@
 - **Consumers**: `src/main.rs`
 
 ### `src/ui/` (Role: tui, Lines: ~3500)
-- **Files**: `ui.rs`, `card.rs`, `inspector.rs`, `picker.rs`, `prompts.rs`, `bundles.rs`, `config_menu.rs`, `bootstrap.rs`, `helpers.rs`, `explorer.rs`, `explorer/model.rs`, `explorer/state.rs`, `explorer/render.rs`, `explorer/inspector_pane.rs`, `explorer/actions.rs`, `explorer/tests.rs`
+- **Files**: `ui.rs`, `card.rs`, `inspector.rs`, `picker.rs`, `picker/selector.rs`, `picker/state.rs`, `picker/render.rs`, `prompts.rs`, `bundles.rs`, `config_menu.rs`, `bootstrap.rs`, `helpers.rs`, `explorer.rs`, `explorer/model.rs`, `explorer/state.rs`, `explorer/render.rs`, `explorer/inspector_pane.rs`, `explorer/actions.rs`, `explorer/tests.rs`
 - **Responsibility**:
   - `ui.rs`: Public facade for terminal UI interactions, exposing `TerminalUi::run_explorer` and `SessionMode::Explore`.
   - `explorer/`: Interactive Sentence Explorer & Difficulty Browser (`kotonoha --explore` or `-e`):
@@ -293,7 +294,11 @@
     - Two-stage flow: Pressing `Enter` with selected cards transitions seamlessly into standard Kotonoha Card Review (`mining::run_mining_loop`) for candidate refinement, sense switching, custom readings, and Gemini AI analysis.
   - `card.rs`: Unicode box-drawing visual card layout, displaying target word, reading, pitch badge, frequency, highlighted sentence, definitions, AI suggestions, and key shortcuts.
   - `inspector.rs`: Subtitle inspection screen with live audio playback (`Space`), $i+1$ indicator badges (★), and instant text filtering.
-  - `picker.rs`: Terminal file picker using `inquire::Select` for subtitles and video files.
+  - `picker.rs` & `picker/`: Interactive Ratatui multi-select file picker:
+    - `picker.rs`: Auto-discovery of media and subtitle files across standard directories, deduplicating paired `.srt` files and classifying media items with `SubtitleStatus`.
+    - `picker/selector.rs`: Alternate-screen event loop with RAII `TerminalGuard` cleanup.
+    - `picker/state.rs`: `SubtitleStatus` (`HasSub`, `Bundle`, `NoSub`), `CategoryFilter` (`All`, `Videos`, `Bundles` cycled via `Ctrl+F` / `F2`), multi-token whitespace search query filtering (spaces allowed in queries like `"yuru camp"`), `Tab`/`Shift+Tab` item toggle, `Ctrl+A`/`Ctrl+D` batch selection, and smooth offset scrolling.
+    - `picker/render.rs`: Filter bar with active Category pill and dynamic match/selection stats, subtitle status badges (`[✓ SUB]`, `📦 [BUNDLE]`, `[NO SUB]`), hierarchical short path display (`~` prefix, dim directory, bold filename), and intuitive keybindings footer.
   - `prompts.rs`: Interactive selection prompts for candidates, dictionary senses, readings, and session modes (including `Explore`).
   - `bundles.rs`: TUI manager for `.koto` bundles and original media source cleanup.
   - `config_menu.rs`: Interactive editor for AI keys, models, Anki decks, and storage strategies.

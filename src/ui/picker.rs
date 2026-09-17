@@ -1,8 +1,15 @@
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
-use inquire::{MultiSelect, Select, Text};
+use inquire::Text;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+pub mod render;
+pub mod selector;
+pub mod state;
+
+pub use selector::run_file_selector;
+pub use state::{SelectableFile, SubtitleStatus};
 
 use super::helpers::natural_cmp;
 
@@ -29,6 +36,35 @@ pub fn is_hidden_or_ignored_entry(entry: &walkdir::DirEntry) -> bool {
     true
 }
 
+fn resolve_search_dirs(home: &Path) -> Vec<PathBuf> {
+    let mut search_dirs = vec![PathBuf::from(".")];
+    for sub in &["Videos", "Downloads", "Anime"] {
+        let dir = home.join(sub);
+        if dir.exists() && !search_dirs.contains(&dir) {
+            search_dirs.push(dir);
+        }
+    }
+    search_dirs
+}
+
+fn discover_central_bundles(allowed_exts: &[&str]) -> Vec<PathBuf> {
+    if !allowed_exts.contains(&"koto") {
+        return Vec::new();
+    }
+    let cfg = crate::config::AppConfig::load().unwrap_or_default();
+    if !cfg.bundles_dir.exists() {
+        return Vec::new();
+    }
+    let Ok(entries) = std::fs::read_dir(&cfg.bundles_dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && crate::bundle::is_bundle_file(p))
+        .collect()
+}
+
 pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<Vec<PathBuf>> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -40,28 +76,10 @@ pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<
     pb.enable_steady_tick(std::time::Duration::from_millis(80));
 
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    let mut search_dirs = Vec::new();
-
-    // 1. Current working directory
-    search_dirs.push(PathBuf::from("."));
-
-    // 2. Standard user media folders if they exist
-    let videos = home.join("Videos");
-    if videos.exists() && !search_dirs.contains(&videos) {
-        search_dirs.push(videos);
-    }
-    let downloads = home.join("Downloads");
-    if downloads.exists() && !search_dirs.contains(&downloads) {
-        search_dirs.push(downloads);
-    }
-    let anime = home.join("Anime");
-    if anime.exists() && !search_dirs.contains(&anime) {
-        search_dirs.push(anime);
-    }
-
     let is_cwd_home = std::env::current_dir()
         .map(|cwd| cwd == home)
         .unwrap_or(false);
+    let search_dirs = resolve_search_dirs(&home);
     let mut files = Vec::new();
 
     for dir in search_dirs {
@@ -93,43 +111,13 @@ pub fn discover_media_files(allowed_exts: &[&str], spinner_msg: &str) -> Result<
         }
     }
 
-    // 3. Central bundles directory: only discover top-level .koto files when requested
-    if allowed_exts.contains(&"koto") {
-        let cfg = crate::config::AppConfig::load().unwrap_or_default();
-        if cfg.bundles_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&cfg.bundles_dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_file() && crate::bundle::is_bundle_file(&p) {
-                        files.push(p);
-                    }
-                }
-            }
-        }
-    }
-
+    files.extend(discover_central_bundles(allowed_exts));
     pb.finish_and_clear();
 
     files.sort_by(|left, right| natural_cmp(&left.to_string_lossy(), &right.to_string_lossy()));
     files.dedup();
 
     Ok(files)
-}
-
-#[derive(Debug, Clone)]
-struct MediaEntry {
-    path: PathBuf,
-    is_bundle: bool,
-}
-
-impl std::fmt::Display for MediaEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.is_bundle {
-            write!(f, "📦 [BUNDLE] {}", self.path.display())
-        } else {
-            write!(f, "{}", self.path.display())
-        }
-    }
 }
 
 pub fn select_media_file() -> Result<PathBuf> {
@@ -143,15 +131,14 @@ pub fn select_media_file() -> Result<PathBuf> {
         return Ok(PathBuf::from(input));
     }
 
-    let items: Vec<MediaEntry> = files
-        .into_iter()
-        .map(|p| {
-            let is_bundle = crate::bundle::is_bundle_file(&p);
-            MediaEntry { path: p, is_bundle }
-        })
-        .collect();
-    let selected = Select::new("Select Subtitle or Anime Video File:", items).prompt()?;
-    Ok(selected.path)
+    let items: Vec<SelectableFile> = files.into_iter().filter_map(classify_media_file).collect();
+
+    let mut selected = run_file_selector("Select Subtitle or Anime Video File", items, false)?;
+    if let Some(path) = selected.pop() {
+        Ok(path)
+    } else {
+        anyhow::bail!("No file selected.");
+    }
 }
 
 pub fn select_media_files() -> Result<Vec<PathBuf>> {
@@ -165,25 +152,9 @@ pub fn select_media_files() -> Result<Vec<PathBuf>> {
         return Ok(vec![PathBuf::from(input)]);
     }
 
-    let items: Vec<MediaEntry> = files
-        .into_iter()
-        .map(|p| {
-            let is_bundle = crate::bundle::is_bundle_file(&p);
-            MediaEntry { path: p, is_bundle }
-        })
-        .collect();
-    let selected = MultiSelect::new(
-        "Select Subtitle, Video, or Bundle File(s) (Space to select, Enter to confirm):",
-        items,
-    )
-    .with_page_size(15)
-    .prompt()?;
+    let items: Vec<SelectableFile> = files.into_iter().filter_map(classify_media_file).collect();
 
-    if selected.is_empty() {
-        anyhow::bail!("No files selected.");
-    }
-
-    Ok(selected.into_iter().map(|e| e.path).collect())
+    run_file_selector("Select Subtitle, Video, or Bundle File(s)", items, true)
 }
 
 pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
@@ -197,17 +168,97 @@ pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
         return Ok(vec![PathBuf::from(input)]);
     }
 
-    let items: Vec<String> = files.iter().map(|p| p.display().to_string()).collect();
-    let selected = MultiSelect::new(
-        "📦 Select Video or Subtitle File(s) to Bundle into .koto (Space to select, Enter to bundle):",
-        items,
-    )
-    .with_page_size(15)
-    .prompt()?;
+    let items: Vec<SelectableFile> = files.into_iter().map(classify_bundle_source_file).collect();
 
-    if selected.is_empty() {
-        anyhow::bail!("No files selected for bundling.");
+    run_file_selector(
+        "📦 Select Video or Subtitle File(s) to Bundle into .koto",
+        items,
+        true,
+    )
+}
+
+fn classify_media_file(path: PathBuf) -> Option<SelectableFile> {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if ext == "koto" {
+        return Some(SelectableFile {
+            path,
+            status: SubtitleStatus::Bundle,
+        });
     }
 
-    Ok(selected.into_iter().map(PathBuf::from).collect())
+    if matches!(ext.as_str(), "mkv" | "mp4" | "webm") {
+        let status = if crate::commands::find_paired_subtitle_for_video(&path).is_some() {
+            SubtitleStatus::HasSub
+        } else {
+            SubtitleStatus::NoSub
+        };
+        return Some(SelectableFile { path, status });
+    }
+
+    if matches!(ext.as_str(), "srt" | "ass" | "vtt") {
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let clean_stem = stem
+            .trim_end_matches(".ja")
+            .trim_end_matches(".jp")
+            .trim_end_matches(".ja-JP")
+            .trim_end_matches(".japanese")
+            .trim_end_matches(".en");
+
+        let has_video = std::fs::read_dir(parent).ok().is_some_and(|entries| {
+            entries.flatten().any(|e| {
+                let p = e.path();
+                let p_ext = p
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if matches!(p_ext.as_str(), "mkv" | "mp4" | "webm") {
+                    let p_stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    p_stem == stem
+                        || p_stem == clean_stem
+                        || p_stem.starts_with(clean_stem)
+                        || clean_stem.starts_with(p_stem)
+                } else {
+                    false
+                }
+            })
+        });
+
+        if !has_video {
+            return Some(SelectableFile {
+                path,
+                status: SubtitleStatus::HasSub,
+            });
+        }
+    }
+
+    None
+}
+
+fn classify_bundle_source_file(path: PathBuf) -> SelectableFile {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if matches!(ext.as_str(), "mkv" | "mp4" | "webm" | "avi") {
+        let status = if crate::commands::find_paired_subtitle_for_video(&path).is_some() {
+            SubtitleStatus::HasSub
+        } else {
+            SubtitleStatus::NoSub
+        };
+        SelectableFile { path, status }
+    } else {
+        SelectableFile {
+            path,
+            status: SubtitleStatus::HasSub,
+        }
+    }
 }
