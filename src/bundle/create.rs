@@ -132,6 +132,37 @@ pub async fn create_bundle(
         return Ok(existing);
     }
 
+    let video_name = video_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let mut search_dirs = vec![options.bundles_dir.to_path_buf()];
+    if let Some(parent) = video_path.parent() {
+        if !search_dirs.contains(&parent.to_path_buf()) {
+            search_dirs.push(parent.to_path_buf());
+        }
+    }
+
+    if let Some(dup) = super::duplicate_guard::check_duplicate_subtitle(
+        video_name,
+        &video_fp,
+        &sub_fp,
+        options.db,
+        &search_dirs,
+    )
+    .await
+    {
+        let proceed = super::duplicate_guard::prompt_duplicate_subtitle_warning(
+            &dup,
+            video_name,
+            &sub_fp,
+            options.force,
+        )?;
+        if !proceed {
+            anyhow::bail!("Bundle creation canceled due to duplicate subtitle warning.");
+        }
+    }
+
     let temp_dir = std::env::temp_dir().join(format!(
         "kotonoha_bundle_{}_{}",
         clean_stem,

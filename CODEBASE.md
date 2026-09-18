@@ -72,7 +72,7 @@
 
 ## 3. Module & Interface Skeleton
 
-### `src/main.rs` (Role: cli/entrypoint, Lines: 174)
+### `src/main.rs` (Role: cli/entrypoint, Lines: 286)
 - **Responsibility**: Application startup wiring, CLI dispatch, service status verification, auto-cleanup, and session initialization.
 - **Imports**: `crate::{ai, anki, bundle, commands, config, db, dict, media, miner, nlp, session, srt, ui}`
 - **Public Functions & Signatures**:
@@ -83,7 +83,7 @@
 - **Consumers**: OS process execution.
 - **Side Effects / I/O**: Reads CLI arguments, checks AnkiConnect endpoint, initializes SQLite DB, reads files, runs TUI.
 
-### `src/commands.rs` (Role: cli/dispatcher, Lines: 265)
+### `src/commands.rs` (Role: cli/dispatcher, Lines: 348)
 - **Responsibility**: CLI flag parsing, dispatching `--bundle`, `--bundles`, `--clean-bundled`, `--config`, `--show-config`, `--inspect`, `--manage-known`, `--manage-mined`, `--manage-ignored`, `--sync`, and completion scripts.
 - **Imports**: `anyhow::Result`, `crate::{anki, bundle, config, db, nlp, srt, ui}`
 - **Public Functions & Signatures**:
@@ -208,11 +208,13 @@
   ```
 - **Consumers**: `main.rs`, `session/mining.rs`, `session/ai_batch.rs`
 
-### `src/bundle/` (Role: domain/bundle, Lines: ~1560)
-- **Files**: `bundle.rs`, `create.rs`, `unpack.rs`, `archive.rs`, `manage.rs`, `screenshots.rs`, `fingerprint.rs`, `destination.rs`
+### `src/bundle/` (Role: domain/bundle, Lines: ~1700)
+- **Files**: `bundle.rs`, `create.rs`, `unpack.rs`, `archive.rs`, `manage.rs`, `replace.rs`, `duplicate_guard.rs`, `screenshots.rs`, `fingerprint.rs`, `destination.rs`
 - **Responsibility**: Lightweight pre-saved `.koto` archives (>98.5% space saved over video).
   - `create.rs`: Orchestrates 3-step pipeline: Opus 64kbps extraction, parallel sentence screenshot generation, and Zstandard Tar packaging.
   - `unpack.rs`: Dynamically decompresses `.koto` archives into `~/.cache/kotonoha/bundles/<hash>/` on demand.
+  - `replace.rs`: Hot-swaps internal `subtitles.srt` within existing `.koto` archives and updates manifest metadata (`--replace-sub`).
+  - `duplicate_guard.rs`: Warns and prompts confirmation when a subtitle fingerprint has already been bundled with another episode or video.
   - `archive.rs`: Tar + Zstandard encoder/decoder at compression level 3.
   - `screenshots.rs`: Batch screenshot generation with fast bilinear scaling (360p) and keyframe skipping.
   - `fingerprint.rs`: Fast partial-hashing of video and subtitle files to avoid duplicate bundle work.
@@ -220,11 +222,13 @@
   - `manage.rs`: Inspects, lists, and purges bundled packages and source video files.
 - **Consumers**: `commands.rs`, `commands/pairing.rs`, `ui/bundles.rs`
 
-### `src/media.rs` (Role: infra/media, Lines: 343)
+### `src/media.rs` (Role: infra/media, Lines: 385)
 - **Responsibility**: External process integration with `ffmpeg` and `mpv`/audio daemons.
 - **Public Functions & Signatures**:
   ```rust
   impl MediaExtractor {
+      pub fn media_source_stem(video_path: &Path) -> String;
+      pub fn card_media_stem(target_word: &str, video_path: &Path, start_ms: u64, index: usize) -> String;
       pub fn extract_preview_audio(video_path: &Path, start_ms: u64, end_ms: u64, output_path: &Path) -> Result<()>;
       pub fn extract_screenshot_with_index(video_path: &Path, timestamp_ms: u64, sentence_index: Option<usize>, output_path: &Path) -> Result<()>;
       pub fn play_preview_audio(audio_path: &Path) -> Option<std::process::Child>;

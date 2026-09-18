@@ -1,8 +1,10 @@
 pub mod archive;
 pub mod create;
 pub mod destination;
+pub mod duplicate_guard;
 pub mod fingerprint;
 pub mod manage;
+pub mod replace;
 pub mod screenshots;
 pub mod unpack;
 
@@ -11,6 +13,7 @@ mod tests;
 
 pub use create::create_bundle;
 pub use manage::*;
+pub use replace::replace_bundle_subtitle;
 pub use unpack::{read_bundle_manifest, unpack_bundle};
 
 use serde::{Deserialize, Serialize};

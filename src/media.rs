@@ -5,6 +5,49 @@ use std::process::{Command, Stdio};
 pub struct MediaExtractor;
 
 impl MediaExtractor {
+    pub fn media_source_stem(video_path: &Path) -> String {
+        let cache_dir = crate::bundle::get_bundles_cache_dir();
+        if video_path.starts_with(&cache_dir) {
+            if let Some(parent) = video_path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+            {
+                return parent.to_string();
+            }
+        }
+        video_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("media")
+            .to_string()
+    }
+
+    pub fn card_media_stem(
+        target_word: &str,
+        video_path: &Path,
+        start_ms: u64,
+        index: usize,
+    ) -> String {
+        let source = Self::media_source_stem(video_path);
+        let clean_source: String = source
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let trimmed_source = if clean_source.len() > 30 {
+            &clean_source[..30]
+        } else {
+            &clean_source
+        };
+        format!("{}_{}_{}_{}", target_word, trimmed_source, index, start_ms)
+    }
+
     pub fn extract_preview_audio(
         video_path: &Path,
         start_ms: u64,

@@ -44,10 +44,25 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!(
             "  kotonoha --completions [SHELL]     Generate shell completions (bash, zsh, fish)"
         );
+        println!("  kotonoha --replace-sub <KOTO> <SRT> Hot-swap subtitle inside an existing .koto bundle");
         println!("  kotonoha --version        | -v     Print version information");
         println!("  kotonoha --help           | -h     Show help information");
         println!("  Flags:   --force          | -f     Force re-bundling or overwriting");
         return Ok(true);
+    }
+    if arg == "--replace-sub" {
+        let bundle_arg = std::env::args().nth(2);
+        let sub_arg = std::env::args().nth(3);
+        match (bundle_arg, sub_arg) {
+            (Some(b), Some(s)) => {
+                crate::bundle::replace_bundle_subtitle(&PathBuf::from(b), &PathBuf::from(s))
+                    .await?;
+                return Ok(true);
+            }
+            _ => {
+                anyhow::bail!("Usage: kotonoha --replace-sub <bundle.koto> <new_sub.srt>");
+            }
+        }
     }
     if arg == "--completions" || arg == "completions" {
         let shell = std::env::args()

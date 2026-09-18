@@ -225,3 +225,122 @@ async fn test_bundle_management_and_cleanup() {
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[tokio::test]
+async fn test_replace_bundle_subtitle() {
+    let temp_dir = std::env::temp_dir().join(format!("koto_replace_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+    let staging_dir = temp_dir.join("staging");
+    std::fs::create_dir_all(&staging_dir).unwrap();
+
+    let manifest = BundleManifest {
+        version: 1,
+        source_video: "test.mkv".to_string(),
+        source_subtitle: "test.srt".to_string(),
+        created_at: "2026-09-02T16:00:00Z".to_string(),
+        audio_file: "audio.opus".to_string(),
+        subtitle_file: "subtitles.srt".to_string(),
+        sentence_count: 1,
+        has_screenshots: false,
+        video_fingerprint: Some("vid_fp".to_string()),
+        subtitle_fingerprint: Some("sub_fp".to_string()),
+    };
+    std::fs::write(
+        staging_dir.join("manifest.json"),
+        serde_json::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        staging_dir.join("subtitles.srt"),
+        "1\n00:00:01,000 --> 00:00:02,000\nOld subtitle\n",
+    )
+    .unwrap();
+    std::fs::write(staging_dir.join("audio.opus"), b"OPUS_AUDIO").unwrap();
+
+    let bundle_file = temp_dir.join("test_replace.koto");
+    archive::package_bundle_archive(&staging_dir, &bundle_file).expect("package test bundle");
+
+    let new_sub_file = temp_dir.join("new_subtitle.ja.srt");
+    std::fs::write(
+        &new_sub_file,
+        "1\n00:00:01,000 --> 00:00:02,000\nNew subtitle 1\n\n2\n00:00:03,000 --> 00:00:04,000\nNew subtitle 2\n",
+    )
+    .unwrap();
+
+    replace_bundle_subtitle(&bundle_file, &new_sub_file)
+        .await
+        .expect("replace subtitle");
+
+    let updated_manifest = read_bundle_manifest(&bundle_file).expect("read manifest");
+    assert_eq!(updated_manifest.sentence_count, 2);
+    assert_eq!(updated_manifest.source_subtitle, "new_subtitle.ja.srt");
+
+    let unpacked = unpack_bundle(&bundle_file).expect("unpack bundle");
+    let content = std::fs::read_to_string(&unpacked.subtitle_path).expect("read unpacked sub");
+    assert!(content.contains("New subtitle 2"));
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[tokio::test]
+async fn test_duplicate_subtitle_guard() {
+    let temp_dir = std::env::temp_dir().join(format!("koto_dup_test_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+    let sub_fp = "shared_sub_fp_12345";
+    let manifest1 = BundleManifest {
+        version: 1,
+        source_video: "Episode 01.mkv".to_string(),
+        source_subtitle: "Episode 01.srt".to_string(),
+        created_at: "2026-09-02T16:00:00Z".to_string(),
+        audio_file: "audio.opus".to_string(),
+        subtitle_file: "subtitles.srt".to_string(),
+        sentence_count: 100,
+        has_screenshots: false,
+        video_fingerprint: Some("vid_fp_ep01".to_string()),
+        subtitle_fingerprint: Some(sub_fp.to_string()),
+    };
+
+    let staging_dir = temp_dir.join("staging1");
+    std::fs::create_dir_all(&staging_dir).unwrap();
+    std::fs::write(
+        staging_dir.join("manifest.json"),
+        serde_json::to_string(&manifest1).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(staging_dir.join("subtitles.srt"), "dummy").unwrap();
+    std::fs::write(staging_dir.join("audio.opus"), "dummy").unwrap();
+
+    let bundle1 = temp_dir.join("Episode 01.koto");
+    archive::package_bundle_archive(&staging_dir, &bundle1).unwrap();
+
+    // Now check if bundling Episode 02 with the same sub_fp detects the duplicate!
+    let dup = duplicate_guard::check_duplicate_subtitle(
+        "Episode 02.mkv",
+        "vid_fp_ep02",
+        sub_fp,
+        None,
+        std::slice::from_ref(&temp_dir),
+    )
+    .await;
+
+    assert!(dup.is_some());
+    let match_dup = dup.unwrap();
+    assert_eq!(match_dup.existing_video, "Episode 01.mkv");
+
+    // But bundling Episode 01 again with the SAME video does NOT trigger duplicate
+    let no_dup = duplicate_guard::check_duplicate_subtitle(
+        "Episode 01.mkv",
+        "vid_fp_ep01",
+        sub_fp,
+        None,
+        std::slice::from_ref(&temp_dir),
+    )
+    .await;
+    assert!(no_dup.is_none());
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

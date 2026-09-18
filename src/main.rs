@@ -18,7 +18,7 @@ use console::style;
 use db::Database;
 use dict::DictionaryService;
 use srt::parse_subtitle;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ui::TerminalUi;
 
 fn print_service_status(cfg: &AppConfig, anki_connected: bool, unsynced_count: usize) {
@@ -78,6 +78,69 @@ async fn clean_cache_if_needed(cfg: &AppConfig, db: &Database) {
     }
 }
 
+fn media_display_name(path: &Path) -> String {
+    let cache_dir = crate::bundle::get_bundles_cache_dir();
+    if path.starts_with(&cache_dir) {
+        if let Some(stem) = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+        {
+            return format!("{}.koto", stem);
+        }
+    }
+
+    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let is_generic = matches!(
+        file_name.to_ascii_lowercase().as_str(),
+        "subtitles.srt"
+            | "subtitle.srt"
+            | "sub.srt"
+            | "audio.opus"
+            | "audio.mp3"
+            | "audio.m4a"
+            | "video.mkv"
+            | "video.mp4"
+    );
+
+    if is_generic {
+        if let Some(parent) = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+        {
+            if !parent.is_empty() && parent != "." {
+                return format!("{}/{}", parent, file_name);
+            }
+        }
+    }
+
+    file_name.to_string()
+}
+
+fn print_parsed_log(input_path: &Path, sub_path: &Path, vid_path: &Path, line_count: usize) {
+    if crate::bundle::is_bundle_file(input_path) || crate::bundle::is_bundle_dir(input_path) {
+        let name = input_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("bundle.koto");
+        println!(
+            " ✔ [{}] Parsed {} lines (bundled audio)",
+            style(name).cyan(),
+            line_count
+        );
+    } else {
+        let sub_name = media_display_name(sub_path);
+        let vid_name = media_display_name(vid_path);
+        println!(
+            " ✔ [{}] Parsed {} lines (paired with {})",
+            style(sub_name).cyan(),
+            line_count,
+            style(vid_name).green()
+        );
+    }
+}
+
 fn load_and_pair_inputs(input_paths: &[PathBuf]) -> Result<Vec<srt::SubtitleSentence>> {
     let mut all_sentences = Vec::new();
     let mut paired_count = 0;
@@ -101,12 +164,7 @@ fn load_and_pair_inputs(input_paths: &[PathBuf]) -> Result<Vec<srt::SubtitleSent
                 for s in &mut sentences {
                     s.video_path = Some(vid_path.clone());
                 }
-                println!(
-                    " ✔ [{}] Parsed {} lines (paired with {})",
-                    style(sub_path.file_name().and_then(|n| n.to_str()).unwrap_or("")).cyan(),
-                    sentences.len(),
-                    style(vid_path.file_name().and_then(|n| n.to_str()).unwrap_or("")).green()
-                );
+                print_parsed_log(input_path, &sub_path, &vid_path, sentences.len());
                 all_sentences.extend(sentences);
                 paired_count += 1;
             }
@@ -195,4 +253,34 @@ async fn main() -> Result<()> {
     }
 
     session::run_session(sentences, &cfg, db, http_client).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_media_display_name_generic_file_uses_parent() {
+        let p = Path::new("/anime/Episode 01/subtitles.srt");
+        assert_eq!(media_display_name(p), "Episode 01/subtitles.srt");
+
+        let p2 = Path::new("/anime/Episode 01/audio.opus");
+        assert_eq!(media_display_name(p2), "Episode 01/audio.opus");
+    }
+
+    #[test]
+    fn test_media_display_name_standard_file_returns_filename() {
+        let p = Path::new("/anime/[SubsPlease] Yuru Camp - 01.ja.srt");
+        assert_eq!(media_display_name(p), "[SubsPlease] Yuru Camp - 01.ja.srt");
+
+        let p2 = Path::new("/anime/[SubsPlease] Yuru Camp - 01.mkv");
+        assert_eq!(media_display_name(p2), "[SubsPlease] Yuru Camp - 01.mkv");
+    }
+
+    #[test]
+    fn test_media_display_name_bundle_cache_recovers_koto() {
+        let cache_dir = crate::bundle::get_bundles_cache_dir();
+        let p = cache_dir.join("Yuru Camp S3 - 01").join("subtitles.srt");
+        assert_eq!(media_display_name(&p), "Yuru Camp S3 - 01.koto");
+    }
 }

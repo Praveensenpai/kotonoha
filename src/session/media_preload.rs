@@ -103,9 +103,13 @@ pub async fn preload_batch_media(
             .progress_chars("█▓▒░"),
     );
     candidates_to_process.par_iter().for_each(|cand| {
-        let audio_path = cfg
-            .media_dir
-            .join(format!("{}_{}.opus", cand.target_word, cand.sentence.index));
+        let stem = MediaExtractor::card_media_stem(
+            &cand.target_word,
+            &cand.video_path,
+            cand.sentence.start_ms,
+            cand.sentence.index,
+        );
+        let audio_path = cfg.media_dir.join(format!("{}.opus", stem));
         if !audio_path.exists() && !cand.video_path.as_os_str().is_empty() {
             let _ = MediaExtractor::extract_preview_audio(
                 &cand.video_path,
@@ -128,9 +132,13 @@ pub async fn preload_batch_media(
             .progress_chars("█▓▒░"),
     );
     candidates_to_process.par_iter().for_each(|cand| {
-        let image_path = cfg
-            .media_dir
-            .join(format!("{}_{}.jpg", cand.target_word, cand.sentence.index));
+        let stem = MediaExtractor::card_media_stem(
+            &cand.target_word,
+            &cand.video_path,
+            cand.sentence.start_ms,
+            cand.sentence.index,
+        );
+        let image_path = cfg.media_dir.join(format!("{}.jpg", stem));
         if !image_path.exists() && !cand.video_path.as_os_str().is_empty() {
             let mid_ms = cand.sentence.start_ms
                 + (cand.sentence.end_ms.saturating_sub(cand.sentence.start_ms)) / 2;

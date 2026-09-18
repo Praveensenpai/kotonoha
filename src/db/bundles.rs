@@ -64,6 +64,18 @@ impl Database {
         Ok(None)
     }
 
+    pub async fn find_bundle_by_subtitle_fingerprint(
+        &self,
+        subtitle_fingerprint: &str,
+    ) -> Result<Option<bundled_media::Model>> {
+        BundledMedia::find()
+            .filter(bundled_media::Column::SubtitleFingerprint.eq(subtitle_fingerprint))
+            .order_by_desc(bundled_media::Column::Id)
+            .one(&self.conn)
+            .await
+            .context("Failed to query bundled media by subtitle fingerprint")
+    }
+
     pub async fn get_all_bundled_media(&self) -> Result<Vec<bundled_media::Model>> {
         BundledMedia::find()
             .order_by_desc(bundled_media::Column::Id)
