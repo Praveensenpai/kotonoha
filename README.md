@@ -1,37 +1,101 @@
-# 🌸 言の葉 (kotonoha)
+# 🌸 言の葉 (kotonoha) ✨
 
-> **Blazing-fast CLI Japanese $i+1$ sentence miner & card generator for passive immersion.**
+> **Blazing-fast Japanese $i+1$ sentence miner, naturalness quality scorer & media card generator for passive immersion.**
 
-[![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Sudachi](https://img.shields.io/badge/NLP-sudachi.rs-pink.svg)](https://github.com/WorksApplications/sudachi.rs)
+[![Latest Release](https://img.shields.io/github/v/release/Praveensenpai/kotonoha?style=for-the-badge&color=cba6f7&logo=github)](https://github.com/Praveensenpai/kotonoha/releases)
+[![Rust Edition](https://img.shields.io/badge/Rust-2021%20Edition-DEA584?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/Platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/Praveensenpai/kotonoha)
+[![NLP Engine](https://img.shields.io/badge/NLP-sudachi.rs-f38ba8?style=for-the-badge)](https://github.com/WorksApplications/sudachi.rs)
+[![License](https://img.shields.io/badge/License-MIT-89b4fa?style=for-the-badge)](LICENSE)
 
-> [!WARNING]
-> **🚧 Project Status: Active Beta / Under Heavy Development**
-> `kotonoha` is currently in early active development (Beta). Features, tokenization rules, and sentence mining logic are actively evolving and not yet fully stable for production use. Expect bugs or incomplete functionality during this initial beta phase.
-
-`kotonoha` is a high-performance terminal utility that scans Japanese anime subtitle files (`.srt` / `.ass`) and video files (`.mkv` / `.mp4`), extracts $i+1$ candidate sentences (sentences containing **exactly one unknown vocabulary word**), renders an interactive TUI card preview with definitions & audio snippets, and saves mined cards to a local SQLite database or Anki.
-
----
-
-## ✅ Prerequisites
-
-- **Optional subtitle setup:** Use [SubSink](https://github.com/Praveensenpai/subsink) to download, generate, or synchronize a Japanese subtitle when you do not already have one.
-- A matching Japanese subtitle file (`.srt` or `.ass`) must be alongside your anime video for mining cards.
-- `ffmpeg` and `mpv` are required for audio and screenshot previews.
+<p align="center">
+  <a href="#-quick-start">⚡ Quick Install</a> •
+  <a href="#-key-features">✨ Key Features</a> •
+  <a href="#-pipeline--architecture">🔄 Architecture Flow</a> •
+  <a href="#-usage">📖 Usage</a> •
+  <a href="#%EF%B8%8F-cli-reference">🛠️ CLI Reference</a> •
+  <a href="#-koto-bundles">📦 .koto Bundles</a>
+</p>
 
 ---
 
-## ⚡ Key Features
+> [!TIP]
+> **Zero API Bottlenecks · 100% Offline-Capable · Instant Grammar Scoring**  
+> `kotonoha` eliminates fragmented, incomplete dialogue cards using an on-device Japanese **`QualityScorer`**. No cloud latency, no manual sentence pruning—just clean, contextual Anki cards with synchronized audio & screenshots in seconds.
 
-- **⚡ Sub-Millisecond Morphological Analysis**: Powered by the official [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) engine from WorksApplications.
-- **🎯 Smart $i+1$ Candidate Filtering**: Automatically identifies sentences containing 1 unknown content word and ranks them by JPDB frequency and sentence length.
-- **🗺️ Sentence Explorer & Cherry-Picker**: Browse subtitle sentences by difficulty tier ($i+0 \to i+3+$) with snappy offline JMdict lookups, auto-play audio on scroll, and cherry-pick cards (`[✓]`) for batch review.
-- **🖥️ 100% Terminal TUI**: Fully keyboard-driven interactive card review using [`inquire`](https://crates.io/crates/inquire) (arrow keys `↑`/`↓` and `Enter`).
-- **🎧 Non-Blocking Preview Audio**: Background audio playback via `mpv` daemon—zero terminal freeze or input locking.
-- **🔎 Subtitle Inspector Playback**: In `kotonoha --inspect`, press `Space` to hear the selected subtitle line without leaving the inspector.
-- **🎬 Single-Pass Media Extraction**: Extracts precise audio snippets (`.mp3`) and screenshot thumbnails (`.jpg`) via `ffmpeg`.
-- **📦 Embedded Zero-Dependency Database**: Local SQLite storage (`~/.local/share/kotonoha/kotonoha.db`) for known vocabulary, ignored words, and mined card history.
+---
+
+## 🔄 Pipeline & Architecture
+
+```text
+  ┌────────────────────────┐      ┌────────────────────────┐
+  │  Anime Video (.mkv)    │      │  Subtitles (.srt/.ass) │
+  └───────────┬────────────┘      └───────────┬────────────┘
+              │                               │
+              ▼                               ▼
+       [ FFmpeg Demux ]               [ Sudachi.rs Tokenizer ]
+              │                               │
+              │                      (Morphological Analysis)
+              │                               │
+              ▼                               ▼
+      ┌───────────────┐              ┌────────────────────────┐
+      │ Audio Snippet │              │   i+1 Candidate Filter │
+      │ & Screenshots │              │  (Exactly 1 Unknown)   │
+      └───────┬───────┘              └───────────┬────────────┘
+              │                                  │
+              │                                  ▼
+              │                      ┌────────────────────────┐
+              │                      │ Naturalness & Quality  │
+              │                      │ Scorer (QualityScorer) │
+              │                      └───────────┬────────────┘
+              │                                  │
+              └────────────────┬─────────────────┘
+                               │
+                               ▼
+               ┌───────────────────────────────┐
+               │    Interactive Terminal TUI   │
+               │   (Ratatui / Inquire Preview) │
+               └───────────────┬───────────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              ▼                                 ▼
+      [ SQLite Database ]               [ AnkiConnect API ]
+    (~/.local/share/kotonoha)         (Audio, Image & Cards)
+```
+
+---
+
+## ✨ Key Features
+
+- **🧠 Intelligent Naturalness & i+1 Quality Scorer (`v0.0.73+`)**:
+  - Replaces naive shortest-character heuristics with multi-factor Japanese linguistic evaluation.
+  - **Defect Gating**: Penalizes cut-off thoughts ending in dangling connectives (`て…`, `けど…`, `たら…`) or hanging case particles (`彼が…`, `本当は…`).
+  - **Case Marker Relational Bonus**: Rewards sentences with explicit case particles (`を`, `に`, `が`, `で`) that establish clear grammatical context for the target word.
+  - **Length Sweet-Spot**: Distributes scores centered around 14–32 characters, eliminating both 4-character grunts and overwhelming run-on subtitles.
+  - **Live Star Ratings**: Displays visual ratings (`★★★★★` to `★☆☆☆☆`) on the Mining Rank row in the TUI card preview.
+
+- **⚡ Sub-Millisecond Morphological Analysis**:
+  - Powered by the official WorksApplications [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) engine.
+  - Built-in grammar mergers for colloquial speech (`ねえ` $\to$ `ない`), small-tsu contractions (`っ`), and causative-passive verb inflections (`させられる`, `ちゃった`, `てしまう`).
+
+- **📦 Ultra-Compact `.koto` Learning Bundles**:
+  - Compresses heavy anime video files (1.4 GB+) into lightweight standalone learning archives (~14 MB, **>98% storage saved**).
+  - Bundles subtitle tracks, 64kbps Opus audio slices, and 360p JPG thumbnails inside solid Tar + Zstandard archives.
+  - **Hot-Swap Replacement**: Swap or align subtitles (`kotonoha bundle replace`) in milliseconds without re-encoding audio or re-taking screenshots.
+  - **Duplicate Guard**: Automatically verifies subtitle fingerprints to protect against mis-pairing episodes.
+
+- **🗺️ Sentence Explorer & Cherry-Picker (`--explore` / `-e`)**:
+  - Interactive full-screen TUI powered by `ratatui`.
+  - Classifies every line into difficulty tiers: $i+0$ (known), $i+1$ (target), $i+2$, $i+3+$.
+  - Debounced auto-play audio on scroll (`↑`/`↓` / `k`/`j`), multi-card selection (`[✓]`), and instant offline dictionary lookup.
+
+- **🎧 Headless Non-Blocking Audio Preview**:
+  - Dedicated background playback daemon via `mpv` IPC sockets—zero terminal freezing or input stalling.
+  - Press `Space` in the Subtitle Inspector (`--inspect`) to hear the line instantly.
+
+- **📚 Offline Dictionary & Yomitan Integration**:
+  - Dual-mode dictionary engine: Instant local SQLite queries (`JMdict_english` & `kanjium_pitch_accents`) with fallback to Jisho API.
+  - Extracts clean sense definitions, parts of speech, and pitch accent classifications (`Heiban [0]`, `Atamadaka [1]`, `Nakadaka [n]`).
 
 ---
 
@@ -39,13 +103,11 @@
 
 ### 🪄 One-Liner Magic (Recommended)
 
-Paste this into your terminal to install `kotonoha` automatically:
+Paste this into your terminal to install or update `kotonoha` automatically:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/Praveensenpai/kotonoha/main/install.sh | bash
 ```
-
-<br>
 
 ### 🛠️ Building From Source
 
@@ -62,73 +124,115 @@ install -Dm 644 completions/kotonoha.bash ~/.local/share/bash-completion/complet
 ## 📖 Usage
 
 ### 1. Interactive TUI File Picker
-Simply run `kotonoha` without arguments to launch the interactive terminal file picker:
+Run `kotonoha` without arguments to launch the interactive directory scanner:
 ```bash
 kotonoha
 ```
 
-### 2. Direct File Argument
-Pass a subtitle or video file path directly:
+### 2. Direct File Mining
+Pass an anime video or subtitle file directly:
 ```bash
-kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
+kotonoha "Frieren - 01.mkv"
 ```
 
-The subtitle file must be next to the video and have a matching filename. If
-you need to generate subtitles first, try [SubSink](https://github.com/Praveensenpai/subsink).
-
-### 3. Subtitle Inspector
-
-Inspect subtitle lines and hear the selected line without leaving the TUI:
-
+### 3. Subtitle Inspector (`--inspect` / `-i`)
+Review subtitle timestamps and hear selected dialogue on demand:
 ```bash
-kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.ja.srt"
+kotonoha --inspect "Frieren - 01.ja.srt"
 ```
+- `↑` / `↓` : Navigate subtitle cards
+- `Space` : Play/replay selected audio segment
+- `Type` : Filter text dynamically; `Backspace` clears filter
 
-`↑`/`↓` moves, `Space` plays or replays the selected subtitle, typing filters lines, and `Backspace` clears the filter. A matching video file enables playback.
-
-### 4. Pre-saving Lightweight Bundles (`.koto`)
-
-Compress large anime videos (1.2 GB+) into ultra-compact **`.koto`** learning packages (~14 MB, >98.5% space saved) with solid Tar + Zstandard compression, 64kbps Opus audio, and 360p screenshots:
-
+### 4. Sentence Explorer & Cherry-Picker (`--explore` / `-e`)
+Browse the entire episode by difficulty tier and cherry-pick cards for Anki:
 ```bash
-# Create a .koto bundle from a video + subtitle
-kotonoha --bundle "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
-
-# Mine cards or inspect directly from the lightweight bundle (no MKV needed!)
-kotonoha "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
-kotonoha --inspect "Ore wo Suki nano wa Omae dake ka yo - 01.koto"
-```
-
-### 5. Sentence Explorer & Cherry-Picker (`--explore` / `-e`)
-
-Browse all subtitle sentences categorized by difficulty tier ($i+0 \to i+3+$) with instant offline JMdict definitions and auto-play audio on scroll:
-
-```bash
-kotonoha --explore "Ore wo Suki nano wa Omae dake ka yo - 01.mkv"
+kotonoha --explore "Frieren - 01.mkv"
 ```
 
 | Key | Action |
 | :--- | :--- |
-| `↑` / `↓` or `k` / `j` | Navigate sentences (debounced background audio snippet playback) |
+| `↑` / `↓` or `k` / `j` | Navigate sentences (auto-plays audio snippet) |
 | `←` / `→` or `Tab` | Switch target unknown word in multi-unknown sentences |
-| `Space` or `x` | Toggle card selection (`[✓]`) for review |
-| `Shift` + `X` | Toggle all unknown words in active sentence |
-| `Shift` + `C` | Clear all selected cards |
-| `Enter` | Transition selected cards directly to standard Card Review UI |
-| `r` | Replay audio snippet for active sentence |
-| `a` | Toggle auto-play audio on/off |
+| `Space` or `x` | Toggle single card selection (`[✓]`) |
+| `Shift` + `X` | Select all unknown words in current sentence |
+| `Shift` + `C` | Clear all selections |
+| `Enter` | Export selected cards into interactive Review / Mining session |
+| `r` | Replay audio for active sentence |
+| `a` | Toggle auto-play audio on scroll |
 | `s` | Toggle sort: Difficulty ($i+0 \to i+3+$) ⇄ Chronological Timeline |
-| `f` | Cycle tier filters: `All`, `[i+0]`, `[i+1] ★`, `[i+2]`, `[i+3+]` |
-| `/` | Live incremental search across subtitle text and unknown words |
+| `f` | Cycle difficulty filters: `All`, `[i+0]`, `[i+1] ★`, `[i+2]`, `[i+3+]` |
+| `/` | Incremental search across Japanese text and vocabulary |
 | `Esc` / `q` | Exit Explorer |
 
 ---
 
+## 📦 .koto Bundles
+
+Pre-save entire anime series into ultra-compact, portable `.koto` archives:
+
+```bash
+# 1. Create bundle from video + subtitle (1.4 GB MKV -> ~14 MB .koto)
+kotonoha --bundle "Frieren - 01.mkv"
+
+# 2. Mine or inspect anywhere without the original video file
+kotonoha "Frieren - 01.koto"
+kotonoha --explore "Frieren - 01.koto"
+
+# 3. Hot-swap updated subtitles without re-encoding media
+kotonoha bundle replace "Frieren - 01.koto" "Frieren - 01.improved.srt"
+
+# 4. Open interactive bundle manager
+kotonoha --bundles
+```
+
+---
+
+## 🛠️ CLI Reference
+
+| Command / Flag | Short | Description |
+| :--- | :--- | :--- |
+| `kotonoha` | | Launch interactive TUI file picker |
+| `kotonoha <FILE>` | | Mine cards from video, subtitle, or `.koto` archive |
+| `--bundle [FILE]` | `-b` | Pre-save video into ultra-compact `.koto` bundle |
+| `--bundles` | `-B` | Interactive bundle manager (inspect, play, purge) |
+| `bundle replace <KOTO> <SRT>` | | Hot-swap subtitle track inside existing bundle |
+| `--clean-bundled` | `-C` | Purge raw source media after successful bundling |
+| `--inspect [FILE]` | `-i` | Subtitle line inspector with `Space` audio playback |
+| `--explore [FILE]` | `-e` | Full-screen sentence difficulty explorer & picker |
+| `--config` | `-c` | Interactive configuration editor (storage, Anki, AI) |
+| `--show-config` | `-S` | Display active configuration settings |
+| `--manage-known` | `-k` | View and edit known vocabulary database |
+| `--manage-mined` | `-m` | View and edit mined vocabulary cards |
+| `--manage-ignored`| `-I` | View and edit ignored words list |
+| `--sync` | `-s` | Push pending cards to Anki via AnkiConnect |
+| `--completions [SHELL]` | | Output shell completions (`bash`, `zsh`, `fish`) |
+| `--force` | `-f` | Force overwrite or re-encoding |
+| `--version` | `-v` | Display version information |
+| `--help` | `-h` | Display help screen |
+
+---
+
+## ⚙️ Configuration
+
+`kotonoha` stores its configuration in `~/.config/kotonoha/config.toml`:
+
+```toml
+# Storage strategy for media bundles
+bundle_dir = "~/.local/share/kotonoha/bundles"
+
+# AnkiConnect integration
+anki_deck = "Japanese::Immersion"
+anki_model = "Japanese (Kotonoha)"
+anki_url = "http://127.0.0.1:8765"
+
+# Optional Gemini AI contextual parsing
+gemini_api_key = "AIzaSy..."
+```
+
+---
+
 ## ⌨️ Shell Autocompletion
-
-`kotonoha` provides full shell autocompletion for flags, subcommands, and media files.
-
-### Instant Generation
 
 ```bash
 # Bash:
@@ -141,52 +245,8 @@ kotonoha --completions zsh > "${fpath[1]}/_kotonoha"
 kotonoha --completions fish > ~/.config/fish/completions/kotonoha.fish
 ```
 
-### Permanent Installation
-
-For Bash users:
-```bash
-mkdir -p ~/.local/share/bash-completion/completions
-kotonoha --completions bash > ~/.local/share/bash-completion/completions/kotonoha
-```
-
----
-
-## 🛠️ CLI Reference
-
-| Command / Flag | Short | Description |
-| :--- | :--- | :--- |
-| `kotonoha` | | Launch interactive TUI file picker |
-| `kotonoha <FILE>` | | Parse specific subtitle, video, or `.koto` file |
-| `--bundle [FILE]` | `-b` | Pre-save video into lightweight `.koto` archive |
-| `--bundles` | `-B` | Interactive bundle manager (inspect, play, delete) |
-| `--clean-bundled` | `-C` | Remove original source video/sub files of saved bundles |
-| `--config` | `-c` | Interactive configuration editor (storage strategy, AI, Anki) |
-| `--show-config` | `-S` | Display active configuration settings |
-| `--inspect [FILE]` | `-i` | Subtitle inspector with playback (`Space` plays line) |
-| `--explore [FILE]` | `-e` | Sentence difficulty explorer & card cherry-picker |
-| `--manage-known` | `-k` | View and edit known vocabulary database |
-| `--manage-mined` | `-m` | View and edit mined vocabulary cards |
-| `--manage-ignored`| `-I` | View and edit ignored words list |
-| `--sync` | `-s` | Push pending mined cards to AnkiConnect |
-| `--completions [SHELL]` | | Output shell completion script (`bash`, `zsh`, `fish`) |
-| `--force` | `-f` | Force re-encoding or overwriting existing bundles |
-| `--version` | `-v` | Print version information |
-| `--help` | `-h` | Display help screen |
-
----
-
-## 🛠️ Architecture & Tech Stack
-
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Language** | Rust 2021 | Native speed & memory safety |
-| **Japanese NLP** | [`sudachi.rs`](https://github.com/WorksApplications/sudachi.rs) | WorksApplications Japanese tokenizer & POS analyzer |
-| **Database** | SQLite (`SeaORM`) | Local storage for known words & mined cards |
-| **TUI Engine** | `ratatui`, `inquire` & `console` | Keyboard-driven subtitle inspector, prompts, and card boxes |
-| **Media Engine** | `ffmpeg` & `mpv` | Headless audio extraction and background preview |
-
 ---
 
 ## 📜 License
 
-Distributed under the [MIT License](LICENSE).
+Distributed under the [MIT License](LICENSE) © [Praveensenpai](https://github.com/Praveensenpai).
