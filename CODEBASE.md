@@ -176,19 +176,39 @@
   - `verbs.rs`: Causative-passive inflections (させられる, ちゃった, てしまう), auxiliary stems, potential forms.
 - **Consumers**: `src/nlp.rs`
 
-### `src/miner.rs` (Role: domain/miner, Lines: 261)
-- **Responsibility**: Core $i+1$ candidate discovery algorithm. Filters sentences with exactly one unknown content word, respects user ignored words (names are only bypassed if explicitly in `ignored_words`), allows mining unignored names and katakana loanwords, scores candidates by frequency, density tier, and brevity.
-- **Imports**: `crate::{nlp::{JapaneseTokenizer, TokenInfo}, srt::SubtitleSentence}`
+### `src/miner.rs` (Role: domain/miner, Lines: 349)
+- **Responsibility**: Core $i+1$ candidate discovery algorithm. Filters sentences with exactly one unknown content word, respects user ignored words, scores and ranks candidates using multi-factor sentence naturalness/completeness (`QualityScorer`), frequency, and density tier.
+- **Submodules**: `pub mod quality;` (`src/miner/quality.rs`)
+- **Imports**: `crate::{nlp::{JapaneseTokenizer, TokenInfo}, srt::SubtitleSentence}`, `quality::QualityScorer`
 - **Types & Enums**:
   ```rust
-  pub struct CandidateSentence { pub sentence: SubtitleSentence, pub target_word: String, pub target_reading: String, pub known_context_words: Vec<String>, pub unknown_context_words: Vec<String>, pub ignored_context_words: Vec<String>, pub episode_freq: usize, pub density_tier: usize, pub video_path: PathBuf }
+  pub struct CandidateSentence { pub sentence: SubtitleSentence, pub target_word: String, pub target_reading: String, pub known_context_words: Vec<String>, pub unknown_context_words: Vec<String>, pub ignored_context_words: Vec<String>, pub episode_freq: usize, pub density_tier: usize, pub quality_score: f32, pub video_path: PathBuf }
   pub struct MiningEngine { tokenizer: JapaneseTokenizer }
+  pub struct BuildCandidateParams<'a> { pub sentence: &'a SubtitleSentence, pub target_word: &'a str, pub tokens: &'a [TokenInfo], pub known_words: &'a HashSet<String>, pub ignored_words: &'a HashSet<String> }
   ```
 - **Public Functions & Signatures**:
   ```rust
-  impl MiningEngine { pub fn new(tokenizer: JapaneseTokenizer) -> Self; pub fn find_candidates(&self, sentences: &[SubtitleSentence], known_words: &HashSet<String>, ignored_words: &HashSet<String>) -> Vec<CandidateSentence>; }
+  impl MiningEngine {
+      pub fn new(tokenizer: JapaneseTokenizer) -> Self;
+      pub fn find_candidates(&self, sentences: &[SubtitleSentence], known_words: &HashSet<String>, ignored_words: &HashSet<String>) -> Vec<CandidateSentence>;
+      pub fn build_candidate(p: BuildCandidateParams<'_>) -> CandidateSentence;
+  }
   ```
-- **Consumers**: `src/session.rs`
+- **Consumers**: `src/session.rs`, `src/ui/explorer/state.rs`
+
+### `src/miner/quality.rs` (Role: domain/quality, Lines: 276)
+- **Responsibility**: Multi-factor Japanese sentence naturalness, completeness, and flashcard suitability evaluator (`QualityScorer`). Evaluates predicate terminations (polite/terminal forms vs. dangling connective/particle cut-offs), case marker relationships, length distribution curves (14-32 char sweet spot), and interjection/grunt penalties.
+- **Types & Enums**:
+  ```rust
+  pub struct QualityScorer;
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  impl QualityScorer {
+      pub fn score(text: &str, target_word: &str, tokens: &[TokenInfo]) -> f32;
+  }
+  ```
+- **Consumers**: `src/miner.rs`
 
 ### `src/dict/` (Role: domain/dict, Lines: ~900)
 - **Files**: `dict.rs`, `service.rs`, `offline.rs`, `pitch.rs`, `context.rs`
@@ -395,6 +415,9 @@ cargo fmt --check
   - Fixed proper noun bypass issue in `src/miner.rs`, `src/session.rs`, and `src/ui/card.rs`: stopped unconditionally bypassing proper nouns; only skip them if explicitly present in `ignored_words`.
   - Tightened `is_proper_noun` in `src/nlp.rs` to only tag tokens with explicit proper/person/place name POS tags, eliminating overbroad Katakana noun misclassification and allowing standard Katakana vocabulary to be mined.
   - Added unit tests in `src/nlp/tests.rs` and `src/miner.rs` covering proper noun classification, ignored names, and katakana loanword mining.
-  - Created authoritative `CODEBASE.md` semantic digest adhering strictly to the `codebase-digest` skill specification.
-  - Installed and synchronized `codebase-digest` skill into `.agents/skills/codebase-digest/SKILL.md` and global agent skill directories.
-  - Fully documented the 13 major modules, SeaORM SQLite schema, and candidate ranking algorithms.
+- **2026-09-18 (v0.0.73: Naturalness & i+1 Quality Scorer)**:
+  - Added `src/miner/quality.rs` (`QualityScorer`): multi-factor Japanese sentence naturalness, grammatical completeness, and flashcard suitability evaluator.
+  - Replaced naive shortest-character-count heuristic with `QualityScorer` composite evaluation: predicate/copula termination checks, dangling connective/particle gating, case marker relational analysis, length sweet-spot curve (14-32 chars), and interjection penalty.
+  - Added `quality_score: f32` to `CandidateSentence` and `CardRenderParams`.
+  - Added star rating display (`★★★★★`) to the interactive terminal card preview UI (`src/ui/card.rs`, `src/session/card_actions.rs`).
+  - Added full test suite in `src/miner/quality/tests.rs` (83/83 tests passing), including real-world anime subtitle dataset verification on *Yuru Camp* Ep 01.

@@ -1,3 +1,6 @@
+pub mod quality;
+
+use self::quality::QualityScorer;
 use crate::nlp::JapaneseTokenizer;
 use crate::srt::SubtitleSentence;
 use std::collections::HashSet;
@@ -12,6 +15,7 @@ pub struct CandidateSentence {
     pub ignored_context_words: Vec<String>,
     pub episode_freq: usize,
     pub density_tier: usize,
+    pub quality_score: f32,
     pub video_path: std::path::PathBuf,
 }
 
@@ -19,7 +23,13 @@ fn is_better_candidate(candidate: &CandidateSentence, existing: &CandidateSenten
     if candidate.density_tier != existing.density_tier {
         return candidate.density_tier < existing.density_tier;
     }
-    candidate.sentence.text.chars().count() < existing.sentence.text.chars().count()
+    let score_diff = candidate.quality_score - existing.quality_score;
+    if score_diff.abs() > 0.05 {
+        return score_diff > 0.0;
+    }
+    let dist_cand = (candidate.sentence.text.chars().count() as isize - 22).abs();
+    let dist_exist = (existing.sentence.text.chars().count() as isize - 22).abs();
+    dist_cand < dist_exist
 }
 
 pub struct MiningEngine {
@@ -64,6 +74,7 @@ impl MiningEngine {
                         1 => 4,
                         n => n,
                     };
+                    let quality_score = QualityScorer::score(&sub.text, &target_word, &tokens);
 
                     let candidate = CandidateSentence {
                         sentence: sub.clone(),
@@ -74,6 +85,7 @@ impl MiningEngine {
                         ignored_context_words: ignored_context,
                         episode_freq,
                         density_tier,
+                        quality_score,
                         video_path: sub.video_path.clone().unwrap_or_default(),
                     };
 
@@ -97,11 +109,14 @@ impl MiningEngine {
                 .cmp(&a.episode_freq)
                 .then_with(|| a.density_tier.cmp(&b.density_tier))
                 .then_with(|| {
-                    a.sentence
-                        .text
-                        .chars()
-                        .count()
-                        .cmp(&b.sentence.text.chars().count())
+                    b.quality_score
+                        .partial_cmp(&a.quality_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .then_with(|| {
+                    let dist_a = (a.sentence.text.chars().count() as isize - 22).abs();
+                    let dist_b = (b.sentence.text.chars().count() as isize - 22).abs();
+                    dist_a.cmp(&dist_b)
                 })
         });
         candidates
@@ -199,6 +214,7 @@ impl MiningEngine {
             1 => 4,
             n => n,
         };
+        let quality_score = QualityScorer::score(&p.sentence.text, p.target_word, p.tokens);
         CandidateSentence {
             sentence: p.sentence.clone(),
             target_word: p.target_word.to_string(),
@@ -208,6 +224,7 @@ impl MiningEngine {
             ignored_context_words: ignored_context,
             episode_freq: 1,
             density_tier,
+            quality_score,
             video_path: p.sentence.video_path.clone().unwrap_or_default(),
         }
     }
@@ -292,5 +309,41 @@ mod tests {
         let candidates = engine.find_candidates(&[sentence], &known, &ignored);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].target_word, "コーヒー");
+    }
+
+    #[test]
+    fn complete_sentence_preferred_over_fragment_for_same_target() {
+        let tokenizer = JapaneseTokenizer::new().unwrap();
+        let engine = MiningEngine::new(tokenizer);
+
+        let fragment = SubtitleSentence {
+            index: 1,
+            start_ms: 0,
+            end_ms: 1000,
+            text: "そうか、コーヒー。".to_string(),
+            video_path: None,
+        };
+
+        let rich = SubtitleSentence {
+            index: 2,
+            start_ms: 2000,
+            end_ms: 4000,
+            text: "温かいコーヒーを飲むよ。".to_string(),
+            video_path: None,
+        };
+
+        let mut known = HashSet::new();
+        known.insert("温かい".to_string());
+        known.insert("飲む".to_string());
+        let ignored = HashSet::new();
+
+        let candidates = engine.find_candidates(&[fragment, rich], &known, &ignored);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].target_word, "コーヒー");
+        assert_eq!(
+            candidates[0].sentence.text, "温かいコーヒーを飲むよ。",
+            "MiningEngine must pick the complete context sentence over the fragment"
+        );
+        assert!(candidates[0].quality_score > 0.70);
     }
 }

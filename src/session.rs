@@ -232,6 +232,7 @@ pub fn collect_review_known_candidates(
                         ignored_context_words: ignored_context,
                         episode_freq: 1,
                         density_tier: 1,
+                        quality_score: 1.0,
                         video_path,
                     });
                 }

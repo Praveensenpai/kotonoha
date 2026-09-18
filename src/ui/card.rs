@@ -21,6 +21,7 @@ pub struct CardRenderParams<'a> {
     pub pitch: &'a str,
     pub episode_freq: usize,
     pub density_tier: usize,
+    pub quality_score: f32,
     pub definition: &'a str,
     pub known_context: &'a [String],
     pub unknown_context: &'a [String],
@@ -146,6 +147,16 @@ pub fn render_progress(
     );
 }
 
+fn format_quality_label(score: f32) -> &'static str {
+    match score {
+        s if s >= 0.80 => "★★★★★",
+        s if s >= 0.65 => "★★★★☆",
+        s if s >= 0.45 => "★★★☆☆",
+        s if s >= 0.25 => "★★☆☆☆",
+        _ => "★☆☆☆☆",
+    }
+}
+
 pub fn render_card(p: CardRenderParams<'_>) {
     let CardRenderParams {
         rank,
@@ -155,6 +166,7 @@ pub fn render_card(p: CardRenderParams<'_>) {
         pitch,
         episode_freq,
         density_tier,
+        quality_score,
         definition,
         known_context,
         unknown_context,
@@ -271,7 +283,12 @@ pub fn render_card(p: CardRenderParams<'_>) {
         "{}",
         lrow(
             "Mining Rank:",
-            &format!("{}x in Ep | {}", episode_freq, tier_label)
+            &format!(
+                "{}x in Ep | {} | Quality: {}",
+                episode_freq,
+                tier_label,
+                format_quality_label(quality_score)
+            )
         )
     );
 

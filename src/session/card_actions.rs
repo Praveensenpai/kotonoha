@@ -283,6 +283,7 @@ pub fn render_current_card(ctx: &CardActionContext<'_>) {
         pitch: &ctx.dict_info.pitch_accent,
         episode_freq: ctx.cand.episode_freq,
         density_tier: ctx.cand.density_tier,
+        quality_score: ctx.cand.quality_score,
         definition: &ctx.dict_info.definition,
         known_context: &ctx.cand.known_context_words,
         unknown_context: &ctx.cand.unknown_context_words,
