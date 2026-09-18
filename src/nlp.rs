@@ -112,6 +112,7 @@ impl JapaneseTokenizer {
         let tokenizer = StatelessTokenizer::new(&self.dict);
         let morphemes = tokenizer.tokenize(text, Mode::C, false)?;
 
+        let mut prev_is_te_or_de = false;
         let mut tokens = Vec::new();
         for node in morphemes.iter() {
             let surface = node.surface().to_string();
@@ -125,6 +126,16 @@ impl JapaneseTokenizer {
             let pos_sub = pos.get(1).map(|s| s.as_str()).unwrap_or("");
             let pos_type = pos.get(4).map(|s| s.as_str()).unwrap_or("");
             let pos_form = pos.get(5).map(|s| s.as_str()).unwrap_or("");
+
+            let is_subsidiary_verb =
+                pos_category == "動詞" && pos_sub == "非自立可能" && prev_is_te_or_de;
+
+            if pos_category != "空白" {
+                prev_is_te_or_de = (pos_category == "助詞"
+                    && matches!(surface.as_str(), "て" | "で"))
+                    || (pos_category == "動詞"
+                        && (surface.ends_with('て') || surface.ends_with('で')));
+            }
 
             let dictionary_form = mergers::normalize_subsidiary_verb_lemma(
                 &surface,
@@ -178,14 +189,14 @@ impl JapaneseTokenizer {
                     | "チッ"
             );
 
-            // Filter symbols, interjections, punctuation, particles, numbers, and non-independent auxiliary verbs
+            // Filter symbols, interjections, punctuation, particles, numbers, and subsidiary verbs
             let is_symbol_or_junk = (is_audio_grunt
                 || matches!(
                     pos_category,
-                    "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞"
+                    "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞" | "空白"
                 )
                 || matches!(pos_sub, "数詞" | "接尾")
-                || pos_sub.contains("非自立")
+                || is_subsidiary_verb
                 || matches!(
                     dictionary_form.as_str(),
                     "…" | "？"

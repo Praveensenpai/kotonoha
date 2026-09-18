@@ -142,7 +142,7 @@
 - **Side Effects / I/O**: Reads subtitle files from disk.
 
 ### `src/nlp.rs` (Role: domain/nlp, Lines: 300)
-- **Responsibility**: Japanese morphological tokenization via `sudachi.rs` (Mode C), kana conversions, POS classification (restricting `is_proper_noun` strictly to explicit proper/person/place name POS tags), audio grunt filtering, and coordinating grammar merger pipelines.
+- **Responsibility**: Japanese morphological tokenization via `sudachi.rs` (Mode C), kana conversions, linguistic POS classification with contextual `て`/`で` subsidiary verb detection (preserving independent `非自立可能` verbs/adjectives), audio grunt filtering, and coordinating grammar merger pipelines.
 - **Imports**: `sudachi::analysis::{stateless_tokenizer::StatelessTokenizer, Mode, Tokenize}`, `sudachi::dic::dictionary::JapaneseDictionary`
 - **Types & Enums**:
   ```rust
@@ -176,7 +176,7 @@
   - `verbs.rs`: Causative-passive inflections (させられる, ちゃった, てしまう), auxiliary stems, potential forms.
 - **Consumers**: `src/nlp.rs`
 
-### `src/miner.rs` (Role: domain/miner, Lines: 349)
+### `src/miner.rs` (Role: domain/miner, Lines: 243)
 - **Responsibility**: Core $i+1$ candidate discovery algorithm. Filters sentences with exactly one unknown content word, respects user ignored words, scores and ranks candidates using multi-factor sentence naturalness/completeness (`QualityScorer`), frequency, and density tier.
 - **Submodules**: `pub mod quality;` (`src/miner/quality.rs`)
 - **Imports**: `crate::{nlp::{JapaneseTokenizer, TokenInfo}, srt::SubtitleSentence}`, `quality::QualityScorer`

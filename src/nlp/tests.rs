@@ -257,3 +257,26 @@ fn marks_actual_person_or_place_as_proper_noun() {
     assert!(tokyo.is_content_word);
     assert!(tokyo.is_proper_noun);
 }
+
+#[test]
+fn recognizes_verbs_and_adjectives_as_content_words() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("なでしこ 私が間違ってたぞ！").unwrap();
+    let machigau = tokens
+        .iter()
+        .find(|t| t.dictionary_form == "間違う")
+        .expect("間違う must be tokenized");
+    assert!(
+        machigau.is_content_word,
+        "間違う must be recognized as content word"
+    );
+
+    let watashi = tokens.iter().find(|t| t.dictionary_form == "私").unwrap();
+    assert!(watashi.is_content_word);
+
+    let nadeshiko = tokens
+        .iter()
+        .find(|t| t.dictionary_form == "なでしこ")
+        .unwrap();
+    assert!(nadeshiko.is_content_word);
+}
