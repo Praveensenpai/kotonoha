@@ -127,6 +127,7 @@ impl Database {
                 card_index: p.card_index,
                 recommended_candidate_index: m.recommended_candidate_index.map(|v| v as usize),
                 recommended_sense_index: m.recommended_sense_index.map(|v| v as usize),
+                recommended_reading: m.recommended_reading,
                 custom_definition_suggestion: m.custom_definition_suggestion,
                 explanation: m.explanation,
                 english_natural: m.english_natural,
@@ -158,6 +159,7 @@ impl Database {
             parsing_warning: Set(res.parsing_warning.clone()),
             recommended_candidate_index: Set(res.recommended_candidate_index.map(|v| v as i64)),
             recommended_sense_index: Set(res.recommended_sense_index.map(|v| v as i64)),
+            recommended_reading: Set(res.recommended_reading.clone()),
             custom_definition_suggestion: Set(res.custom_definition_suggestion.clone()),
             explanation: Set(res.explanation.clone()),
             updated_at: Set(now),
@@ -173,6 +175,7 @@ impl Database {
                         ai_analysis_cache::Column::ParsingWarning,
                         ai_analysis_cache::Column::RecommendedCandidateIndex,
                         ai_analysis_cache::Column::RecommendedSenseIndex,
+                        ai_analysis_cache::Column::RecommendedReading,
                         ai_analysis_cache::Column::CustomDefinitionSuggestion,
                         ai_analysis_cache::Column::Explanation,
                         ai_analysis_cache::Column::UpdatedAt,
@@ -241,42 +244,63 @@ impl Database {
         let word_hira = crate::nlp::kata_to_hira(word);
         let is_short_hiragana =
             word.chars().all(|c| matches!(c, '\u{3040}'..='\u{309F}')) && word.chars().count() <= 3;
-        let like_param = format!("{}%", word);
 
-        let query = OfflineTerms::find();
-        let query = if exact_only {
-            query.filter(
-                Condition::any()
-                    .add(offline_terms::Column::Expression.eq(word))
-                    .add(offline_terms::Column::Reading.eq(word))
-                    .add(offline_terms::Column::Reading.eq(&word_hira)),
-            )
-        } else if is_short_hiragana {
-            query.filter(
-                Condition::any()
-                    .add(offline_terms::Column::Expression.eq(word))
-                    .add(offline_terms::Column::Reading.eq(word))
-                    .add(offline_terms::Column::Reading.eq(&word_hira))
-                    .add(offline_terms::Column::Expression.like(&like_param)),
-            )
-        } else {
-            query.filter(
-                Condition::any()
-                    .add(offline_terms::Column::Expression.eq(word))
-                    .add(offline_terms::Column::Reading.eq(word))
-                    .add(offline_terms::Column::Reading.eq(&word_hira))
-                    .add(offline_terms::Column::Expression.like(&like_param))
-                    .add(offline_terms::Column::Reading.like(&like_param)),
-            )
-        };
+        let exact_query = OfflineTerms::find().filter(
+            Condition::any()
+                .add(offline_terms::Column::Expression.eq(word))
+                .add(offline_terms::Column::Reading.eq(word))
+                .add(offline_terms::Column::Reading.eq(&word_hira)),
+        );
 
-        let items = query
+        let exact_items = exact_query
             .order_by_desc(offline_terms::Column::Score)
             .limit(10)
             .all(&self.conn)
             .await?;
 
-        let mut results: Vec<crate::dict::LookupResult> = items
+        if !exact_items.is_empty() || exact_only {
+            let mut results: Vec<crate::dict::LookupResult> = exact_items
+                .into_iter()
+                .map(|m| crate::dict::LookupResult {
+                    expression: m.expression,
+                    reading: m.reading,
+                    definition: m.definition,
+                    pitch_accent: m.pitch_accent,
+                })
+                .collect();
+
+            results.sort_by_key(|res| {
+                let is_exact =
+                    res.expression == word || res.reading == word || res.reading == word_hira;
+                let is_uk_kana = is_short_hiragana
+                    && res.reading == word
+                    && res.definition.contains("[")
+                    && (res.definition.contains("uk]") || res.definition.contains("uk "));
+                (!is_exact, !is_uk_kana, res.expression != word)
+            });
+
+            return Ok(results);
+        }
+
+        let like_param = format!("{}%", word);
+        let fallback_query = OfflineTerms::find();
+        let fallback_query = if is_short_hiragana {
+            fallback_query.filter(offline_terms::Column::Expression.like(&like_param))
+        } else {
+            fallback_query.filter(
+                Condition::any()
+                    .add(offline_terms::Column::Expression.like(&like_param))
+                    .add(offline_terms::Column::Reading.like(&like_param)),
+            )
+        };
+
+        let fallback_items = fallback_query
+            .order_by_desc(offline_terms::Column::Score)
+            .limit(10)
+            .all(&self.conn)
+            .await?;
+
+        let results: Vec<crate::dict::LookupResult> = fallback_items
             .into_iter()
             .map(|m| crate::dict::LookupResult {
                 expression: m.expression,
@@ -285,16 +309,6 @@ impl Database {
                 pitch_accent: m.pitch_accent,
             })
             .collect();
-
-        results.sort_by_key(|res| {
-            let is_exact =
-                res.expression == word || res.reading == word || res.reading == word_hira;
-            let is_uk_kana = is_short_hiragana
-                && res.reading == word
-                && res.definition.contains("[")
-                && (res.definition.contains("uk]") || res.definition.contains("uk "));
-            (!is_exact, !is_uk_kana, res.expression != word)
-        });
 
         Ok(results)
     }

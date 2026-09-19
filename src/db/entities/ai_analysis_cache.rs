@@ -12,6 +12,7 @@ pub struct Model {
     pub parsing_warning: Option<String>,
     pub recommended_candidate_index: Option<i64>,
     pub recommended_sense_index: Option<i64>,
+    pub recommended_reading: Option<String>,
     pub custom_definition_suggestion: Option<String>,
     pub explanation: Option<String>,
     pub updated_at: String,

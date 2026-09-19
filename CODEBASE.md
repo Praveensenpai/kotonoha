@@ -210,14 +210,14 @@
   ```
 - **Consumers**: `src/miner.rs`
 
-### `src/dict/` (Role: domain/dict, Lines: ~900)
+### `src/dict/` (Role: domain/dict, Lines: ~920)
 - **Files**: `dict.rs`, `service.rs`, `offline.rs`, `pitch.rs`, `context.rs`
 - **Responsibility**:
   - `dict.rs`: `LookupResult { expression, reading, definition, pitch_accent }`.
   - `service.rs`: Dual-mode lookup (Offline SQLite first, fallback to Jisho API); verb stem unwinding fallbacks; candidate sorting.
   - `offline.rs`: Downloads and indexes Yomitan `JMdict_english.zip` (~15 MB) and `kanjium_pitch_accents.zip` (~1 MB) into SQLite table `offline_terms` for sub-millisecond local queries.
   - `pitch.rs`: Pitch accent pattern classification (`Heiban [0]`, `Atamadaka [1]`, `Nakadaka [n]`).
-  - `context.rs`: Context-aware definition formatting, sense parsing, and placeholder filtering.
+  - `context.rs`: Context-aware definition formatting, sense parsing, placeholder filtering, and `sort_candidates_for_context` (prioritizes contextual reading and exact expression matches).
 - **Public Functions & Signatures**:
   ```rust
   impl DictionaryService {
@@ -225,6 +225,7 @@
       pub async fn lookup_all_candidates_cached(client: &reqwest::Client, db: Option<&Database>, word: &str, limits: LookupLimits) -> Result<Vec<LookupResult>>;
       pub async fn ensure_offline_dictionaries_ready(client: &reqwest::Client, db: &mut Database) -> Result<()>;
   }
+  pub fn sort_candidates_for_context(candidates: &mut [LookupResult], target_word: &str, target_reading: &str);
   ```
 - **Consumers**: `main.rs`, `session/mining.rs`, `session/ai_batch.rs`
 
@@ -272,12 +273,12 @@
 - **Consumers**: `main.rs`, `commands.rs`, `session.rs`, `dict/service.rs`
 - **Side Effects / I/O**: SQLite file read/write with WAL mode.
 
-### `src/ai.rs` (Role: infra/ai, Lines: 182)
-- **Responsibility**: Google Gemini REST API client. Sends structured batches of sentences, target words, and dictionary candidates to obtain context-specific definition suggestions, sense selections, and segmentation warnings.
+### `src/ai.rs` (Role: infra/ai, Lines: 185)
+- **Responsibility**: Google Gemini REST API client. Sends structured batches of sentences, target words, and dictionary candidates to obtain context-specific definition suggestions, sense selections, contextual reading recommendations, and segmentation warnings.
 - **Imports**: `serde_json`, `reqwest`
 - **Types & Enums**:
   ```rust
-  pub struct AiAnalysisResult { pub card_index: usize, pub recommended_candidate_index: Option<usize>, pub recommended_sense_index: Option<usize>, pub parsing_warning: Option<String>, pub custom_definition_suggestion: Option<String>, pub explanation: Option<String>, pub english_natural: Option<String>, pub english_literal: Option<String>, pub kannada_natural: Option<String>, pub kannada_literal: Option<String> }
+  pub struct AiAnalysisResult { pub card_index: usize, pub recommended_candidate_index: Option<usize>, pub recommended_sense_index: Option<usize>, pub recommended_reading: Option<String>, pub parsing_warning: Option<String>, pub custom_definition_suggestion: Option<String>, pub explanation: Option<String>, pub english_natural: Option<String>, pub english_literal: Option<String>, pub kannada_natural: Option<String>, pub kannada_literal: Option<String> }
   pub struct CardBatchInput<'a> { pub card_index: usize, pub sentence: &'a str, pub target_word: &'a str, pub target_reading: &'a str, pub candidates: &'a [LookupResult] }
   pub struct GeminiAiService;
   ```
@@ -296,14 +297,14 @@
 - **Consumers**: `commands.rs`, `session/mining.rs`
 - **Side Effects / I/O**: HTTP POST to AnkiConnect API.
 
-### `src/session/` (Role: domain/session, Lines: ~1310)
+### `src/session/` (Role: domain/session, Lines: ~1320)
 - **Files**: `session.rs`, `mining.rs`, `card_actions.rs`, `media_preload.rs`, `ai_batch.rs`
 - **Responsibility**:
   - `session.rs`: High-frequency vocabulary bootstrapping (identifying names vs general vocab), line comprehension statistics calculation (known vs $i+1$ vs hard lines), mode selection.
-  - `mining.rs`: Main interactive loop. Splits candidates into batches, dispatches background AI batch queries and media preloading, renders cards, executes user decisions, and auto-syncs to Anki upon completion.
+  - `mining.rs`: Main interactive loop. Splits candidates into batches, dispatches background AI batch queries and media preloading, renders cards, applies AI recommendations with contextual reading preservation, enforces `align_contextual_reading`, executes user decisions, and auto-syncs to Anki upon completion.
   - `card_actions.rs`: Keyboard action handlers for card review: `m` (mine), `k` (known), `i` (ignore), `s` (skip), `c` (choose candidate), `d` (choose sense), `r` (edit reading), `p` (replay audio), `q` (quit).
   - `media_preload.rs`: Asynchronously pre-extracts Opus audio snippets and JPG screenshots in the background for upcoming batch items.
-  - `ai_batch.rs`: Prepares candidate lookups, queries `ai_analysis_cache`, and invokes `GeminiAiService::analyze_batch` for uncached cards.
+  - `ai_batch.rs`: Prepares candidate lookups synchronized with offline SQLite dictionaries, sorts candidates for context, queries `ai_analysis_cache`, and invokes `GeminiAiService::analyze_batch` for uncached cards.
 - **Consumers**: `src/main.rs`
 
 ### `src/ui/` (Role: tui, Lines: ~3500)

@@ -6,7 +6,7 @@ use tokio::task::JoinHandle;
 use crate::ai::{self, GeminiAiService};
 use crate::config::AppConfig;
 use crate::db::Database;
-use crate::dict::DictionaryService;
+use crate::dict::{self, DictionaryService, LookupLimits};
 use crate::miner::CandidateSentence;
 
 pub struct AiBatchPreparation {
@@ -55,6 +55,7 @@ pub async fn prepare_ai_batch(
             let api_key = api_key.clone();
             let model = cfg.ai.gemini_model.clone();
             let client = Arc::clone(http_client);
+            let db_clone = db.clone();
             let max_senses = cfg.dict.max_definition_senses;
             let max_glosses = cfg.dict.max_glosses_per_sense;
             let card_targets = uncached_card_targets;
@@ -71,6 +72,7 @@ pub async fn prepare_ai_batch(
                     for (idx, sentence_text, target_word, target_reading) in chunk {
                         let sem = Arc::clone(&semaphore);
                         let client = Arc::clone(&client);
+                        let db_for_cand = db_clone.clone();
                         let target = target_word.clone();
                         let reading = target_reading.clone();
                         let sentence = sentence_text.clone();
@@ -82,11 +84,14 @@ pub async fn prepare_ai_batch(
                                 std::time::Duration::from_secs(4),
                                 async move {
                                     let _permit = sem.acquire().await;
-                                    DictionaryService::lookup_all_candidates(
+                                    DictionaryService::lookup_all_candidates_cached(
                                         &client,
+                                        Some(&db_for_cand),
                                         &target_for_lookup,
-                                        max_senses,
-                                        max_glosses,
+                                        LookupLimits {
+                                            max_senses,
+                                            max_glosses,
+                                        },
                                     )
                                     .await
                                 },
@@ -97,13 +102,7 @@ pub async fn prepare_ai_batch(
                                 _ => Vec::new(),
                             };
 
-                            if !reading.is_empty() {
-                                candidates.sort_by_key(|c| {
-                                    let is_reading_match = c.reading == reading;
-                                    let is_expr_match = c.expression == target;
-                                    (!is_reading_match, !is_expr_match)
-                                });
-                            }
+                            dict::sort_candidates_for_context(&mut candidates, &target, &reading);
 
                             (idx, sentence, target, reading, candidates)
                         }));

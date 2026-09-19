@@ -79,10 +79,10 @@ pub async fn run_mining_loop(
             let mut dict_info = resolve_dict_info(cand, cfg, db, &http_client).await?;
             let ai_analysis = ai_results_map.get(&idx);
 
-            align_contextual_reading(cand, &mut dict_info, cfg, db, &http_client).await;
-
             apply_ai_gloss_or_candidate(ai_analysis, &mut dict_info, cand, cfg, db, &http_client)
                 .await;
+
+            align_contextual_reading(cand, &mut dict_info, cfg, db, &http_client).await;
 
             let is_ai_selected = ai_analysis.is_some_and(|r| {
                 r.custom_definition_suggestion.is_some()
@@ -175,7 +175,7 @@ async fn resolve_dict_info(
     let (reading, raw_definition, pitch_accent) = match (cached, needs_context_refresh) {
         (Some(res), false) => res,
         (_, true) | (None, false) => {
-            let cands = DictionaryService::lookup_all_candidates_cached(
+            let mut cands = DictionaryService::lookup_all_candidates_cached(
                 http_client,
                 Some(db),
                 &cand.target_word,
@@ -187,12 +187,14 @@ async fn resolve_dict_info(
             .await
             .unwrap_or_default();
 
+            dict::sort_candidates_for_context(&mut cands, &cand.target_word, &cand.target_reading);
+
             if let Some(first) = cands.into_iter().next() {
                 if !dict::is_placeholder_definition(&first.definition)
                     && first.definition != "No dictionary definition found"
                 {
                     db.cache_definition(
-                        &first.expression,
+                        &cand.target_word,
                         &first.reading,
                         &first.definition,
                         &first.pitch_accent,
@@ -249,7 +251,7 @@ async fn apply_ai_gloss_or_candidate(
         if let Some(ref custom_sug) = res.custom_definition_suggestion {
             dict_info.definition = format!("1. [AI Suggestion] {}", custom_sug);
         } else if let Some(cand_idx) = res.recommended_candidate_index {
-            let candidates = DictionaryService::lookup_all_candidates_cached(
+            let mut candidates = DictionaryService::lookup_all_candidates_cached(
                 http_client,
                 Some(db),
                 &cand.target_word,
@@ -261,6 +263,12 @@ async fn apply_ai_gloss_or_candidate(
             .await
             .unwrap_or_default();
 
+            dict::sort_candidates_for_context(
+                &mut candidates,
+                &cand.target_word,
+                &cand.target_reading,
+            );
+
             if let Some(rec_cand) = candidates.get(cand_idx) {
                 let mut rec_def = rec_cand.definition.clone();
                 if let Some(sense_idx) = res.recommended_sense_index {
@@ -271,6 +279,12 @@ async fn apply_ai_gloss_or_candidate(
                 }
                 *dict_info = rec_cand.clone();
                 dict_info.definition = rec_def;
+            }
+        }
+
+        if let Some(ref rec_reading) = res.recommended_reading {
+            if !rec_reading.trim().is_empty() {
+                dict_info.reading = rec_reading.trim().to_string();
             }
         }
     }
@@ -312,12 +326,16 @@ async fn align_contextual_reading(
             }
             let _ = db
                 .cache_definition(
-                    &dict_info.expression,
+                    &cand.target_word,
                     &dict_info.reading,
                     &dict_info.definition,
                     &dict_info.pitch_accent,
                 )
                 .await;
+        } else if dict_info.reading != cand.target_reading
+            && dict_info.expression == cand.target_word
+        {
+            dict_info.reading = cand.target_reading.clone();
         }
     }
 }

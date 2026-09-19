@@ -140,6 +140,10 @@ impl Database {
             .await;
         let _ = self
             .conn
+            .execute_unprepared("ALTER TABLE ai_analysis_cache ADD COLUMN recommended_reading TEXT")
+            .await;
+        let _ = self
+            .conn
             .execute_unprepared("ALTER TABLE known_words ADD COLUMN source TEXT DEFAULT 'known'")
             .await;
 

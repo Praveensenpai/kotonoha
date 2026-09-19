@@ -6,6 +6,7 @@ pub struct AiAnalysisResult {
     pub card_index: usize,
     pub recommended_candidate_index: Option<usize>,
     pub recommended_sense_index: Option<usize>,
+    pub recommended_reading: Option<String>,
     pub parsing_warning: Option<String>,
     pub custom_definition_suggestion: Option<String>,
     pub explanation: Option<String>,
@@ -42,6 +43,7 @@ For EACH card index:
 1. Check if the target word has any tokenizer/segmentation misparse in the sentence. If so, provide a short `parsing_warning`. Otherwise null.
 2. Always provide a concise, custom English `custom_definition_suggestion` for the target word's meaning in THIS sentence. Prefer the contextual meaning over a broad dictionary list. It must be a short gloss, not a sentence translation. For example, for `私のせいですか？`, return exactly `fault; blame; cause of a bad result`.
 3. Set `recommended_candidate_index` and `recommended_sense_index` to null when the custom gloss is the best display definition. Use candidate/sense indexes only when the dictionary entry itself is already an ideal contextual definition and no custom gloss is needed.
+4. Provide `recommended_reading` as the contextual hiragana reading for the target word in this sentence (e.g. for `先に出た`, return `さき`). If identical or unknown, return null.
 
 Return ONLY a valid JSON object matching this exact schema:
 {{
@@ -50,6 +52,7 @@ Return ONLY a valid JSON object matching this exact schema:
       "card_index": number,
       "recommended_candidate_index": number or null,
       "recommended_sense_index": number or null,
+      "recommended_reading": string or null,
       "parsing_warning": string or null,
       "custom_definition_suggestion": string or null,
       "explanation": string or null

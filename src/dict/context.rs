@@ -163,3 +163,18 @@ pub fn truncate_definition(def: &str, max_senses: usize, max_glosses: usize) -> 
         new_senses.join("\n│                 ")
     }
 }
+
+pub fn sort_candidates_for_context(
+    candidates: &mut [crate::dict::LookupResult],
+    target_word: &str,
+    target_reading: &str,
+) {
+    if candidates.is_empty() {
+        return;
+    }
+    candidates.sort_by_key(|c| {
+        let is_reading_match = !target_reading.is_empty() && c.reading == target_reading;
+        let is_expr_match = c.expression == target_word;
+        (!is_reading_match, !is_expr_match)
+    });
+}

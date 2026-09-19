@@ -198,3 +198,62 @@ fn test_format_pitch_accent_no_combining_characters() {
     assert_eq!(tag2, "[0] LH (2 morae)");
     assert_eq!(morae2, 2);
 }
+
+#[test]
+fn test_sort_candidates_for_context() {
+    let mut candidates = vec![
+        LookupResult {
+            expression: "先々".to_string(),
+            reading: "さきざき".to_string(),
+            definition: "distant future".to_string(),
+            pitch_accent: "0".to_string(),
+        },
+        LookupResult {
+            expression: "先".to_string(),
+            reading: "さき".to_string(),
+            definition: "ahead".to_string(),
+            pitch_accent: "0".to_string(),
+        },
+        LookupResult {
+            expression: "先".to_string(),
+            reading: "せん".to_string(),
+            definition: "former".to_string(),
+            pitch_accent: "1".to_string(),
+        },
+    ];
+
+    sort_candidates_for_context(&mut candidates, "先", "さき");
+    assert_eq!(candidates[0].expression, "先");
+    assert_eq!(candidates[0].reading, "さき");
+}
+
+#[tokio::test]
+async fn test_query_offline_terms_prioritizes_exact_over_prefix() {
+    if let Ok(cfg) = crate::config::AppConfig::load() {
+        if let Ok(mut db) = crate::db::Database::open(&cfg.db_path).await {
+            let terms = vec![
+                (
+                    "先々".to_string(),
+                    "さきざき".to_string(),
+                    "1. [Noun] distant future".to_string(),
+                    "0".to_string(),
+                    "JMdict".to_string(),
+                    2000,
+                ),
+                (
+                    "先".to_string(),
+                    "さき".to_string(),
+                    "1. [Noun] point, ahead".to_string(),
+                    "0".to_string(),
+                    "JMdict".to_string(),
+                    1000,
+                ),
+            ];
+            let _ = db.insert_offline_terms_batch(&terms).await;
+            let results = db.query_offline_terms("先", false).await.unwrap();
+            assert!(!results.is_empty());
+            assert_eq!(results[0].expression, "先");
+            assert_eq!(results[0].reading, "さき");
+        }
+    }
+}
