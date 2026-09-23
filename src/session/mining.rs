@@ -299,7 +299,7 @@ async fn align_contextual_reading(
 ) {
     let context_hint = dict::context_hint(&cand.sentence.text, &cand.target_word);
     if !cand.target_reading.is_empty() {
-        let all_cands = DictionaryService::lookup_all_candidates_cached(
+        let mut all_cands = DictionaryService::lookup_all_candidates_cached(
             http_client,
             Some(db),
             &cand.target_word,
@@ -310,6 +310,8 @@ async fn align_contextual_reading(
         )
         .await
         .unwrap_or_default();
+
+        dict::sort_candidates_for_context(&mut all_cands, &cand.target_word, &cand.target_reading);
 
         if let Some(matched_cand) = all_cands.iter().find(|c| c.reading == cand.target_reading) {
             let current_def = dict_info.definition.clone();

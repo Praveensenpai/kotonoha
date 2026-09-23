@@ -270,13 +270,13 @@ impl Database {
                 .collect();
 
             results.sort_by_key(|res| {
-                let is_exact =
-                    res.expression == word || res.reading == word || res.reading == word_hira;
+                let is_exact_expr = res.expression == word;
+                let is_exact = is_exact_expr || res.reading == word || res.reading == word_hira;
                 let is_uk_kana = is_short_hiragana
                     && res.reading == word
                     && res.definition.contains("[")
                     && (res.definition.contains("uk]") || res.definition.contains("uk "));
-                (!is_exact, !is_uk_kana, res.expression != word)
+                (!is_exact_expr, !is_exact, !is_uk_kana)
             });
 
             return Ok(results);

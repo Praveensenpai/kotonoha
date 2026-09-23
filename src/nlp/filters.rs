@@ -205,3 +205,19 @@ pub fn is_predicate_lemma(dict_form: &str) -> bool {
             | Some('い')
     )
 }
+
+pub fn normalize_canonical_lemma_reading(dictionary_form: &str, current_reading: &str) -> String {
+    match dictionary_form {
+        "私" => "わたし".to_string(),
+        "何" => "なに".to_string(),
+        "言う" => "いう".to_string(),
+        _ => current_reading.to_string(),
+    }
+}
+
+pub fn is_name_honorific(surface: &str) -> bool {
+    matches!(
+        surface,
+        "ちゃん" | "さん" | "くん" | "君" | "様" | "殿" | "氏" | "たん" | "先輩"
+    )
+}

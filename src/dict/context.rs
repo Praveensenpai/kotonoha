@@ -142,7 +142,24 @@ pub fn truncate_definition(def: &str, max_senses: usize, max_glosses: usize) -> 
                 let pos_part = &rest[..close_bracket + 1];
                 let glosses_part = rest[close_bracket + 1..].trim();
                 let glosses: Vec<&str> = glosses_part.split(", ").collect();
-                let truncated_glosses: Vec<&str> = glosses.into_iter().take(max_glosses).collect();
+                let clean_glosses: Vec<&str> = glosses
+                    .into_iter()
+                    .filter(|g| {
+                        let t = g.trim();
+                        !t.is_empty()
+                            && !t.starts_with("see:")
+                            && !t.starts_with("antonym:")
+                            && t != "see:"
+                            && t != "antonym:"
+                            && !t.starts_with('（')
+                            && !t.ends_with('）')
+                    })
+                    .collect();
+                let truncated_glosses: Vec<&str> =
+                    clean_glosses.into_iter().take(max_glosses).collect();
+                if truncated_glosses.is_empty() {
+                    continue;
+                }
                 new_senses.push(format!(
                     "{}. {} {}",
                     num,
@@ -164,6 +181,70 @@ pub fn truncate_definition(def: &str, max_senses: usize, max_glosses: usize) -> 
     }
 }
 
+fn is_redirect_stub(def: &str) -> bool {
+    let clean = def.trim();
+    (clean.contains("see:,") || clean.contains("see: "))
+        && (clean.starts_with("1. [1 pn] what, see:") || clean.len() < 40)
+}
+
+fn candidate_priority_score(
+    c: &crate::dict::LookupResult,
+    target_word: &str,
+    target_reading: &str,
+) -> i32 {
+    let mut score = 0;
+
+    if c.expression == target_word {
+        score += 1000;
+    }
+    if !target_reading.is_empty() && c.reading == target_reading {
+        score += 500;
+    }
+
+    if is_redirect_stub(&c.definition) {
+        score -= 800;
+    }
+
+    match target_word {
+        "よい" | "良い" | "いい" => {
+            if c.definition.contains("adj-i")
+                || c.definition.contains("good")
+                || c.definition.contains("fine")
+            {
+                score += 400;
+            }
+            if c.definition.contains("evening")
+                || c.definition.contains("what was said")
+                || c.definition.contains("drunkenness")
+            {
+                score -= 600;
+            }
+        }
+        "なん" => {
+            if c.expression == "何" || c.definition.contains("what") {
+                score += 600;
+            }
+            if c.expression == "難" || c.definition.contains("difficulty") {
+                score -= 600;
+            }
+        }
+        "そう" => {
+            if c.definition.contains("in that way")
+                || c.definition.contains("so,")
+                || c.definition.contains("thus")
+            {
+                score += 300;
+            }
+            if c.definition.contains("aux adj-na") || c.definition.contains("appearing that") {
+                score -= 300;
+            }
+        }
+        _ => {}
+    }
+
+    score
+}
+
 pub fn sort_candidates_for_context(
     candidates: &mut [crate::dict::LookupResult],
     target_word: &str,
@@ -172,9 +253,5 @@ pub fn sort_candidates_for_context(
     if candidates.is_empty() {
         return;
     }
-    candidates.sort_by_key(|c| {
-        let is_reading_match = !target_reading.is_empty() && c.reading == target_reading;
-        let is_expr_match = c.expression == target_word;
-        (!is_reading_match, !is_expr_match)
-    });
+    candidates.sort_by_key(|c| -candidate_priority_score(c, target_word, target_reading));
 }

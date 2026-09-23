@@ -351,3 +351,39 @@ fn merges_compound_verbs() {
     assert_eq!(compound.reading, "まちつづける");
     assert!(compound.is_content_word);
 }
+
+#[test]
+fn normalizes_watashi_and_nani_canonical_readings() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("ええー！？私がですか？").unwrap();
+    let watashi = tokens.iter().find(|t| t.surface == "私").unwrap();
+    assert_eq!(watashi.reading, "わたし");
+    assert_eq!(watashi.surface_reading, "わたし");
+
+    let tokens2 = tokenizer.tokenize("はい 何でしょう？").unwrap();
+    let nani = tokens2.iter().find(|t| t.surface == "何").unwrap();
+    assert_eq!(nani.dictionary_form, "何");
+    assert_eq!(nani.reading, "なに");
+    assert_eq!(nani.surface_reading, "なん");
+}
+
+#[test]
+fn merges_itterasshai_greeting() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("うん いってらっしゃい").unwrap();
+    let itterasshai = tokens
+        .iter()
+        .find(|t| t.surface == "いってらっしゃい")
+        .unwrap();
+    assert_eq!(itterasshai.dictionary_form, "いってらっしゃい");
+    assert_eq!(itterasshai.reading, "いってらっしゃい");
+    assert!(!itterasshai.is_content_word);
+}
+
+#[test]
+fn tags_katakana_nickname_with_honorific_as_proper_noun() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("ありがとう パンジーちゃん").unwrap();
+    let pansy = tokens.iter().find(|t| t.surface == "パンジー").unwrap();
+    assert!(pansy.is_proper_noun);
+}

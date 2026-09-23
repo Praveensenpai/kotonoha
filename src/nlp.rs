@@ -204,8 +204,12 @@ impl JapaneseTokenizer {
                     .iter()
                     .any(|p| p.contains("固有名詞") || p.contains("人名") || p.contains("地名"));
 
-            let surface_reading = kata_to_hira(node.reading_form());
-            let reading = surface_reading.clone();
+            let mut surface_reading = kata_to_hira(node.reading_form());
+            if surface == "私" && surface_reading == "わたくし" {
+                surface_reading = "わたし".to_string();
+            }
+            let reading =
+                filters::normalize_canonical_lemma_reading(&dictionary_form, &surface_reading);
             let (dictionary_form, reading) =
                 mergers::normalize_colloquial_negative(&surface, dictionary_form, reading);
 
@@ -251,6 +255,17 @@ impl JapaneseTokenizer {
             }
         }
 
+        for i in 0..normalized_tokens.len() {
+            if i + 1 < normalized_tokens.len()
+                && filters::is_name_honorific(&normalized_tokens[i + 1].token.surface)
+            {
+                let s = &normalized_tokens[i].token.surface;
+                if s.chars().all(|c| matches!(c, '\u{30A0}'..='\u{30FF}')) {
+                    normalized_tokens[i].token.is_proper_noun = true;
+                }
+            }
+        }
+
         mergers::normalize_colloquial_greetings(&mut normalized_tokens);
         mergers::normalize_ambiguous_imperatives(&mut normalized_tokens, text);
         mergers::normalize_explanatory_nan(&mut normalized_tokens, text);
@@ -272,17 +287,27 @@ impl JapaneseTokenizer {
         tokens: &mut [TokenInfo],
     ) {
         for token in tokens {
-            if token.is_content_word && token.surface != token.dictionary_form {
-                if let Ok(lemma_morphemes) =
-                    tokenizer.tokenize(&token.dictionary_form, Mode::C, false)
-                {
-                    let r: String = lemma_morphemes
-                        .iter()
-                        .map(|m| kata_to_hira(m.reading_form()))
-                        .collect();
-                    if !r.is_empty() {
-                        token.reading = r;
+            if token.is_content_word {
+                if token.surface != token.dictionary_form {
+                    if let Ok(lemma_morphemes) =
+                        tokenizer.tokenize(&token.dictionary_form, Mode::C, false)
+                    {
+                        let r: String = lemma_morphemes
+                            .iter()
+                            .map(|m| kata_to_hira(m.reading_form()))
+                            .collect();
+                        if !r.is_empty() {
+                            token.reading = filters::normalize_canonical_lemma_reading(
+                                &token.dictionary_form,
+                                &r,
+                            );
+                        }
                     }
+                } else {
+                    token.reading = filters::normalize_canonical_lemma_reading(
+                        &token.dictionary_form,
+                        &token.reading,
+                    );
                 }
             }
         }

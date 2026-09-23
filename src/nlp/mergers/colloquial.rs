@@ -146,6 +146,32 @@ pub fn normalize_colloquial_greetings(tokens: &mut Vec<SpannedToken>) {
                 tokens[i].end = tokens[i + 1].end;
                 tokens.remove(i + 1);
             }
+        } else if (tokens[i].token.surface == "いっ" || tokens[i].token.surface == "行っ")
+            && i + 1 < tokens.len()
+            && tokens[i + 1].token.surface.starts_with("てらっしゃい")
+        {
+            let combined = format!("いっ{}", tokens[i + 1].token.surface);
+            tokens[i].token.surface = combined.clone();
+            tokens[i].token.dictionary_form = combined.clone();
+            tokens[i].token.reading = combined.clone();
+            tokens[i].token.surface_reading = combined;
+            tokens[i].token.is_content_word = false;
+            tokens[i].end = tokens[i + 1].end;
+            tokens.remove(i + 1);
+        } else if (tokens[i].token.surface == "いっ" || tokens[i].token.surface == "行っ")
+            && i + 2 < tokens.len()
+            && tokens[i + 1].token.surface == "て"
+            && tokens[i + 2].token.surface.starts_with("らっしゃい")
+        {
+            let combined = format!("いって{}", tokens[i + 2].token.surface);
+            tokens[i].token.surface = combined.clone();
+            tokens[i].token.dictionary_form = combined.clone();
+            tokens[i].token.reading = combined.clone();
+            tokens[i].token.surface_reading = combined;
+            tokens[i].token.is_content_word = false;
+            tokens[i].end = tokens[i + 2].end;
+            tokens.remove(i + 2);
+            tokens.remove(i + 1);
         }
         i += 1;
     }

@@ -447,5 +447,10 @@ cargo fmt --check
   - Extracted linguistic filter predicates into `src/nlp/filters.rs` to strictly adhere to file size limits (<300 lines).
   - Added full inflected predicate highlighting (`<b>食べたい</b>`, `<b>読んだ</b>`, `<b>見ている</b>`) and surface-accurate furigana in `src/anki/formatter.rs` and `src/ui/card.rs`, while preserving dictionary lemma in `VocabKanji`/`VocabFurigana`.
   - Added `surface_reading` to `TokenInfo` and predicate helper predicates (`is_predicate_suffix`, `is_predicate_lemma`) in `src/nlp/filters.rs`.
-  - Added dedicated unit tests in `src/anki/tests.rs` (95/95 unit tests passing).
+  - Added canonical lemma reading normalization (`normalize_canonical_lemma_reading`) for `私` (`わたし`), `何` (`なに`), and `言う` (`いう`).
+  - Added contextual candidate prioritization in `src/dict/context.rs` (`sort_candidates_for_context`) resolving homophone collisions (`良い` over `宵`, `いい` over `謂`, `何` over `難`, conversational `そう`).
+  - Added definition stub cleaner stripping `see:, ...` cross-reference artifacts from card definitions.
+  - Added `いってらっしゃい` greeting expression merger to prevent splitting into `いう` ("to say").
+  - Added honorific-following Katakana nickname detection in `src/nlp.rs` (e.g. `パンジーちゃん`) tagging them as proper nouns.
+  - Verified across all 36 `.koto` archives (100/100 unit tests passing, 0 clippy warnings).
 

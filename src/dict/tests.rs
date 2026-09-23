@@ -257,3 +257,44 @@ async fn test_query_offline_terms_prioritizes_exact_over_prefix() {
         }
     }
 }
+
+#[test]
+fn prioritizes_yoi_adjective_over_evening_noun() {
+    let mut cands = vec![
+        LookupResult {
+            expression: "宵".to_string(),
+            reading: "よい".to_string(),
+            definition: "1. [n] evening, early night hours".to_string(),
+            pitch_accent: "0".to_string(),
+        },
+        LookupResult {
+            expression: "良い".to_string(),
+            reading: "よい".to_string(),
+            definition: "1. [adj-i] good, excellent, fine, nice".to_string(),
+            pitch_accent: "0".to_string(),
+        },
+    ];
+    sort_candidates_for_context(&mut cands, "よい", "よい");
+    assert_eq!(cands[0].expression, "良い");
+}
+
+#[test]
+fn prioritizes_nani_over_nan_redirect_stub() {
+    let mut cands = vec![
+        LookupResult {
+            expression: "何".to_string(),
+            reading: "なん".to_string(),
+            definition: "1. [1 pn] what, see:, 何, 1. what".to_string(),
+            pitch_accent: "1".to_string(),
+        },
+        LookupResult {
+            expression: "何".to_string(),
+            reading: "なに".to_string(),
+            definition: "1. [1 pn] what".to_string(),
+            pitch_accent: "1".to_string(),
+        },
+    ];
+    sort_candidates_for_context(&mut cands, "何", "なに");
+    assert_eq!(cands[0].reading, "なに");
+    assert_eq!(cands[0].definition, "1. [1 pn] what");
+}
