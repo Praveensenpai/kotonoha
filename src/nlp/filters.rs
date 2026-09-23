@@ -9,7 +9,7 @@ pub struct MorphemeMeta<'a> {
 pub fn is_formal_noun(dict_form: &str) -> bool {
     matches!(
         dict_form,
-        "こと" | "もの" | "やつ" | "ため" | "ところ" | "わけ" | "はず" | "つもり"
+        "こと" | "もの" | "やつ" | "ため" | "ところ" | "わけ" | "はず" | "つもり" | "時"
     )
 }
 
@@ -102,8 +102,40 @@ pub fn is_audio_grunt(dict_form: &str, surface: &str) -> bool {
         )
 }
 
+pub fn is_scream_or_noise(dict_form: &str, surface: &str) -> bool {
+    let is_kana_only = !surface.is_empty()
+        && surface
+            .chars()
+            .all(|c| matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}'));
+    if !is_kana_only {
+        return false;
+    }
+
+    if (surface.ends_with(['っ', 'ッ']) || dict_form.ends_with(['っ', 'ッ']))
+        && !matches!(surface, "ホッ" | "ほっ")
+    {
+        return true;
+    }
+
+    let mut repeat_count = 0;
+    let mut prev_char = '\0';
+    for c in surface.chars() {
+        if c == prev_char {
+            repeat_count += 1;
+            if repeat_count >= 2 {
+                return true;
+            }
+        } else {
+            prev_char = c;
+            repeat_count = 0;
+        }
+    }
+    false
+}
+
 pub fn is_symbol_or_junk(meta: &MorphemeMeta<'_>) -> bool {
     let is_grunt = is_audio_grunt(meta.dictionary_form, meta.surface);
+    let is_noise = is_scream_or_noise(meta.dictionary_form, meta.surface);
     let is_junk_pos = matches!(
         meta.pos_category,
         "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞" | "空白"
@@ -138,7 +170,12 @@ pub fn is_symbol_or_junk(meta: &MorphemeMeta<'_>) -> bool {
             | "狒々"
     );
 
-    (is_grunt || is_junk_pos || is_junk_sub || meta.is_subsidiary_verb || is_common_junk_lemma)
+    (is_grunt
+        || is_noise
+        || is_junk_pos
+        || is_junk_sub
+        || meta.is_subsidiary_verb
+        || is_common_junk_lemma)
         && !is_formal_noun(meta.dictionary_form)
         && !is_conjunction_particle(meta.dictionary_form)
 }

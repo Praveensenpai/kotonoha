@@ -278,6 +278,7 @@ impl JapaneseTokenizer {
         let normalized_tokens = mergers::merge_complex_verb_inflections(normalized_tokens);
         let normalized_tokens = mergers::merge_compound_verbs(normalized_tokens);
         let normalized_tokens = mergers::merge_adverb_naru(normalized_tokens);
+        let normalized_tokens = mergers::merge_number_counters(normalized_tokens);
         mergers::merge_colloquial_small_tsu(normalized_tokens)
     }
 

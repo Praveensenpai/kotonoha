@@ -159,14 +159,15 @@
 - **Consumers**: `miner.rs`, `commands.rs`, `session.rs`, `anki/formatter.rs`, `ui/card.rs`
 - **Side Effects / I/O**: Ensures Sudachi dictionary exists, writes default `char.def`, `rewrite.def`, `unk.def`.
 
-### `src/nlp/filters.rs` (Role: domain/nlp-filters, Lines: 207)
-- **Responsibility**: Morpheme metadata structures and linguistic filter predicates: formal noun retention, sentence-initial conjunction particles (`でも`, `だって`), laughter & audio grunt filtering (`ニヒヒ`, `ヒヒ`, `狒々`, `じゃっ`), symbol/junk morpheme identification, and predicate inflection suffix analysis (`is_predicate_suffix`, `is_predicate_lemma`).
+### `src/nlp/filters.rs` (Role: domain/nlp-filters, Lines: 260)
+- **Responsibility**: Morpheme metadata structures and linguistic filter predicates: formal noun retention (including temporal/formal `時`), sentence-initial conjunction particles (`でも`, `だって`), audio scream and noise filtering (`is_scream_or_noise` for anime shouts/screams ending in `っ`/`ッ` or vowel elongation), laughter & audio grunt filtering (`ニヒヒ`, `ヒヒ`, `狒々`, `じゃっ`), symbol/junk morpheme identification, and predicate inflection suffix analysis (`is_predicate_suffix`, `is_predicate_lemma`).
 - **Public Functions & Signatures**:
   ```rust
   pub struct MorphemeMeta<'a> { pub pos_category: &'a str, pub pos_sub: &'a str, pub dictionary_form: &'a str, pub surface: &'a str, pub is_subsidiary_verb: bool }
   pub fn is_formal_noun(dict_form: &str) -> bool
   pub fn is_conjunction_particle(dict_form: &str) -> bool
   pub fn is_audio_grunt(dict_form: &str, surface: &str) -> bool
+  pub fn is_scream_or_noise(dict_form: &str, surface: &str) -> bool
   pub fn is_symbol_or_junk(meta: &MorphemeMeta<'_>) -> bool
   pub fn is_predicate_suffix(is_content_word: bool, surface: &str) -> bool
   pub fn is_predicate_lemma(dict_form: &str) -> bool
@@ -183,10 +184,11 @@
 - **Consumers**: `src/nlp.rs`
 - **Side Effects / I/O**: HTTP GET from CloudFront, unpacks `.dic` to disk.
 
-### `src/nlp/mergers/` (Role: domain/nlp-mergers, Lines: ~650)
-- **Files**: `mergers.rs`, `colloquial.rs`, `grammar.rs`, `verbs.rs`
+### `src/nlp/mergers/` (Role: domain/nlp-mergers, Lines: ~850)
+- **Files**: `mergers.rs`, `colloquial.rs`, `counters.rs`, `counters/numerals.rs`, `grammar.rs`, `verbs.rs`
 - **Responsibility**: Normalizes and merges complex spoken Japanese tokens:
   - `colloquial.rs`: Negative verb endings (じゃない, ねえ), greetings (おはよう, こんにちは), small tsu drops, Kansai dialect negative auxiliary (`〜へん`), and explanatory negative normalization (`〜んじゃない`).
+  - `counters.rs` & `counters/numerals.rs`: Number and counter compounds normalization (converting ASCII/full-width digits into Kanji numerals, preserving lexical compounds like 一人, 二人, 一つ, 一日, 二十歳, attaching bill/coin suffixes `〜札`/`〜玉`, and resolving formal noun `時` to `とき`).
   - `grammar.rs`: Compound grammatical patterns (よりにもよって, もしかして, わけにはいかない, にあたって, について, でも).
   - `verbs.rs`: Causative-passive inflections, aspect contractions (ちゃった, ちゃう, じゃう) with base-verb lemma preservation, auxiliary stems, compound verb mergers (`〜続ける`, `〜始める`, `〜直す`, `〜過ぎる`), and potential forms.
 - **Consumers**: `src/nlp.rs`

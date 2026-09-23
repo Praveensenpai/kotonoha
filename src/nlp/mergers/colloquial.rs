@@ -66,14 +66,16 @@ pub fn merge_colloquial_small_tsu(tokens: Vec<SpannedToken>) -> Vec<TokenInfo> {
                     break;
                 };
                 let surface = format!("{}{}", previous.token.surface, token.token.surface);
+                let is_noise = crate::nlp::filters::is_scream_or_noise(&surface, &surface);
+                let is_content =
+                    (previous.token.is_content_word || token.token.is_content_word) && !is_noise;
                 token = SpannedToken {
                     token: TokenInfo {
                         dictionary_form: surface.clone(),
                         reading: kata_to_hira(&surface),
                         surface_reading: kata_to_hira(&surface),
                         surface,
-                        is_content_word: previous.token.is_content_word
-                            || token.token.is_content_word,
+                        is_content_word: is_content,
                         is_proper_noun: previous.token.is_proper_noun || token.token.is_proper_noun,
                     },
                     begin: previous.begin,
