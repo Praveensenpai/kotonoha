@@ -6,6 +6,7 @@ fn make_dummy_token(surface: &str, is_content: bool) -> TokenInfo {
         surface: surface.to_string(),
         dictionary_form: surface.to_string(),
         reading: surface.to_string(),
+        surface_reading: surface.to_string(),
         is_content_word: is_content,
         is_proper_noun: false,
     }

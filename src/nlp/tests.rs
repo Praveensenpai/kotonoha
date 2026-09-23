@@ -280,3 +280,74 @@ fn recognizes_verbs_and_adjectives_as_content_words() {
         .unwrap();
     assert!(nadeshiko.is_content_word);
 }
+
+#[test]
+fn preserves_base_verb_lemma_on_aspect_contraction() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("どこに行っちゃったの？").unwrap();
+    let iku = tokens.iter().find(|t| t.surface.contains("行っ")).unwrap();
+    assert_eq!(iku.dictionary_form, "行く");
+    assert_eq!(iku.reading, "いく");
+    assert!(iku.is_content_word);
+}
+
+#[test]
+fn derives_lemma_dictionary_reading() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("よく聞こう、戻って知っている").unwrap();
+    let kiku = tokens.iter().find(|t| t.surface == "聞こう").unwrap();
+    assert_eq!(kiku.dictionary_form, "聞く");
+    assert_eq!(kiku.reading, "きく");
+
+    let shiru = tokens.iter().find(|t| t.surface == "知っ").unwrap();
+    assert_eq!(shiru.dictionary_form, "知る");
+    assert_eq!(shiru.reading, "しる");
+
+    let modoru = tokens.iter().find(|t| t.surface == "戻っ").unwrap();
+    assert_eq!(modoru.dictionary_form, "戻る");
+    assert_eq!(modoru.reading, "もどる");
+}
+
+#[test]
+fn recognizes_demo_conjunction_and_kansai_negative() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer
+        .tokenize("でも なかなか 我慢ができへんわ")
+        .unwrap();
+    let demo = tokens.iter().find(|t| t.surface == "でも").unwrap();
+    assert!(demo.is_content_word);
+
+    let dekihen = tokens.iter().find(|t| t.surface == "できへん").unwrap();
+    assert_eq!(dekihen.dictionary_form, "できる");
+    assert!(dekihen.is_content_word);
+}
+
+#[test]
+fn filters_laughter_and_casual_sokka_grunt() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("ニヒヒ そっか！").unwrap();
+    assert!(!tokens.iter().any(|t| t.is_content_word
+        && (t.surface == "ニヒヒ" || t.dictionary_form == "ヒヒ" || t.dictionary_form == "狒々")));
+    assert!(!tokens
+        .iter()
+        .any(|t| t.is_content_word && t.surface == "そっ"));
+}
+
+#[test]
+fn suppresses_explanatory_njanai_negative_word() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("あるんじゃないの？").unwrap();
+    assert!(!tokens
+        .iter()
+        .any(|t| t.is_content_word && (t.surface == "ない" || t.dictionary_form == "ない")));
+}
+
+#[test]
+fn merges_compound_verbs() {
+    let tokenizer = super::JapaneseTokenizer::new().unwrap();
+    let tokens = tokenizer.tokenize("ずっと待ち続けていた").unwrap();
+    let compound = tokens.iter().find(|t| t.surface == "待ち続け").unwrap();
+    assert_eq!(compound.dictionary_form, "待ち続ける");
+    assert_eq!(compound.reading, "まちつづける");
+    assert!(compound.is_content_word);
+}

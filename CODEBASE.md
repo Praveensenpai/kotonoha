@@ -141,22 +141,37 @@
 - **Consumers**: `main.rs`, `commands.rs`, `session.rs`
 - **Side Effects / I/O**: Reads subtitle files from disk.
 
-### `src/nlp.rs` (Role: domain/nlp, Lines: 300)
-- **Responsibility**: Japanese morphological tokenization via `sudachi.rs` (Mode C), kana conversions, linguistic POS classification with contextual `て`/`で` subsidiary verb detection (preserving independent `非自立可能` verbs/adjectives), audio grunt filtering, and coordinating grammar merger pipelines.
-- **Imports**: `sudachi::analysis::{stateless_tokenizer::StatelessTokenizer, Mode, Tokenize}`, `sudachi::dic::dictionary::JapaneseDictionary`
+### `src/nlp.rs` (Role: domain/nlp, Lines: 293)
+- **Responsibility**: Japanese morphological tokenization via `sudachi.rs` (Mode C), kana conversions, linguistic POS classification with contextual `て`/`で` subsidiary verb detection (preserving independent `非自立可能` verbs/adjectives), and coordinating grammar merger & dictionary lemma reading resolution pipelines.
+- **Imports**: `sudachi::analysis::{stateless_tokenizer::StatelessTokenizer, Mode, Tokenize}`, `sudachi::dic::dictionary::JapaneseDictionary`, `filters::{is_conjunction_particle, is_formal_noun, is_predicate_lemma, is_predicate_suffix, is_symbol_or_junk, MorphemeMeta}`
 - **Types & Enums**:
   ```rust
-  pub struct TokenInfo { pub surface: String, pub dictionary_form: String, pub reading: String, pub is_content_word: bool, pub is_proper_noun: bool }
+  pub struct TokenInfo { pub surface: String, pub dictionary_form: String, pub reading: String, pub surface_reading: String, pub is_content_word: bool, pub is_proper_noun: bool }
   pub struct SpannedToken { pub token: TokenInfo, pub begin: usize, pub end: usize }
   pub struct JapaneseTokenizer { dict: JapaneseDictionary }
   ```
 - **Public Functions & Signatures**:
   ```rust
   pub fn kata_to_hira(s: &str) -> String
+  pub use filters::{is_predicate_lemma, is_predicate_suffix};
   impl JapaneseTokenizer { pub fn new() -> Result<Self>; pub fn tokenize(&self, text: &str) -> Result<Vec<TokenInfo>>; }
   ```
-- **Consumers**: `miner.rs`, `commands.rs`, `session.rs`, `anki/formatter.rs`
+- **Consumers**: `miner.rs`, `commands.rs`, `session.rs`, `anki/formatter.rs`, `ui/card.rs`
 - **Side Effects / I/O**: Ensures Sudachi dictionary exists, writes default `char.def`, `rewrite.def`, `unk.def`.
+
+### `src/nlp/filters.rs` (Role: domain/nlp-filters, Lines: 207)
+- **Responsibility**: Morpheme metadata structures and linguistic filter predicates: formal noun retention, sentence-initial conjunction particles (`でも`, `だって`), laughter & audio grunt filtering (`ニヒヒ`, `ヒヒ`, `狒々`, `じゃっ`), symbol/junk morpheme identification, and predicate inflection suffix analysis (`is_predicate_suffix`, `is_predicate_lemma`).
+- **Public Functions & Signatures**:
+  ```rust
+  pub struct MorphemeMeta<'a> { pub pos_category: &'a str, pub pos_sub: &'a str, pub dictionary_form: &'a str, pub surface: &'a str, pub is_subsidiary_verb: bool }
+  pub fn is_formal_noun(dict_form: &str) -> bool
+  pub fn is_conjunction_particle(dict_form: &str) -> bool
+  pub fn is_audio_grunt(dict_form: &str, surface: &str) -> bool
+  pub fn is_symbol_or_junk(meta: &MorphemeMeta<'_>) -> bool
+  pub fn is_predicate_suffix(is_content_word: bool, surface: &str) -> bool
+  pub fn is_predicate_lemma(dict_form: &str) -> bool
+  ```
+- **Consumers**: `src/nlp.rs`, `src/anki/formatter.rs`, `src/ui/card.rs`
 
 ### `src/nlp/dictionary.rs` (Role: infra/nlp-dict, Lines: 60)
 - **Responsibility**: Pure Rust automatic download and extraction of `sudachi-dictionary-latest-core.zip` (~72 MB) from CloudFront CDN if missing.
@@ -168,12 +183,12 @@
 - **Consumers**: `src/nlp.rs`
 - **Side Effects / I/O**: HTTP GET from CloudFront, unpacks `.dic` to disk.
 
-### `src/nlp/mergers/` (Role: domain/nlp-mergers, Lines: ~520)
+### `src/nlp/mergers/` (Role: domain/nlp-mergers, Lines: ~650)
 - **Files**: `mergers.rs`, `colloquial.rs`, `grammar.rs`, `verbs.rs`
 - **Responsibility**: Normalizes and merges complex spoken Japanese tokens:
-  - `colloquial.rs`: Negative verb endings (じゃない, ねえ), greetings (おはよう, こんにちは), small tsu drops, sentence-ending particles.
-  - `grammar.rs`: Compound grammatical patterns (よりにもよって, もしかして, わけにはいかない, にあたって, について).
-  - `verbs.rs`: Causative-passive inflections (させられる, ちゃった, てしまう), auxiliary stems, potential forms.
+  - `colloquial.rs`: Negative verb endings (じゃない, ねえ), greetings (おはよう, こんにちは), small tsu drops, Kansai dialect negative auxiliary (`〜へん`), and explanatory negative normalization (`〜んじゃない`).
+  - `grammar.rs`: Compound grammatical patterns (よりにもよって, もしかして, わけにはいかない, にあたって, について, でも).
+  - `verbs.rs`: Causative-passive inflections, aspect contractions (ちゃった, ちゃう, じゃう) with base-verb lemma preservation, auxiliary stems, compound verb mergers (`〜続ける`, `〜始める`, `〜直す`, `〜過ぎる`), and potential forms.
 - **Consumers**: `src/nlp.rs`
 
 ### `src/miner.rs` (Role: domain/miner, Lines: 243)
@@ -422,3 +437,15 @@ cargo fmt --check
   - Added `quality_score: f32` to `CandidateSentence` and `CardRenderParams`.
   - Added star rating display (`★★★★★`) to the interactive terminal card preview UI (`src/ui/card.rs`, `src/session/card_actions.rs`).
   - Added full test suite in `src/miner/quality/tests.rs` (83/83 tests passing), including real-world anime subtitle dataset verification on *Yuru Camp* Ep 01.
+- **2026-09-23 (v0.0.78: Real-World Subtitle Tokenizer Enhancements & Full Predicate Highlighting)**:
+  - Fixed aspect contraction base-lemma preservation in `src/nlp/mergers/verbs.rs` (`行っちゃっ` -> `行く`, `抜けちゃっ` -> `抜ける`), eliminating truncated stem lemmas.
+  - Added `resolve_lemma_readings` in `src/nlp.rs` to dynamically look up true dictionary-form readings for inflected verbs/adjectives (`聞こう` -> `きく`, `知っ` -> `しる`), ensuring accurate Anki furigana and pitch accent matching.
+  - Added sentence-initial `でも` conjunction particle retention to `src/nlp/mergers/grammar.rs`.
+  - Added Kansai dialect negative auxiliary merger (`〜へん`) in `src/nlp/mergers/colloquial.rs` (`できへん` -> `できる`).
+  - Added compound verb merger (`merge_compound_verbs`) in `src/nlp/mergers/verbs.rs` (`待ち続ける`, `支え続ける`, `追いかける`).
+  - Added explanatory negative normalization (`normalize_explanatory_njanai`) to filter out isolated `ない`/`ねえ` content words from `〜んじゃない`.
+  - Extracted linguistic filter predicates into `src/nlp/filters.rs` to strictly adhere to file size limits (<300 lines).
+  - Added full inflected predicate highlighting (`<b>食べたい</b>`, `<b>読んだ</b>`, `<b>見ている</b>`) and surface-accurate furigana in `src/anki/formatter.rs` and `src/ui/card.rs`, while preserving dictionary lemma in `VocabKanji`/`VocabFurigana`.
+  - Added `surface_reading` to `TokenInfo` and predicate helper predicates (`is_predicate_suffix`, `is_predicate_lemma`) in `src/nlp/filters.rs`.
+  - Added dedicated unit tests in `src/anki/tests.rs` (95/95 unit tests passing).
+

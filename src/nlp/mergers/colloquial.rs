@@ -62,12 +62,15 @@ pub fn merge_colloquial_small_tsu(tokens: Vec<SpannedToken>) -> Vec<TokenInfo> {
                     break;
                 }
 
-                let previous = merged.pop().expect("merge candidate exists");
+                let Some(previous) = merged.pop() else {
+                    break;
+                };
                 let surface = format!("{}{}", previous.token.surface, token.token.surface);
                 token = SpannedToken {
                     token: TokenInfo {
                         dictionary_form: surface.clone(),
                         reading: kata_to_hira(&surface),
+                        surface_reading: kata_to_hira(&surface),
                         surface,
                         is_content_word: previous.token.is_content_word
                             || token.token.is_content_word,
@@ -129,6 +132,7 @@ pub fn normalize_colloquial_greetings(tokens: &mut Vec<SpannedToken>) {
                 tokens[i].token.surface = combined_surface;
                 tokens[i].token.dictionary_form = "おはよう".to_string();
                 tokens[i].token.reading = "おはよう".to_string();
+                tokens[i].token.surface_reading = "おはよう".to_string();
                 tokens[i].token.is_content_word = true;
                 tokens[i].end = tokens[i + 2].end;
                 tokens.remove(i + 2);
@@ -137,11 +141,52 @@ pub fn normalize_colloquial_greetings(tokens: &mut Vec<SpannedToken>) {
                 tokens[i].token.surface = "おっす".to_string();
                 tokens[i].token.dictionary_form = "おっす".to_string();
                 tokens[i].token.reading = "おっす".to_string();
+                tokens[i].token.surface_reading = "おっす".to_string();
                 tokens[i].token.is_content_word = false;
                 tokens[i].end = tokens[i + 1].end;
                 tokens.remove(i + 1);
             }
         }
         i += 1;
+    }
+}
+
+pub fn normalize_kansai_negative(tokens: &mut Vec<SpannedToken>) {
+    let mut i = 0;
+    while i < tokens.len() {
+        if (tokens[i].token.surface == "へん" || tokens[i].token.surface == "えん")
+            && i > 0
+            && tokens[i - 1].token.is_content_word
+            && tokens[i - 1].token.dictionary_form.ends_with('る')
+        {
+            let suffix_surface = tokens[i].token.surface.clone();
+            let suffix_end = tokens[i].end;
+            let prev = &mut tokens[i - 1];
+            prev.token.surface = format!("{}{}", prev.token.surface, suffix_surface);
+            prev.end = suffix_end;
+            tokens.remove(i);
+            continue;
+        }
+        i += 1;
+    }
+}
+
+pub fn normalize_explanatory_njanai(tokens: &mut [SpannedToken]) {
+    for i in 0..tokens.len() {
+        let is_neg = tokens[i].token.surface == "ない" || tokens[i].token.surface == "ねえ";
+        if is_neg && i >= 1 {
+            let prev1 = &tokens[i - 1].token.surface;
+            let is_copula_ending = prev1.ends_with("じゃ") || prev1.ends_with("では");
+            let is_n_copula = if i >= 2 {
+                let prev2 = &tokens[i - 2].token.surface;
+                matches!(prev1.as_str(), "じゃ" | "では" | "だ")
+                    && matches!(prev2.as_str(), "ん" | "の" | "なん")
+            } else {
+                false
+            };
+            if is_copula_ending || is_n_copula {
+                tokens[i].token.is_content_word = false;
+            }
+        }
     }
 }

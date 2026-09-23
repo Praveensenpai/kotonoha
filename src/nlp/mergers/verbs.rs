@@ -26,45 +26,158 @@ pub fn merge_complex_verb_inflections(tokens: Vec<SpannedToken>) -> Vec<SpannedT
         "おうとする",
     ];
 
+    let aspect_contractions = [
+        "ちゃう",
+        "ちゃっ",
+        "ちゃ",
+        "じゃう",
+        "じゃっ",
+        "じゃ",
+        "てしまう",
+        "てしまっ",
+        "でしまう",
+        "でしまっ",
+    ];
+
     let mut merged = Vec::with_capacity(tokens.len());
     let mut tokens_iter = tokens.into_iter().peekable();
 
     while let Some(mut current) = tokens_iter.next() {
         if current.token.is_content_word {
             let mut merged_any = false;
-            while let Some(next) = tokens_iter.peek() {
-                if next.begin == current.end {
-                    let next_surf = next.token.surface.as_str();
-                    let next_dict = next.token.dictionary_form.as_str();
-                    if aux_morphemes.contains(&next_surf) || aux_morphemes.contains(&next_dict) {
-                        let next_token = tokens_iter.next().unwrap();
-                        let surface =
-                            format!("{}{}", current.token.surface, next_token.token.surface);
-                        let dictionary_form = surface.clone();
-                        let reading =
-                            format!("{}{}", current.token.reading, next_token.token.reading);
-                        current = SpannedToken {
-                            token: TokenInfo {
-                                surface,
-                                dictionary_form,
-                                reading,
-                                is_content_word: true,
-                                is_proper_noun: false,
-                            },
-                            begin: current.begin,
-                            end: next_token.end,
-                        };
-                        merged_any = true;
-                        continue;
+            let mut is_aspect_contraction = false;
+            while tokens_iter.peek().is_some() {
+                let should_merge = if let Some(next) = tokens_iter.peek() {
+                    if next.begin == current.end {
+                        let next_surf = next.token.surface.as_str();
+                        let next_dict = next.token.dictionary_form.as_str();
+                        aux_morphemes.contains(&next_surf) || aux_morphemes.contains(&next_dict)
+                    } else {
+                        false
                     }
+                } else {
+                    false
+                };
+
+                if should_merge {
+                    let Some(next_token) = tokens_iter.next() else {
+                        break;
+                    };
+                    let next_surf = next_token.token.surface.as_str();
+                    let next_dict = next_token.token.dictionary_form.as_str();
+                    let surface = format!("{}{}", current.token.surface, next_token.token.surface);
+
+                    let is_aspect = aspect_contractions.contains(&next_surf)
+                        || aspect_contractions.contains(&next_dict);
+                    if is_aspect {
+                        is_aspect_contraction = true;
+                    }
+
+                    let (dictionary_form, reading) = if is_aspect_contraction {
+                        (
+                            current.token.dictionary_form.clone(),
+                            current.token.reading.clone(),
+                        )
+                    } else {
+                        (
+                            surface.clone(),
+                            format!("{}{}", current.token.reading, next_token.token.reading),
+                        )
+                    };
+
+                    let surface_reading = format!(
+                        "{}{}",
+                        current.token.surface_reading, next_token.token.surface_reading
+                    );
+                    current = SpannedToken {
+                        token: TokenInfo {
+                            surface,
+                            dictionary_form,
+                            reading,
+                            surface_reading,
+                            is_content_word: true,
+                            is_proper_noun: false,
+                        },
+                        begin: current.begin,
+                        end: next_token.end,
+                    };
+                    merged_any = true;
+                    continue;
                 }
                 break;
             }
             if merged_any
+                && !is_aspect_contraction
                 && (current.token.dictionary_form.ends_with("られ")
                     || current.token.dictionary_form.ends_with("させ"))
             {
                 current.token.dictionary_form.push('る');
+                current.token.reading.push('る');
+            }
+        }
+        merged.push(current);
+    }
+
+    merged
+}
+
+pub fn merge_compound_verbs(tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
+    const COMBINING_VERBS: &[(&str, &str)] = &[
+        ("続ける", "つづける"),
+        ("始める", "はじめる"),
+        ("出す", "だす"),
+        ("直す", "なおす"),
+        ("過ぎる", "すぎる"),
+    ];
+
+    let mut merged = Vec::with_capacity(tokens.len());
+    let mut iter = tokens.into_iter().peekable();
+
+    while let Some(mut current) = iter.next() {
+        if current.token.is_content_word {
+            while iter.peek().is_some() {
+                let comb = if let Some(next) = iter.peek() {
+                    if next.begin == current.end && next.token.is_content_word {
+                        COMBINING_VERBS
+                            .iter()
+                            .find(|(verb, _)| {
+                                next.token.dictionary_form == *verb || next.token.surface == *verb
+                            })
+                            .copied()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some((v2_dict, _)) = comb {
+                    let Some(next_token) = iter.next() else {
+                        break;
+                    };
+                    let surface = format!("{}{}", current.token.surface, next_token.token.surface);
+                    let dictionary_form = format!("{}{}", current.token.surface, v2_dict);
+                    let reading = format!("{}{}", current.token.reading, next_token.token.reading);
+                    let surface_reading = format!(
+                        "{}{}",
+                        current.token.surface_reading, next_token.token.surface_reading
+                    );
+
+                    current = SpannedToken {
+                        token: TokenInfo {
+                            surface,
+                            dictionary_form,
+                            reading,
+                            surface_reading,
+                            is_content_word: true,
+                            is_proper_noun: false,
+                        },
+                        begin: current.begin,
+                        end: next_token.end,
+                    };
+                    continue;
+                }
+                break;
             }
         }
         merged.push(current);

@@ -11,14 +11,19 @@ pub fn merge_adverb_naru(tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
             });
 
         if should_merge {
-            let previous = merged.pop().expect("merge candidate exists");
+            let Some(previous) = merged.pop() else {
+                merged.push(token);
+                continue;
+            };
             let dictionary_form = format!("{}なる", previous.token.surface);
             let reading = format!("{}なる", previous.token.reading);
+            let surface_reading = format!("{}なる", previous.token.surface_reading);
             merged.push(SpannedToken {
                 token: TokenInfo {
                     surface: format!("{}{}", previous.token.surface, token.token.surface),
                     dictionary_form,
                     reading,
+                    surface_reading,
                     is_content_word: true,
                     is_proper_noun: false,
                 },
@@ -82,6 +87,7 @@ pub fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Ve
                     surface: expression.to_string(),
                     dictionary_form: expression.to_string(),
                     reading: expression.to_string(),
+                    surface_reading: expression.to_string(),
                     is_content_word: true,
                     is_proper_noun: false,
                 },
@@ -98,6 +104,7 @@ pub fn merge_fixed_expression(tokens: Vec<SpannedToken>, expression: &str) -> Ve
                             surface: remainder.to_string(),
                             dictionary_form: remainder.to_string(),
                             reading: kata_to_hira(remainder),
+                            surface_reading: kata_to_hira(remainder),
                             is_content_word: false,
                             is_proper_noun: false,
                         },
@@ -124,6 +131,7 @@ pub fn merge_grammar_expressions(mut tokens: Vec<SpannedToken>) -> Vec<SpannedTo
         "なのに",
         "けれども",
         "ですが",
+        "でも",
         "だけで",
         "について",
         "についての",

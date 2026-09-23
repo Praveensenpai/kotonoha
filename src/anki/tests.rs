@@ -43,3 +43,23 @@ fn test_format_definition_for_anki() {
 fn test_anki_search_text_escapes_query_delimiters() {
     assert_eq!(anki_search_text(r#"a\"b"#), r#"a\\\"b"#);
 }
+
+#[test]
+fn test_sentence_with_furigana_highlights_full_predicate() {
+    let tokenizer = crate::nlp::JapaneseTokenizer::new().unwrap();
+
+    let res = sentence_with_furigana(&tokenizer, "私はご飯を食べたい", "食べる");
+    assert!(res.contains("<b><ruby>食べ<rt>たべ</rt></ruby>たい</b>"));
+
+    let res2 = sentence_with_furigana(&tokenizer, "本を読んだ", "読む");
+    assert!(res2.contains("<b><ruby>読ん<rt>よん</rt></ruby>だ</b>"));
+
+    let res3 = sentence_with_furigana(&tokenizer, "映画を見ていたよ", "見る");
+    assert!(res3.contains("<b><ruby>見<rt>み</rt></ruby>ていた</b>よ"));
+
+    let res4 = sentence_with_furigana(&tokenizer, "学校に行く", "学校");
+    assert_eq!(
+        res4,
+        "<b><ruby>学校<rt>がっこう</rt></ruby></b>に<ruby>行く<rt>いく</rt></ruby>"
+    );
+}

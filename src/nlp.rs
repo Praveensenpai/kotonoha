@@ -1,7 +1,11 @@
 pub mod dictionary;
+pub mod filters;
 pub mod mergers;
 
+pub use filters::{is_predicate_lemma, is_predicate_suffix};
+
 use anyhow::Result;
+use filters::{is_conjunction_particle, is_formal_noun, is_symbol_or_junk, MorphemeMeta};
 use std::path::PathBuf;
 use sudachi::analysis::stateless_tokenizer::StatelessTokenizer;
 use sudachi::analysis::Mode;
@@ -14,6 +18,7 @@ pub struct TokenInfo {
     pub surface: String,
     pub dictionary_form: String,
     pub reading: String,
+    pub surface_reading: String,
     pub is_content_word: bool,
     pub is_proper_noun: bool,
 }
@@ -107,13 +112,26 @@ impl JapaneseTokenizer {
         let dict = JapaneseDictionary::from_cfg(&config)?;
         Ok(Self { dict })
     }
+}
 
+impl JapaneseTokenizer {
     pub fn tokenize(&self, text: &str) -> Result<Vec<TokenInfo>> {
         let tokenizer = StatelessTokenizer::new(&self.dict);
-        let morphemes = tokenizer.tokenize(text, Mode::C, false)?;
+        let raw_tokens = self.extract_morphemes(&tokenizer, text)?;
+        let mut final_tokens = self.apply_mergers(raw_tokens, text);
+        self.resolve_lemma_readings(&tokenizer, &mut final_tokens);
+        Ok(final_tokens)
+    }
 
+    fn extract_morphemes(
+        &self,
+        tokenizer: &StatelessTokenizer<&JapaneseDictionary>,
+        text: &str,
+    ) -> Result<Vec<SpannedToken>> {
+        let morphemes = tokenizer.tokenize(text, Mode::C, false)?;
         let mut prev_is_te_or_de = false;
-        let mut tokens = Vec::new();
+        let mut tokens = Vec::with_capacity(morphemes.len());
+
         for node in morphemes.iter() {
             let surface = node.surface().to_string();
             let pos: Vec<String> = node
@@ -144,91 +162,21 @@ impl JapaneseTokenizer {
                 pos_form,
             );
 
-            let is_formal_noun = matches!(
-                dictionary_form.as_str(),
-                "こと" | "もの" | "やつ" | "ため" | "ところ" | "わけ" | "はず" | "つもり"
-            );
+            let meta = MorphemeMeta {
+                pos_category,
+                pos_sub,
+                dictionary_form: &dictionary_form,
+                surface: &surface,
+                is_subsidiary_verb,
+            };
 
-            let is_conjunction_particle = matches!(
-                dictionary_form.as_str(),
-                "だって"
-                    | "だけど"
-                    | "だから"
-                    | "なのに"
-                    | "けれど"
-                    | "けれども"
-                    | "でも"
-                    | "しかし"
-                    | "ただし"
-                    | "なお"
-                    | "ちなみに"
-                    | "および"
-                    | "ならびに"
-            );
-
-            let is_audio_grunt = matches!(
-                dictionary_form.as_str(),
-                "おっ"
-                    | "あっ"
-                    | "えっ"
-                    | "うっ"
-                    | "はっ"
-                    | "ふっ"
-                    | "んっ"
-                    | "くっ"
-                    | "ちっ"
-                    | "つっ"
-                    | "オッ"
-                    | "アッ"
-                    | "エッ"
-                    | "ウッ"
-                    | "ハッ"
-                    | "フッ"
-                    | "ンッ"
-                    | "クッ"
-                    | "チッ"
-            );
-
-            // Filter symbols, interjections, punctuation, particles, numbers, and subsidiary verbs
-            let is_symbol_or_junk = (is_audio_grunt
-                || matches!(
-                    pos_category,
-                    "記号" | "補助記号" | "感動詞" | "助詞" | "助動詞" | "数詞" | "空白"
-                )
-                || matches!(pos_sub, "数詞" | "接尾")
-                || is_subsidiary_verb
-                || matches!(
-                    dictionary_form.as_str(),
-                    "…" | "？"
-                        | "！"
-                        | "♪"
-                        | "―"
-                        | "ー"
-                        | "、"
-                        | "。"
-                        | "～"
-                        | "する"
-                        | "いる"
-                        | "ある"
-                        | "なる"
-                        | "の"
-                        | "ん"
-                        | "よう"
-                        | "あ"
-                        | "え"
-                        | "お"
-                        | "う"
-                        | "い"
-                ))
-                && !is_formal_noun
-                && !is_conjunction_particle;
-
+            let is_symbol_or_junk = is_symbol_or_junk(&meta);
             let has_japanese_char = dictionary_form.chars().any(|c| {
-                matches!(c, '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FFF}')
+                matches!(
+                    c,
+                    '\u{3040}'..='\u{309F}' | '\u{30A0}'..='\u{30FF}' | '\u{4E00}'..='\u{9FFF}'
+                )
             });
-
-            // Single hiragana/katakana are always filler (そ, ぞ, ア…) — block them.
-            // Single kanji are legitimate content words (仲, 愛, 心) — allow them.
             let is_single_kana = dictionary_form.chars().count() == 1
                 && dictionary_form
                     .chars()
@@ -245,8 +193,8 @@ impl JapaneseTokenizer {
                     | "副詞"
                     | "連体詞"
                     | "接続詞"
-            ) || is_formal_noun
-                || is_conjunction_particle)
+            ) || is_formal_noun(&dictionary_form)
+                || is_conjunction_particle(&dictionary_form))
                 && !is_symbol_or_junk
                 && has_japanese_char
                 && !is_single_kana;
@@ -256,7 +204,8 @@ impl JapaneseTokenizer {
                     .iter()
                     .any(|p| p.contains("固有名詞") || p.contains("人名") || p.contains("地名"));
 
-            let reading = kata_to_hira(node.reading_form());
+            let surface_reading = kata_to_hira(node.reading_form());
+            let reading = surface_reading.clone();
             let (dictionary_form, reading) =
                 mergers::normalize_colloquial_negative(&surface, dictionary_form, reading);
 
@@ -265,6 +214,7 @@ impl JapaneseTokenizer {
                     surface,
                     dictionary_form,
                     reading,
+                    surface_reading,
                     is_content_word,
                     is_proper_noun,
                 },
@@ -273,6 +223,10 @@ impl JapaneseTokenizer {
             });
         }
 
+        Ok(tokens)
+    }
+
+    fn apply_mergers(&self, tokens: Vec<SpannedToken>, text: &str) -> Vec<TokenInfo> {
         let mut normalized_tokens = Vec::with_capacity(tokens.len());
         for token in tokens {
             let is_rough_negative_suffix =
@@ -285,10 +239,13 @@ impl JapaneseTokenizer {
                         previous.token.dictionary_form.ends_with('る')
                     })
             {
-                let previous = normalized_tokens.last_mut().expect("previous token exists");
-                previous.token.dictionary_form = format!("{}ない", previous.token.surface);
-                previous.token.reading = format!("{}ない", previous.token.reading);
-                previous.end = token.end;
+                if let Some(previous) = normalized_tokens.last_mut() {
+                    previous.token.dictionary_form = format!("{}ない", previous.token.surface);
+                    previous.token.reading = format!("{}ない", previous.token.reading);
+                    previous.token.surface_reading =
+                        format!("{}ない", previous.token.surface_reading);
+                    previous.end = token.end;
+                }
             } else {
                 normalized_tokens.push(token);
             }
@@ -297,13 +254,38 @@ impl JapaneseTokenizer {
         mergers::normalize_colloquial_greetings(&mut normalized_tokens);
         mergers::normalize_ambiguous_imperatives(&mut normalized_tokens, text);
         mergers::normalize_explanatory_nan(&mut normalized_tokens, text);
+        mergers::normalize_explanatory_njanai(&mut normalized_tokens);
+        mergers::normalize_kansai_negative(&mut normalized_tokens);
         let normalized_tokens =
             mergers::merge_fixed_expression(normalized_tokens, "よりにもよって");
         let normalized_tokens = mergers::merge_fixed_expression(normalized_tokens, "もしかして");
         let normalized_tokens = mergers::merge_grammar_expressions(normalized_tokens);
         let normalized_tokens = mergers::merge_complex_verb_inflections(normalized_tokens);
+        let normalized_tokens = mergers::merge_compound_verbs(normalized_tokens);
         let normalized_tokens = mergers::merge_adverb_naru(normalized_tokens);
-        Ok(mergers::merge_colloquial_small_tsu(normalized_tokens))
+        mergers::merge_colloquial_small_tsu(normalized_tokens)
+    }
+
+    fn resolve_lemma_readings(
+        &self,
+        tokenizer: &StatelessTokenizer<&JapaneseDictionary>,
+        tokens: &mut [TokenInfo],
+    ) {
+        for token in tokens {
+            if token.is_content_word && token.surface != token.dictionary_form {
+                if let Ok(lemma_morphemes) =
+                    tokenizer.tokenize(&token.dictionary_form, Mode::C, false)
+                {
+                    let r: String = lemma_morphemes
+                        .iter()
+                        .map(|m| kata_to_hira(m.reading_form()))
+                        .collect();
+                    if !r.is_empty() {
+                        token.reading = r;
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -40,42 +40,65 @@ pub fn format_definition_for_anki(def: &str) -> String {
     after_num.to_string()
 }
 
+fn format_ruby_token(token: &crate::nlp::TokenInfo) -> String {
+    let surface = escape_html(&token.surface);
+    let reading = if !token.surface_reading.is_empty() {
+        &token.surface_reading
+    } else {
+        &token.reading
+    };
+    if token
+        .surface
+        .chars()
+        .any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'))
+        && !reading.is_empty()
+    {
+        format!("<ruby>{surface}<rt>{}</rt></ruby>", escape_html(reading))
+    } else {
+        surface
+    }
+}
+
 pub fn sentence_with_furigana(
     tokenizer: &JapaneseTokenizer,
     sentence: &str,
     target_word: &str,
 ) -> String {
-    tokenizer
-        .tokenize(sentence)
-        .map(|tokens| {
-            tokens
-                .into_iter()
-                .map(|token| {
-                    let surface = escape_html(&token.surface);
-                    let is_target =
-                        token.surface == target_word || token.dictionary_form == target_word;
-                    let display = if token
-                        .surface
-                        .chars()
-                        .any(|c| matches!(c, '\u{4E00}'..='\u{9FFF}'))
-                        && !token.reading.is_empty()
-                    {
-                        format!(
-                            "<ruby>{surface}<rt>{}</rt></ruby>",
-                            escape_html(&token.reading)
-                        )
-                    } else {
-                        surface
-                    };
-                    if is_target {
-                        format!("<b>{display}</b>")
-                    } else {
-                        display
-                    }
-                })
-                .collect()
-        })
-        .unwrap_or_else(|_| escape_html(sentence))
+    let Ok(tokens) = tokenizer.tokenize(sentence) else {
+        return escape_html(sentence);
+    };
+
+    let is_predicate = crate::nlp::is_predicate_lemma(target_word);
+    let mut out = String::new();
+    let mut i = 0;
+
+    while i < tokens.len() {
+        let token = &tokens[i];
+        let is_target = token.surface == target_word || token.dictionary_form == target_word;
+        if is_target {
+            let mut target_html = format_ruby_token(token);
+            let mut j = i + 1;
+            if is_predicate {
+                while j < tokens.len()
+                    && crate::nlp::is_predicate_suffix(
+                        tokens[j].is_content_word,
+                        &tokens[j].surface,
+                    )
+                {
+                    target_html.push_str(&format_ruby_token(&tokens[j]));
+                    j += 1;
+                }
+            }
+            out.push_str(&format!("<b>{target_html}</b>"));
+            i = j;
+            continue;
+        }
+
+        out.push_str(&format_ruby_token(token));
+        i += 1;
+    }
+
+    out
 }
 
 pub fn to_katakana(text: &str) -> String {

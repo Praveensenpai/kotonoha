@@ -72,14 +72,33 @@ pub fn highlight_sentence_tokens(
 
     if let Some(ref tokenizer) = *TOKENIZER {
         if let Ok(tokens) = tokenizer.tokenize(sentence) {
+            let is_predicate = crate::nlp::is_predicate_lemma(target_word);
             let mut out = String::new();
-            for t in tokens {
+            let mut i = 0;
+            while i < tokens.len() {
+                let t = &tokens[i];
                 let surface = &t.surface;
                 let dict = &t.dictionary_form;
 
                 if surface == target_word || dict == target_word {
-                    out.push_str(&green.apply_to(surface).to_string());
-                } else if unknown_context.contains(dict) || unknown_context.contains(surface) {
+                    let mut pred = surface.clone();
+                    let mut j = i + 1;
+                    if is_predicate {
+                        while j < tokens.len()
+                            && crate::nlp::is_predicate_suffix(
+                                tokens[j].is_content_word,
+                                &tokens[j].surface,
+                            )
+                        {
+                            pred.push_str(&tokens[j].surface);
+                            j += 1;
+                        }
+                    }
+                    out.push_str(&green.apply_to(&pred).to_string());
+                    i = j;
+                    continue;
+                }
+                if unknown_context.contains(dict) || unknown_context.contains(surface) {
                     out.push_str(&red.apply_to(surface).to_string());
                 } else if ignored_context
                     .iter()
@@ -94,6 +113,7 @@ pub fn highlight_sentence_tokens(
                 } else {
                     out.push_str(surface);
                 }
+                i += 1;
             }
             return out;
         }
@@ -332,20 +352,14 @@ pub fn render_card(p: CardRenderParams<'_>) {
         println!("{}", lrow("Definitions:", "No definition"));
     } else {
         for (idx, line) in def_lines.iter().enumerate() {
-            let clean_line = line.trim();
-            let clean_line = clean_line.strip_prefix('│').unwrap_or(clean_line).trim();
-            if idx == 0 {
-                let display_line = if is_ai_selected {
-                    format!("✨ {}", clean_line)
-                } else {
-                    clean_line.to_string()
-                };
-                let truncated_line = format_val(&display_line);
-                println!("{}", lrow("Definitions:", &truncated_line));
+            let clean = line.trim().strip_prefix('│').unwrap_or(line.trim()).trim();
+            let label = if idx == 0 { "Definitions:" } else { "" };
+            let val = if idx == 0 && is_ai_selected {
+                format_val(&format!("✨ {clean}"))
             } else {
-                let truncated_line = format_val(clean_line);
-                println!("{}", lrow("", &truncated_line));
-            }
+                format_val(clean)
+            };
+            println!("{}", lrow(label, &val));
         }
     }
 
