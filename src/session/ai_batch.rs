@@ -120,14 +120,7 @@ pub async fn prepare_ai_batch(
                             dict::sort_candidates_for_context(&mut candidates, &target, &reading);
 
                             (
-                                idx,
-                                sentence,
-                                target,
-                                reading,
-                                candidates,
-                                series,
-                                before,
-                                after,
+                                idx, sentence, target, reading, candidates, series, before, after,
                             )
                         }));
                     }

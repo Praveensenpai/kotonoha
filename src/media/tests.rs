@@ -96,16 +96,25 @@ fn test_extract_clean_show_context() {
     use std::path::PathBuf;
 
     let p1 = PathBuf::from("/media/[SubsPlease] Sousou no Frieren - 08 (1080p) [B7A49C12].mkv");
-    assert_eq!(extract_clean_show_context(&p1), "Sousou no Frieren - Episode 08");
+    assert_eq!(
+        extract_clean_show_context(&p1),
+        "Sousou no Frieren - Episode 08"
+    );
 
     let p2 = PathBuf::from("/anime/[Erai-raws] Bocchi the Rock! - 04 [1080p].mkv");
-    assert_eq!(extract_clean_show_context(&p2), "Bocchi the Rock! - Episode 04");
+    assert_eq!(
+        extract_clean_show_context(&p2),
+        "Bocchi the Rock! - Episode 04"
+    );
 
     let p3 = PathBuf::from("/tv/Spy.x.Family.S01E03.1080p.mp4");
     assert_eq!(extract_clean_show_context(&p3), "Spy x Family - Episode 03");
 
     let p4 = PathBuf::from("/anime/Dungeon_Meshi_EP12.mkv");
-    assert_eq!(extract_clean_show_context(&p4), "Dungeon Meshi - Episode 12");
+    assert_eq!(
+        extract_clean_show_context(&p4),
+        "Dungeon Meshi - Episode 12"
+    );
 
     let p5 = PathBuf::from("/subtitles/yuru_camp.srt");
     assert_eq!(extract_clean_show_context(&p5), "yuru camp");

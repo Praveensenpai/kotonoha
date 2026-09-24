@@ -234,4 +234,3 @@ fn test_extract_dialogue_context_with_temporal_cutoff_and_actor() {
     assert_eq!(after.len(), 1);
     assert_eq!(after[0], "直後の台詞。");
 }
-

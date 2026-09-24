@@ -15,8 +15,10 @@ static RE_EP_SEASON: LazyLock<Regex> =
 static RE_EP_PREFIX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bEP?(\d{1,4})\b").unwrap());
 static RE_MEDIA_TAGS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(1080p|720p|480p|2160p|4k|x264|x265|hevc|avc|aac|flac|web-dl|bluray|bdrip|remux)\b")
-        .unwrap()
+    Regex::new(
+        r"(?i)\b(1080p|720p|480p|2160p|4k|x264|x265|hevc|avc|aac|flac|web-dl|bluray|bdrip|remux)\b",
+    )
+    .unwrap()
 });
 
 /// Cleans and extracts a user- and AI-friendly show and episode title from a video path.
