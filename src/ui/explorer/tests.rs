@@ -11,6 +11,7 @@ fn make_sentence(text: &str, index: usize, start_ms: u64) -> SubtitleSentence {
         end_ms: start_ms + 2000,
         text: text.to_string(),
         video_path: None,
+        actor: None,
     }
 }
 
@@ -139,6 +140,9 @@ fn test_build_candidate_from_explorer_selection() {
             tokens: &tokens,
             known_words: &known,
             ignored_words: &ignored,
+            before_context: Vec::new(),
+            after_context: Vec::new(),
+            series_title: None,
         });
     assert_eq!(candidate.target_word, "林檎");
     assert_eq!(candidate.target_reading, "りんご");
@@ -159,6 +163,9 @@ fn test_multi_unknown_candidate_generation() {
         tokens: &tokens,
         known_words: &known,
         ignored_words: &ignored,
+        before_context: Vec::new(),
+        after_context: Vec::new(),
+        series_title: None,
     });
     let c2 = crate::miner::MiningEngine::build_candidate(crate::miner::BuildCandidateParams {
         sentence: &s,
@@ -166,6 +173,9 @@ fn test_multi_unknown_candidate_generation() {
         tokens: &tokens,
         known_words: &known,
         ignored_words: &ignored,
+        before_context: Vec::new(),
+        after_context: Vec::new(),
+        series_title: None,
     });
 
     assert_eq!(c1.target_word, "林檎");

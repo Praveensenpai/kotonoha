@@ -1,5 +1,9 @@
+pub mod context;
 pub mod quality;
 
+use self::context::{
+    extract_dialogue_context, DEFAULT_MAX_CONTEXT_LINES, DEFAULT_MAX_DIALOGUE_GAP_MS,
+};
 use self::quality::QualityScorer;
 use crate::nlp::JapaneseTokenizer;
 use crate::srt::SubtitleSentence;
@@ -17,6 +21,9 @@ pub struct CandidateSentence {
     pub density_tier: usize,
     pub quality_score: f32,
     pub video_path: std::path::PathBuf,
+    pub before_context: Vec<String>,
+    pub after_context: Vec<String>,
+    pub series_title: Option<String>,
 }
 
 fn is_better_candidate(candidate: &CandidateSentence, existing: &CandidateSentence) -> bool {
@@ -51,7 +58,7 @@ impl MiningEngine {
         let mut best_candidates: std::collections::HashMap<String, CandidateSentence> =
             std::collections::HashMap::new();
 
-        for sub in sentences {
+        for (idx, sub) in sentences.iter().enumerate() {
             if sub.text.chars().count() < 4 {
                 continue;
             }
@@ -76,6 +83,18 @@ impl MiningEngine {
                     };
                     let quality_score = QualityScorer::score(&sub.text, &target_word, &tokens);
 
+                    let (before_context, after_context) = extract_dialogue_context(
+                        sentences,
+                        idx,
+                        DEFAULT_MAX_CONTEXT_LINES,
+                        DEFAULT_MAX_CONTEXT_LINES,
+                        DEFAULT_MAX_DIALOGUE_GAP_MS,
+                    );
+                    let series_title = sub
+                        .video_path
+                        .as_deref()
+                        .map(crate::media::extract_clean_show_context);
+
                     let candidate = CandidateSentence {
                         sentence: sub.clone(),
                         target_word: target_word.clone(),
@@ -87,6 +106,9 @@ impl MiningEngine {
                         density_tier,
                         quality_score,
                         video_path: sub.video_path.clone().unwrap_or_default(),
+                        before_context,
+                        after_context,
+                        series_title,
                     };
 
                     match best_candidates.entry(target_word) {
@@ -226,6 +248,9 @@ impl MiningEngine {
             density_tier,
             quality_score,
             video_path: p.sentence.video_path.clone().unwrap_or_default(),
+            before_context: p.before_context,
+            after_context: p.after_context,
+            series_title: p.series_title,
         }
     }
 }
@@ -236,6 +261,9 @@ pub struct BuildCandidateParams<'a> {
     pub tokens: &'a [crate::nlp::TokenInfo],
     pub known_words: &'a HashSet<String>,
     pub ignored_words: &'a HashSet<String>,
+    pub before_context: Vec<String>,
+    pub after_context: Vec<String>,
+    pub series_title: Option<String>,
 }
 
 #[cfg(test)]

@@ -248,6 +248,9 @@ fn test_before_vs_after_comparison() {
                     density_tier,
                     quality_score,
                     video_path: sub.video_path.clone().unwrap_or_default(),
+                    before_context: Vec::new(),
+                    after_context: Vec::new(),
+                    series_title: None,
                 };
                 candidates_by_word
                     .entry(target_word)

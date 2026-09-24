@@ -192,6 +192,19 @@ impl<'a> ExplorerController<'a> {
                     .tokenizer
                     .tokenize(&s.sentence.text)
                     .unwrap_or_default();
+                let (before_context, after_context) =
+                    crate::miner::context::extract_dialogue_context_for_sentence(
+                        self.p.sentences,
+                        &s.sentence,
+                        crate::miner::context::DEFAULT_MAX_CONTEXT_LINES,
+                        crate::miner::context::DEFAULT_MAX_CONTEXT_LINES,
+                        crate::miner::context::DEFAULT_MAX_DIALOGUE_GAP_MS,
+                    );
+                let series_title = s
+                    .sentence
+                    .video_path
+                    .as_deref()
+                    .map(crate::media::extract_clean_show_context);
                 return vec![crate::miner::MiningEngine::build_candidate(
                     crate::miner::BuildCandidateParams {
                         sentence: &s.sentence,
@@ -199,6 +212,9 @@ impl<'a> ExplorerController<'a> {
                         tokens: &tokens,
                         known_words: self.p.known_words,
                         ignored_words: self.p.ignored_words,
+                        before_context,
+                        after_context,
+                        series_title,
                     },
                 )];
             }
@@ -212,6 +228,20 @@ impl<'a> ExplorerController<'a> {
                 .tokenizer
                 .tokenize(&s.sentence.text)
                 .unwrap_or_default();
+            let (before_context, after_context) =
+                crate::miner::context::extract_dialogue_context_for_sentence(
+                    self.p.sentences,
+                    &s.sentence,
+                    crate::miner::context::DEFAULT_MAX_CONTEXT_LINES,
+                    crate::miner::context::DEFAULT_MAX_CONTEXT_LINES,
+                    crate::miner::context::DEFAULT_MAX_DIALOGUE_GAP_MS,
+                );
+            let series_title = s
+                .sentence
+                .video_path
+                .as_deref()
+                .map(crate::media::extract_clean_show_context);
+
             for u in &s.unknowns {
                 if self
                     .selected_cards
@@ -224,6 +254,9 @@ impl<'a> ExplorerController<'a> {
                             tokens: &tokens,
                             known_words: self.p.known_words,
                             ignored_words: self.p.ignored_words,
+                            before_context: before_context.clone(),
+                            after_context: after_context.clone(),
+                            series_title: series_title.clone(),
                         },
                     ));
                 }

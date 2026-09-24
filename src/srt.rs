@@ -16,7 +16,7 @@ static RE_SRT: LazyLock<Regex> = LazyLock::new(|| {
 });
 static RE_ASS_LINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)Dialogue:\s*\d+,\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*(.*)",
+        r"(?i)Dialogue:\s*\d+,\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),\s*(\d{1,2}:\d{2}:\d{2}[\.\,]\d{2,3}),[^,]*,\s*([^,]*),\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*(.*)",
     )
     .unwrap()
 });
@@ -28,6 +28,7 @@ pub struct SubtitleSentence {
     pub end_ms: u64,
     pub text: String,
     pub video_path: Option<std::path::PathBuf>,
+    pub actor: Option<String>,
 }
 
 pub fn parse_subtitle(path: &Path) -> Result<Vec<SubtitleSentence>> {
@@ -94,6 +95,7 @@ fn parse_srt(content: &str) -> Result<Vec<SubtitleSentence>> {
                 end_ms,
                 text,
                 video_path: None,
+                actor: None,
             });
         }
     }
@@ -108,7 +110,13 @@ fn parse_ass(content: &str) -> Result<Vec<SubtitleSentence>> {
         if let Some(cap) = RE_ASS_LINE.captures(line) {
             let start_str = &cap[1];
             let end_str = &cap[2];
-            let raw_text = &cap[3];
+            let actor_raw = cap[3].trim();
+            let actor = if actor_raw.is_empty() {
+                None
+            } else {
+                Some(actor_raw.to_string())
+            };
+            let raw_text = &cap[4];
 
             let text = clean_text(raw_text);
             if text.is_empty() {
@@ -124,6 +132,7 @@ fn parse_ass(content: &str) -> Result<Vec<SubtitleSentence>> {
                     end_ms,
                     text,
                     video_path: None,
+                    actor,
                 });
                 idx += 1;
             }

@@ -20,6 +20,27 @@ Definitions:
 }
 
 #[test]
+fn test_prompt_includes_dialogue_context_and_show() {
+    let summary = r#"Card Index #0:
+Show / Episode: "Sousou no Frieren - Episode 08"
+Dialogue Context:
+    [Prev -2]: 魔法使いの戦いは魔力の制限で決まる。
+    [Prev -1]: だからお前はまだ未熟なんだ。
+  >>> [TARGET SENTENCE]: 私のせいですか？ <<<
+    [Next +1]: そうじゃない。
+Target Word: "せい"
+Candidates:
+Candidate #1: Expression: せい, Reading: せい"#;
+
+    let prompt = build_prompt(summary);
+    assert!(prompt.contains("Show / Episode: \"Sousou no Frieren - Episode 08\""));
+    assert!(prompt.contains(">>> [TARGET SENTENCE]: 私のせいですか？ <<<"));
+    assert!(prompt.contains("[Prev -1]: だからお前はまだ未熟なんだ。"));
+    assert!(prompt.contains("[Next +1]: そうじゃない。"));
+    assert!(prompt.contains("surrounding conversation and show theme"));
+}
+
+#[test]
 fn test_ai_index_normalization() {
     let json_text = r#"{
         "results": [

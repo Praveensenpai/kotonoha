@@ -42,6 +42,9 @@ pub async fn prepare_ai_batch(
                     cand.sentence.text.clone(),
                     cand.target_word.clone(),
                     cand.target_reading.clone(),
+                    cand.series_title.clone(),
+                    cand.before_context.clone(),
+                    cand.after_context.clone(),
                 ));
             }
         }
@@ -69,13 +72,25 @@ pub async fn prepare_ai_batch(
                 for chunk in card_targets.chunks(ai_batch_size) {
                     let mut lookup_futures = Vec::new();
 
-                    for (idx, sentence_text, target_word, target_reading) in chunk {
+                    for (
+                        idx,
+                        sentence_text,
+                        target_word,
+                        target_reading,
+                        series_title,
+                        before_ctx,
+                        after_ctx,
+                    ) in chunk
+                    {
                         let sem = Arc::clone(&semaphore);
                         let client = Arc::clone(&client);
                         let db_for_cand = db_clone.clone();
                         let target = target_word.clone();
                         let reading = target_reading.clone();
                         let sentence = sentence_text.clone();
+                        let series = series_title.clone();
+                        let before = before_ctx.clone();
+                        let after = after_ctx.clone();
                         let idx = *idx;
 
                         lookup_futures.push(tokio::spawn(async move {
@@ -104,7 +119,16 @@ pub async fn prepare_ai_batch(
 
                             dict::sort_candidates_for_context(&mut candidates, &target, &reading);
 
-                            (idx, sentence, target, reading, candidates)
+                            (
+                                idx,
+                                sentence,
+                                target,
+                                reading,
+                                candidates,
+                                series,
+                                before,
+                                after,
+                            )
                         }));
                     }
 
@@ -117,15 +141,29 @@ pub async fn prepare_ai_batch(
 
                     let inputs: Vec<ai::CardBatchInput<'_>> = batch_inputs_owned
                         .iter()
-                        .map(|(idx, sentence, target_word, target_reading, candidates)| {
-                            ai::CardBatchInput {
-                                card_index: *idx,
-                                sentence: sentence.as_str(),
-                                target_word: target_word.as_str(),
-                                target_reading: target_reading.as_str(),
-                                candidates: candidates.as_slice(),
-                            }
-                        })
+                        .map(
+                            |(
+                                idx,
+                                sentence,
+                                target_word,
+                                target_reading,
+                                candidates,
+                                series_title,
+                                before_context,
+                                after_context,
+                            )| {
+                                ai::CardBatchInput {
+                                    card_index: *idx,
+                                    sentence: sentence.as_str(),
+                                    target_word: target_word.as_str(),
+                                    target_reading: target_reading.as_str(),
+                                    candidates: candidates.as_slice(),
+                                    series_title: series_title.as_deref(),
+                                    before_context: before_context.as_slice(),
+                                    after_context: after_context.as_slice(),
+                                }
+                            },
+                        )
                         .collect();
 
                     match GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await {

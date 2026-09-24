@@ -54,6 +54,7 @@ pub fn ask_action() -> Result<char> {
         "🔓  Unmark target word as known / move to unknown (u)",
         "✍️  Edit target word reading / furigana (f)",
         "📖  Change dictionary candidate (c)",
+        "💬  View dialogue context (v)",
         "🔊  Replay preview audio (r)",
         "🚫  Ignore target word (i)",
         "🚪  Quit (q)",
@@ -70,6 +71,8 @@ pub fn ask_action() -> Result<char> {
         Ok('f')
     } else if ans.contains("(c)") {
         Ok('c')
+    } else if ans.contains("(v)") {
+        Ok('v')
     } else if ans.contains("(r)") {
         Ok('r')
     } else if ans.contains("(i)") {

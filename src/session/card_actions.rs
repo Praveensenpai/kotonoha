@@ -58,6 +58,42 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
     loop {
         let action = TerminalUi::ask_action()?;
 
+        if action == 'v' {
+            println!();
+            if let Some(ref title) = ctx.cand.series_title {
+                println!(" 🎬 Context ({}):", console::style(title).cyan().bold());
+            } else {
+                println!(" 🎬 Context:");
+            }
+            if ctx.cand.before_context.is_empty() && ctx.cand.after_context.is_empty() {
+                println!("   (No surrounding dialogue within temporal cutoff)");
+            } else {
+                for (b_idx, prev) in ctx.cand.before_context.iter().enumerate() {
+                    let rel = ctx.cand.before_context.len() - b_idx;
+                    println!(
+                        "    {} {}",
+                        console::style(format!("-{}", rel)).dim(),
+                        console::style(prev).dim()
+                    );
+                }
+                println!(
+                    "    {} {}",
+                    console::style("▶").green().bold(),
+                    console::style(&ctx.cand.sentence.text).green().bold()
+                );
+                for (a_idx, next) in ctx.cand.after_context.iter().enumerate() {
+                    let rel = a_idx + 1;
+                    println!(
+                        "    {} {}",
+                        console::style(format!("+{}", rel)).dim(),
+                        console::style(next).dim()
+                    );
+                }
+            }
+            println!();
+            continue;
+        }
+
         if action == 'r' {
             if let Some(mut child) = audio_child.take() {
                 let _ = child.kill();

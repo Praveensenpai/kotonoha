@@ -127,12 +127,12 @@
 - **Consumers**: `main.rs`, `commands.rs`, `session.rs`, `ui/config_menu.rs`
 - **Side Effects / I/O**: Creates `~/.config/kotonoha/` and `~/.local/share/kotonoha/`, reads/writes `config.toml`, migrates legacy DB files.
 
-### `src/srt.rs` (Role: domain/parser, Lines: 134)
-- **Responsibility**: Subtitle parsing for SubRip (`.srt`) and Advanced SubStation Alpha (`.ass`/`.ssa`), HTML tag stripping, curly bracket stripping, and timestamp millisecond conversion.
+### `src/srt.rs` (Role: domain/parser, Lines: 142)
+- **Responsibility**: Subtitle parsing for SubRip (`.srt`) and Advanced SubStation Alpha (`.ass`/`.ssa`), speaker/actor name preservation, HTML tag stripping, curly bracket stripping, and timestamp millisecond conversion.
 - **Imports**: `regex::Regex`, `std::sync::LazyLock`
 - **Types & Enums**:
   ```rust
-  pub struct SubtitleSentence { pub index: usize, pub start_ms: u64, pub end_ms: u64, pub text: String, pub video_path: Option<PathBuf> }
+  pub struct SubtitleSentence { pub index: usize, pub start_ms: u64, pub end_ms: u64, pub text: String, pub video_path: Option<PathBuf>, pub actor: Option<String> }
   ```
 - **Public Functions & Signatures**:
   ```rust
@@ -193,15 +193,15 @@
   - `verbs.rs`: Causative-passive inflections, aspect contractions (ちゃった, ちゃう, じゃう) with base-verb lemma preservation, auxiliary stems, compound verb mergers (`〜続ける`, `〜始める`, `〜直す`, `〜過ぎる`), and potential forms.
 - **Consumers**: `src/nlp.rs`
 
-### `src/miner.rs` (Role: domain/miner, Lines: 243)
-- **Responsibility**: Core $i+1$ candidate discovery algorithm. Filters sentences with exactly one unknown content word, respects user ignored words, scores and ranks candidates using multi-factor sentence naturalness/completeness (`QualityScorer`), frequency, and density tier.
-- **Submodules**: `pub mod quality;` (`src/miner/quality.rs`)
-- **Imports**: `crate::{nlp::{JapaneseTokenizer, TokenInfo}, srt::SubtitleSentence}`, `quality::QualityScorer`
+### `src/miner.rs` (Role: domain/miner, Lines: 270)
+- **Responsibility**: Core $i+1$ candidate discovery algorithm. Filters sentences with exactly one unknown content word, respects user ignored words, extracts $\pm 2$ dialogue context lines with temporal cutoff, scores and ranks candidates using multi-factor sentence naturalness/completeness (`QualityScorer`), frequency, and density tier.
+- **Submodules**: `pub mod context;` (`src/miner/context.rs`), `pub mod quality;` (`src/miner/quality.rs`)
+- **Imports**: `crate::{media, nlp::{JapaneseTokenizer, TokenInfo}, srt::SubtitleSentence}`, `context::*`, `quality::QualityScorer`
 - **Types & Enums**:
   ```rust
-  pub struct CandidateSentence { pub sentence: SubtitleSentence, pub target_word: String, pub target_reading: String, pub known_context_words: Vec<String>, pub unknown_context_words: Vec<String>, pub ignored_context_words: Vec<String>, pub episode_freq: usize, pub density_tier: usize, pub quality_score: f32, pub video_path: PathBuf }
+  pub struct CandidateSentence { pub sentence: SubtitleSentence, pub target_word: String, pub target_reading: String, pub known_context_words: Vec<String>, pub unknown_context_words: Vec<String>, pub ignored_context_words: Vec<String>, pub episode_freq: usize, pub density_tier: usize, pub quality_score: f32, pub video_path: PathBuf, pub before_context: Vec<String>, pub after_context: Vec<String>, pub series_title: Option<String> }
   pub struct MiningEngine { tokenizer: JapaneseTokenizer }
-  pub struct BuildCandidateParams<'a> { pub sentence: &'a SubtitleSentence, pub target_word: &'a str, pub tokens: &'a [TokenInfo], pub known_words: &'a HashSet<String>, pub ignored_words: &'a HashSet<String> }
+  pub struct BuildCandidateParams<'a> { pub sentence: &'a SubtitleSentence, pub target_word: &'a str, pub tokens: &'a [TokenInfo], pub known_words: &'a HashSet<String>, pub ignored_words: &'a HashSet<String>, pub before_context: Vec<String>, pub after_context: Vec<String>, pub series_title: Option<String> }
   ```
 - **Public Functions & Signatures**:
   ```rust
@@ -212,6 +212,15 @@
   }
   ```
 - **Consumers**: `src/session.rs`, `src/ui/explorer/state.rs`
+
+### `src/miner/context.rs` (Role: domain/dialogue-context, Lines: 83)
+- **Responsibility**: Dialogue window extraction ($\pm 2$ lines) surrounding target sentences with temporal cutoff guards (`DEFAULT_MAX_DIALOGUE_GAP_MS = 10_000`), formatting speaker names when available from ASS subtitles.
+- **Public Functions & Signatures**:
+  ```rust
+  pub fn extract_dialogue_context(sentences: &[SubtitleSentence], target_idx: usize, max_lines_before: usize, max_lines_after: usize, max_gap_ms: u64) -> (Vec<String>, Vec<String>);
+  pub fn extract_dialogue_context_for_sentence(sentences: &[SubtitleSentence], target: &SubtitleSentence, max_lines_before: usize, max_lines_after: usize, max_gap_ms: u64) -> (Vec<String>, Vec<String>);
+  ```
+- **Consumers**: `src/miner.rs`, `src/session.rs`, `src/ui/explorer/state.rs`
 
 ### `src/miner/quality.rs` (Role: domain/quality, Lines: 276)
 - **Responsibility**: Multi-factor Japanese sentence naturalness, completeness, and flashcard suitability evaluator (`QualityScorer`). Evaluates predicate terminations (polite/terminal forms vs. dangling connective/particle cut-offs), case marker relationships, length distribution curves (14-32 char sweet spot), and interjection/grunt penalties.
@@ -260,10 +269,12 @@
   - `manage.rs`: Inspects, lists, and purges bundled packages and source video files.
 - **Consumers**: `commands.rs`, `commands/pairing.rs`, `ui/bundles.rs`
 
-### `src/media.rs` (Role: infra/media, Lines: 385)
-- **Responsibility**: External process integration with `ffmpeg` and `mpv`/audio daemons.
+### `src/media.rs` (Role: infra/media, Lines: 388)
+- **Responsibility**: External process integration with `ffmpeg` and `mpv`/audio daemons. Re-exports clean show/episode title context extraction.
+- **Submodules**: `pub mod title;` (`src/media/title.rs`)
 - **Public Functions & Signatures**:
   ```rust
+  pub use title::extract_clean_show_context;
   impl MediaExtractor {
       pub fn media_source_stem(video_path: &Path) -> String;
       pub fn card_media_stem(target_word: &str, video_path: &Path, start_ms: u64, index: usize) -> String;
@@ -274,8 +285,16 @@
       pub fn clean_old_media(media_dir: &Path, max_cards: usize, protected_paths: &HashSet<PathBuf>) -> Result<usize>;
   }
   ```
-- **Consumers**: `session/card_actions.rs`, `session/media_preload.rs`, `ui/inspector.rs`, `main.rs`
+- **Consumers**: `session/card_actions.rs`, `session/media_preload.rs`, `ui/inspector.rs`, `main.rs`, `miner.rs`
 - **Side Effects / I/O**: Spawns `ffmpeg` subprocesses, spawns background audio players (`mpv`, `pw-play`, `paplay`, `ffplay`), deletes expired media.
+
+### `src/media/title.rs` (Role: domain/media-title, Lines: 70)
+- **Responsibility**: Cleans and extracts user- and AI-friendly show and episode titles from media paths, stripping bracketed release tags (`[SubsPlease]`), codec/resolution tokens (`1080p`, `x264`), and standardizing episode naming.
+- **Public Functions & Signatures**:
+  ```rust
+  pub fn extract_clean_show_context(video_path: &Path) -> String;
+  ```
+- **Consumers**: `src/media.rs`, `src/miner.rs`, `src/session.rs`, `src/ui/explorer/state.rs`
 
 ### `src/db/` (Role: infra/db, Lines: ~850)
 - **Files**: `db.rs`, `words.rs`, `cards.rs`, `cache.rs`, `bundles.rs`, `entities.rs`, `entities/*.rs`
@@ -290,13 +309,13 @@
 - **Consumers**: `main.rs`, `commands.rs`, `session.rs`, `dict/service.rs`
 - **Side Effects / I/O**: SQLite file read/write with WAL mode.
 
-### `src/ai.rs` (Role: infra/ai, Lines: 185)
-- **Responsibility**: Google Gemini REST API client. Sends structured batches of sentences, target words, and dictionary candidates to obtain context-specific definition suggestions, sense selections, contextual reading recommendations, and segmentation warnings.
+### `src/ai.rs` (Role: infra/ai, Lines: 206)
+- **Responsibility**: Google Gemini REST API client. Sends structured batches of sentences with surrounding dialogue context ($\pm 2$ lines) and show/episode metadata, target words, and dictionary candidates to obtain context-specific definition suggestions, sense selections, contextual reading recommendations, and segmentation warnings.
 - **Imports**: `serde_json`, `reqwest`
 - **Types & Enums**:
   ```rust
   pub struct AiAnalysisResult { pub card_index: usize, pub recommended_candidate_index: Option<usize>, pub recommended_sense_index: Option<usize>, pub recommended_reading: Option<String>, pub parsing_warning: Option<String>, pub custom_definition_suggestion: Option<String>, pub explanation: Option<String>, pub english_natural: Option<String>, pub english_literal: Option<String>, pub kannada_natural: Option<String>, pub kannada_literal: Option<String> }
-  pub struct CardBatchInput<'a> { pub card_index: usize, pub sentence: &'a str, pub target_word: &'a str, pub target_reading: &'a str, pub candidates: &'a [LookupResult] }
+  pub struct CardBatchInput<'a> { pub card_index: usize, pub sentence: &'a str, pub target_word: &'a str, pub target_reading: &'a str, pub candidates: &'a [LookupResult], pub series_title: Option<&'a str>, pub before_context: &'a [String], pub after_context: &'a [String] }
   pub struct GeminiAiService;
   ```
 - **Public Functions & Signatures**:

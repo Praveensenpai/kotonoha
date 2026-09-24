@@ -2,6 +2,9 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+pub mod title;
+pub use title::extract_clean_show_context;
+
 pub struct MediaExtractor;
 
 impl MediaExtractor {

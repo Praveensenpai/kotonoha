@@ -27,6 +27,9 @@ pub struct CardBatchInput<'a> {
     pub target_word: &'a str,
     pub target_reading: &'a str,
     pub candidates: &'a [crate::dict::LookupResult],
+    pub series_title: Option<&'a str>,
+    pub before_context: &'a [String],
+    pub after_context: &'a [String],
 }
 
 pub struct GeminiAiService;
@@ -34,14 +37,14 @@ pub struct GeminiAiService;
 fn build_prompt(cards_summary: &str) -> String {
     format!(
         r#"You are an expert Japanese linguist and lexicographer.
-Analyze ALL Japanese cards in this batch. Match each target word in its sentence context against its dictionary candidates:
+Analyze ALL Japanese cards in this batch. Match each target word in its sentence and conversational dialogue context (using the show/episode context and surrounding preceding/following lines when available) against its dictionary candidates:
 
 Cards Batch:
 {cards_summary}
 
 For EACH card index:
 1. Check if the target word has any tokenizer/segmentation misparse in the sentence. If so, provide a short `parsing_warning`. Otherwise null.
-2. Always provide a concise, custom English `custom_definition_suggestion` for the target word's meaning in THIS sentence. Prefer the contextual meaning over a broad dictionary list. It must be a short gloss, not a sentence translation. For example, for `私のせいですか？`, return exactly `fault; blame; cause of a bad result`.
+2. Always provide a concise, custom English `custom_definition_suggestion` for the target word's meaning in THIS sentence context. Leverage the surrounding conversation and show theme to resolve ambiguity, figurative usage, and domain nuances. It must be a short gloss, not a sentence translation. For example, for `私のせいですか？`, return exactly `fault; blame; cause of a bad result`.
 3. Set `recommended_candidate_index` and `recommended_sense_index` to null when the custom gloss is the best display definition. Use candidate/sense indexes only when the dictionary entry itself is already an ideal contextual definition and no custom gloss is needed.
 4. Provide `recommended_reading` as the contextual hiragana reading for the target word in this sentence (e.g. for `先に出た`, return `さき`). If identical or unknown, return null.
 
@@ -104,9 +107,27 @@ impl GeminiAiService {
                     format!("\nTarget Reading in Sentence: \"{}\"", c.target_reading)
                 };
 
+                let show_str = match c.series_title {
+                    Some(title) if !title.is_empty() => {
+                        format!("Show / Episode: \"{}\"\n", title)
+                    }
+                    _ => String::new(),
+                };
+
+                let mut dialogue_lines = Vec::new();
+                for (b_idx, prev) in c.before_context.iter().enumerate() {
+                    let rel_num = c.before_context.len() - b_idx;
+                    dialogue_lines.push(format!("    [Prev -{}]: {}", rel_num, prev));
+                }
+                dialogue_lines.push(format!("  >>> [TARGET SENTENCE]: {} <<<", c.sentence));
+                for (a_idx, next) in c.after_context.iter().enumerate() {
+                    dialogue_lines.push(format!("    [Next +{}]: {}", a_idx + 1, next));
+                }
+                let dialogue_str = dialogue_lines.join("\n");
+
                 format!(
-                    "Card Index #{}:\nSentence: \"{}\"\nTarget Word: \"{}\"{}\nCandidates:\n{}",
-                    c.card_index, c.sentence, c.target_word, reading_str, candidates_str
+                    "Card Index #{}:\n{}Dialogue Context:\n{}\nTarget Word: \"{}\"{}\nCandidates:\n{}",
+                    c.card_index, show_str, dialogue_str, c.target_word, reading_str, candidates_str
                 )
             })
             .collect::<Vec<_>>()

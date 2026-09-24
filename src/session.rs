@@ -169,7 +169,7 @@ pub fn collect_review_known_candidates(
     let mut known_candidates = Vec::new();
     let mut seen_words = HashSet::new();
 
-    for sub in sentences {
+    for (idx, sub) in sentences.iter().enumerate() {
         if sub.text.chars().count() < 4 {
             continue;
         }
@@ -223,6 +223,18 @@ pub fn collect_review_known_candidates(
                     seen_words.insert(target_word.clone());
                     let target_reading = reading.unwrap_or_else(|| target_word.clone());
                     let video_path = sub.video_path.clone().unwrap_or_default();
+                    let (before_context, after_context) =
+                        crate::miner::context::extract_dialogue_context(
+                            sentences,
+                            idx,
+                            crate::miner::context::DEFAULT_MAX_CONTEXT_LINES,
+                            crate::miner::context::DEFAULT_MAX_CONTEXT_LINES,
+                            crate::miner::context::DEFAULT_MAX_DIALOGUE_GAP_MS,
+                        );
+                    let series_title = sub
+                        .video_path
+                        .as_deref()
+                        .map(crate::media::extract_clean_show_context);
                     known_candidates.push(CandidateSentence {
                         sentence: sub.clone(),
                         target_word,
@@ -234,6 +246,9 @@ pub fn collect_review_known_candidates(
                         density_tier: 1,
                         quality_score: 1.0,
                         video_path,
+                        before_context,
+                        after_context,
+                        series_title,
                     });
                 }
             }
