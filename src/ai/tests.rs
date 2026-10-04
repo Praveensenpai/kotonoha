@@ -76,38 +76,54 @@ fn test_has_valid_api_key() {
     use crate::config::AiSettings;
 
     let ai_none = AiSettings {
+        enable_deepseek: false,
         gemini_api_key: None,
         ..Default::default()
     };
+    assert!(!ai_none.has_valid_gemini_key());
     assert!(!ai_none.has_valid_api_key());
 
     let ai_empty = AiSettings {
+        enable_deepseek: false,
         gemini_api_key: Some("".to_string()),
         ..Default::default()
     };
+    assert!(!ai_empty.has_valid_gemini_key());
     assert!(!ai_empty.has_valid_api_key());
 
     let ai_spaces = AiSettings {
+        enable_deepseek: false,
         gemini_api_key: Some("   ".to_string()),
         ..Default::default()
     };
-    assert!(!ai_spaces.has_valid_api_key());
+    assert!(!ai_spaces.has_valid_gemini_key());
 
     let ai_placeholder1 = AiSettings {
+        enable_deepseek: false,
         gemini_api_key: Some("YOUR_GEMINI_API_KEY_HERE".to_string()),
         ..Default::default()
     };
-    assert!(!ai_placeholder1.has_valid_api_key());
+    assert!(!ai_placeholder1.has_valid_gemini_key());
 
     let ai_placeholder2 = AiSettings {
+        enable_deepseek: false,
         gemini_api_key: Some("your_api_key_here".to_string()),
         ..Default::default()
     };
-    assert!(!ai_placeholder2.has_valid_api_key());
+    assert!(!ai_placeholder2.has_valid_gemini_key());
 
     let ai_valid = AiSettings {
+        enable_deepseek: false,
         gemini_api_key: Some("AIzaSyValidKey123".to_string()),
         ..Default::default()
     };
+    assert!(ai_valid.has_valid_gemini_key());
     assert!(ai_valid.has_valid_api_key());
+
+    let ai_deepseek = AiSettings {
+        enable_deepseek: true,
+        gemini_api_key: None,
+        ..Default::default()
+    };
+    assert!(ai_deepseek.has_valid_api_key());
 }

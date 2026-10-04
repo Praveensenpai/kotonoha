@@ -213,21 +213,60 @@ kotonoha --bundles
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ Configuration & AI Architecture
 
-`kotonoha` stores its configuration in `~/.config/kotonoha/config.toml`:
+`kotonoha` supports an autonomous dual-tier AI architecture for contextual vocabulary disambiguation, idiomatic gloss generation, and multilingual translations (English & Kannada):
+1. **Primary Provider**: **DeepSeek** via OpenAI-compatible endpoints (`http://mochi:4000/v1/chat/completions` or custom proxy).
+2. **Secondary Fallback**: **Google Gemini** (`gemini-3.1-flash-lite`) when DeepSeek is unreachable or rate-limited.
 
+### 1. Interactive CLI Configuration
+```bash
+# Open interactive configuration menu
+kotonoha --config
+
+# View active configuration status
+kotonoha --show-config
+```
+
+### 2. Manual Configuration (`~/.config/kotonoha/config.toml`)
 ```toml
-# Storage strategy for media bundles
-bundle_dir = "~/.local/share/kotonoha/bundles"
+default_card_limit = 25
+bundle_storage = "colocated"
 
-# AnkiConnect integration
-anki_deck = "Japanese::Immersion"
-anki_model = "Japanese (Kotonoha)"
-anki_url = "http://127.0.0.1:8765"
+[ai]
+enable_ai = true
 
-# Optional Gemini AI contextual parsing
+# Primary Provider: DeepSeek (Web Reverse Proxy / OpenAI Compatible)
+enable_deepseek = true
+deepseek_url = "http://mochi:4000/v1/chat/completions"
+deepseek_model = "v4.1flash"
+deepseek_api_key = "dseeker"
+
+# Secondary Fallback: Google Gemini
 gemini_api_key = "AIzaSy..."
+gemini_model = "gemini-3.1-flash-lite"
+
+ai_batch_size = 25
+ai_cache_ttl_minutes = 30
+
+[anki]
+enable_sync = true
+connect_url = "http://127.0.0.1:8765"
+deck_name = "日本語::Mining"
+model_name = "Japanese sentences+"
+```
+
+### 3. Environment Variable Overrides
+```bash
+# DeepSeek Primary Configuration
+export DEEPSEEK_URL="http://mochi:4000/v1/chat/completions"
+export DEEPSEEK_MODEL="v4.1flash"          # or "v4.1flash-think" for deep reasoning
+export DEEPSEEK_API_KEY="dseeker"
+export ENABLE_DEEPSEEK="true"
+
+# Gemini Secondary Fallback
+export GEMINI_API_KEY="AIzaSy..."
+export GEMINI_MODEL="gemini-3.1-flash-lite"
 ```
 
 ---

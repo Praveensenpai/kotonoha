@@ -42,6 +42,14 @@ impl Default for AnkiSettings {
 pub struct AiSettings {
     #[serde(default = "default_enable_ai")]
     pub enable_ai: bool,
+    #[serde(default = "default_enable_deepseek")]
+    pub enable_deepseek: bool,
+    #[serde(default = "default_deepseek_url")]
+    pub deepseek_url: String,
+    #[serde(default = "default_deepseek_model")]
+    pub deepseek_model: String,
+    #[serde(default = "default_deepseek_api_key")]
+    pub deepseek_api_key: String,
     #[serde(default)]
     pub gemini_api_key: Option<String>,
     #[serde(default = "default_gemini_model")]
@@ -55,8 +63,26 @@ pub struct AiSettings {
 fn default_enable_ai() -> bool {
     true
 }
+fn default_enable_deepseek() -> bool {
+    std::env::var("ENABLE_DEEPSEEK")
+        .map(|v| v != "0" && v.to_lowercase() != "false")
+        .unwrap_or(true)
+}
+fn default_deepseek_url() -> String {
+    std::env::var("DEEPSEEK_URL")
+        .or_else(|_| std::env::var("DEEPSEEK_BASE_URL"))
+        .unwrap_or_else(|_| "http://mochi:4000/v1/chat/completions".to_string())
+}
+fn default_deepseek_model() -> String {
+    std::env::var("DEEPSEEK_MODEL").unwrap_or_else(|_| "v4.1flash".to_string())
+}
+fn default_deepseek_api_key() -> String {
+    std::env::var("DEEPSEEK_API_KEY")
+        .or_else(|_| std::env::var("DEEPSEEKER_API_KEY"))
+        .unwrap_or_else(|_| "dseeker".to_string())
+}
 fn default_gemini_model() -> String {
-    "gemini-3.5-flash-lite".to_string()
+    std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.1-flash-lite".to_string())
 }
 fn default_ai_batch_size() -> usize {
     10
@@ -67,6 +93,10 @@ fn default_ai_cache_ttl_minutes() -> usize {
 
 impl AiSettings {
     pub fn has_valid_api_key(&self) -> bool {
+        self.enable_deepseek || self.has_valid_gemini_key()
+    }
+
+    pub fn has_valid_gemini_key(&self) -> bool {
         match self.gemini_api_key.as_deref() {
             Some(key) => {
                 let trimmed = key.trim();
@@ -83,6 +113,10 @@ impl Default for AiSettings {
     fn default() -> Self {
         Self {
             enable_ai: default_enable_ai(),
+            enable_deepseek: default_enable_deepseek(),
+            deepseek_url: default_deepseek_url(),
+            deepseek_model: default_deepseek_model(),
+            deepseek_api_key: default_deepseek_api_key(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").ok(),
             gemini_model: default_gemini_model(),
             ai_batch_size: default_ai_batch_size(),

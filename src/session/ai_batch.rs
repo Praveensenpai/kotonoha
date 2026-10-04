@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
-use crate::ai::{self, GeminiAiService};
+use crate::ai;
 use crate::config::AppConfig;
 use crate::db::Database;
 use crate::dict::{self, DictionaryService, LookupLimits};
@@ -54,17 +54,15 @@ pub async fn prepare_ai_batch(
         && cfg.ai.has_valid_api_key()
         && !uncached_card_targets.is_empty()
     {
-        if let Some(ref api_key) = cfg.ai.gemini_api_key {
-            let api_key = api_key.clone();
-            let model = cfg.ai.gemini_model.clone();
-            let client = Arc::clone(http_client);
-            let db_clone = db.clone();
-            let max_senses = cfg.dict.max_definition_senses;
-            let max_glosses = cfg.dict.max_glosses_per_sense;
-            let card_targets = uncached_card_targets;
-            let cfg_ai_batch_size = cfg.ai.ai_batch_size;
+        let cfg_clone = cfg.clone();
+        let client = Arc::clone(http_client);
+        let db_clone = db.clone();
+        let max_senses = cfg.dict.max_definition_senses;
+        let max_glosses = cfg.dict.max_glosses_per_sense;
+        let card_targets = uncached_card_targets;
+        let cfg_ai_batch_size = cfg.ai.ai_batch_size;
 
-            Some(tokio::spawn(async move {
+        Some(tokio::spawn(async move {
                 let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
                 let mut all_results = Vec::new();
                 let ai_batch_size = cfg_ai_batch_size.max(1);
@@ -159,21 +157,18 @@ pub async fn prepare_ai_batch(
                         )
                         .collect();
 
-                    match GeminiAiService::analyze_batch(&client, &api_key, &model, &inputs).await {
+                    match ai::UnifiedAiService::analyze_batch(&client, &cfg_clone, &inputs).await {
                         Ok(mut chunk_res) => {
                             all_results.append(&mut chunk_res);
                         }
                         Err(e) => {
-                            eprintln!(" ⚠️ Gemini AI batch request error: {e}");
+                            eprintln!(" ⚠️ AI batch analysis error: {e}");
                         }
                     }
                 }
 
                 Ok::<Vec<ai::AiAnalysisResult>, anyhow::Error>(all_results)
             }))
-        } else {
-            None
-        }
     } else {
         None
     };
@@ -195,19 +190,30 @@ pub async fn collect_ai_results(
 
     match prep.task_handle {
         Some(handle) => {
+            let provider_name = if cfg.ai.enable_deepseek {
+                format!("DeepSeek ({}) [Fallback: Gemini]", cfg.ai.deepseek_model)
+            } else {
+                format!("Gemini ({})", cfg.ai.gemini_model)
+            };
             println!(
-                " 🤖 [4/4] Gemini AI Context Analysis ({}) ...",
-                cfg.ai.gemini_model
+                " 🤖 [4/4] AI Context Analysis ({}) ...",
+                provider_name
             );
             match handle.await {
                 Ok(Ok(fresh_results)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
                     println!(
-                        " ✔ Gemini AI analysis ready ({} from cache, {} fetched from API in {:.2}s).\n",
+                        " ✔ AI analysis ready ({} from cache, {} fetched from API in {:.2}s).\n",
                         cached_count,
                         fresh_results.len(),
                         elapsed
                     );
+
+                    let model_tag = if cfg.ai.enable_deepseek {
+                        &cfg.ai.deepseek_model
+                    } else {
+                        &cfg.ai.gemini_model
+                    };
 
                     for res in &fresh_results {
                         let cand = &candidates[res.card_index];
@@ -215,7 +221,7 @@ pub async fn collect_ai_results(
                             .cache_ai_analysis(
                                 &cand.sentence.text,
                                 &cand.target_word,
-                                &cfg.ai.gemini_model,
+                                model_tag,
                                 res,
                             )
                             .await;
@@ -228,7 +234,7 @@ pub async fn collect_ai_results(
                 Ok(Err(e)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
                     eprintln!(
-                        " ⚠️ Gemini AI batch analysis failed after {:.2}s: {e}\n",
+                        " ⚠️ AI batch analysis failed after {:.2}s: {e}\n",
                         elapsed
                     );
                     prep.cached_results
@@ -237,7 +243,7 @@ pub async fn collect_ai_results(
                         .collect()
                 }
                 Err(e) => {
-                    eprintln!(" ⚠️ Gemini AI task join error: {e}\n");
+                    eprintln!(" ⚠️ AI task join error: {e}\n");
                     prep.cached_results
                         .into_iter()
                         .map(|r| (r.card_index, r))
