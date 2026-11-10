@@ -133,7 +133,7 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
 
         if action == 'c' {
             println!(" 🔍 Fetching dictionary candidates...");
-            let candidates = DictionaryService::lookup_all_candidates_cached(
+            let mut candidates = DictionaryService::lookup_all_candidates_cached(
                 ctx.http_client,
                 Some(ctx.db),
                 &ctx.cand.target_word,
@@ -144,6 +144,14 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
             )
             .await
             .unwrap_or_default();
+            // Must match the ordering used when the AI was given these candidates
+            // (see ai_batch.rs / mining.rs), otherwise recommended_candidate_index
+            // points at a different entry than the one displayed and tagged.
+            dict::sort_candidates_for_context(
+                &mut candidates,
+                &ctx.cand.target_word,
+                &ctx.cand.target_reading,
+            );
             if candidates.is_empty() {
                 println!(" ⚠️  No dictionary candidates found — custom definition is available.");
             }

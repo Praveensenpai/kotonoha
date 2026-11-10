@@ -171,7 +171,11 @@ pub fn select_candidate_or_custom(
     }
     options.push("✍  Enter custom definition text".to_string());
 
-    let mut select = Select::new("Select dictionary definition:", options).with_page_size(10);
+    // reset_cursor would discard the AI-recommended starting cursor during setup(),
+    // because the default fuzzy scorer can reorder equally-scored options.
+    let mut select = Select::new("Select dictionary definition:", options)
+        .with_page_size(10)
+        .with_reset_cursor(false);
     if let Some(idx) = ai_rec_cand {
         if idx < candidates.len() {
             select = select.with_starting_cursor(idx);

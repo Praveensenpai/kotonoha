@@ -474,4 +474,8 @@ cargo fmt --check
   - Added `いってらっしゃい` greeting expression merger to prevent splitting into `いう` ("to say").
   - Added honorific-following Katakana nickname detection in `src/nlp.rs` (e.g. `パンジーちゃん`) tagging them as proper nouns.
   - Verified across all 36 `.koto` archives (100/100 unit tests passing, 0 clippy warnings).
+- **2026-11-10 (v0.0.84: AI Candidate Selection Index Fix)**:
+  - Fixed AI-recommended dictionary candidate highlighting the wrong entry in `src/session/card_actions.rs`: the `c` action now runs `sort_candidates_for_context` before displaying, matching the ordering used when candidates were fed to the AI in `src/session/ai_batch.rs` and `src/session/mining.rs`, so `recommended_candidate_index` resolves to the same entry in both lists.
+  - Fixed `with_starting_cursor` being discarded by `inquire`'s default `reset_cursor` behaviour in `src/ui/prompts.rs`; `select_candidate_or_custom` now uses `.with_reset_cursor(false)` so the cursor starts on the AI-tagged candidate.
+  - Verified: 113/113 tests passing, 0 clippy warnings, release binary smoke-tested (`--version`, `--help`, `--show-config`, `--completions`).
 
