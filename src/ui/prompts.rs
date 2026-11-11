@@ -171,10 +171,22 @@ pub fn select_candidate_or_custom(
     }
     options.push("✍  Enter custom definition text".to_string());
 
-    // reset_cursor would discard the AI-recommended starting cursor during setup(),
-    // because the default fuzzy scorer can reorder equally-scored options.
+    // The default fuzzy scorer returns Some(0) for all items on empty input,
+    // causing sort_unstable to produce non-deterministic order. with_reset_cursor(false)
+    // then makes starting_cursor index into the reordered list, landing on the wrong item.
+    // Fix: when input is empty, return descending scores by original index so the list
+    // stays in its original order. When input is non-empty, delegate to the default scorer.
+    let stable_scorer: inquire::type_aliases::Scorer<'_, String> =
+        &|input: &str, opt: &String, str_val: &str, idx: usize| {
+            if input.is_empty() {
+                Some(i64::MAX - idx as i64)
+            } else {
+                (Select::<String>::DEFAULT_SCORER)(input, opt, str_val, idx)
+            }
+        };
     let mut select = Select::new("Select dictionary definition:", options)
         .with_page_size(10)
+        .with_scorer(stable_scorer)
         .with_reset_cursor(false);
     if let Some(idx) = ai_rec_cand {
         if idx < candidates.len() {
