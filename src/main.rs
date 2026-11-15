@@ -210,6 +210,8 @@ fn load_and_pair_inputs(input_paths: &[PathBuf]) -> Result<Vec<srt::SubtitleSent
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let _ = crate::queue::ensure_mpv_companion_script_installed();
+
     if let Some(arg) = std::env::args().nth(1) {
         if commands::handle_cli_flag(&arg).await? {
             return Ok(());

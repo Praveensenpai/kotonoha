@@ -1,7 +1,26 @@
 use console::measure_text_width;
+use crossterm::terminal;
 use std::cmp::Ordering;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
-use super::card::box_width;
+/// Return a responsive terminal width clamped between 60 and 110 columns.
+pub fn box_width() -> usize {
+    terminal::size()
+        .map(|(w, _)| w as usize)
+        .unwrap_or(80)
+        .clamp(60, 110)
+}
+
+/// Calculate the visible display width of a string ignoring ANSI escape codes.
+pub fn visual_width(s: &str) -> usize {
+    let plain = console::strip_ansi_codes(s);
+    plain
+        .as_ref()
+        .graphemes(true)
+        .map(|g| UnicodeWidthStr::width(g).clamp(1, 2))
+        .sum()
+}
 
 /// Compare strings naturally, treating consecutive ASCII digits as a number.
 pub fn natural_cmp(left: &str, right: &str) -> Ordering {

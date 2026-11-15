@@ -53,6 +53,26 @@ pub fn append_entry(path: &Path, entry: &QueueEntry) -> Result<()> {
     Ok(())
 }
 
+pub const MPV_LUA_SCRIPT: &str = include_str!("../scripts/kotonoha-queue.lua");
+
+pub fn ensure_mpv_companion_script_installed() -> Result<()> {
+    let script_path = dirs::config_dir()
+        .map(|p| p.join("mpv/scripts/kotonoha-queue.lua"))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".config/mpv/scripts/kotonoha-queue.lua")
+        });
+
+    if !script_path.exists() {
+        if let Some(parent) = script_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&script_path, MPV_LUA_SCRIPT);
+    }
+    Ok(())
+}
+
 pub fn remove_entries(path: &Path, indices_to_remove: &[usize]) -> Result<()> {
     if !path.exists() {
         return Ok(());

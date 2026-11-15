@@ -70,7 +70,7 @@ fn test_collect_candidate_words_and_build() {
 
     let cand = build_single_candidate(
         &sentence,
-        &[sentence.clone()],
+        std::slice::from_ref(&sentence),
         &first_unknown.0,
         &tokens,
         &known,

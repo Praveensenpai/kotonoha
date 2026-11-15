@@ -464,7 +464,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   pub struct LookupResult
   ```
 
-### `src/main.rs` (Role: general, Lines: 300)
+### `src/main.rs` (Role: general, Lines: 302)
 - **Responsibility**: Core general logic in src/main.rs
 - **Imports**: use anyhow :: Result , use config :: AppConfig , use console :: style , use db :: Database , use dict :: DictionaryService , use srt :: parse_subtitle , use std :: path :: { Path , PathBuf } , use ui :: TerminalUi 
 
@@ -652,11 +652,11 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn tokenize (& self , text : & str) -> Result < Vec < TokenInfo > >
   ```
 
-### `src/queue/tests.rs` (Role: general, Lines: 77)
+### `src/queue/tests.rs` (Role: general, Lines: 84)
 - **Responsibility**: Core general logic in src/queue/tests.rs
 - **Imports**: use super :: * , use std :: fs 
 
-### `src/queue.rs` (Role: general, Lines: 81)
+### `src/queue.rs` (Role: general, Lines: 101)
 - **Responsibility**: Core general logic in src/queue.rs
 - **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } , use std :: path :: { Path , PathBuf } 
 - **Types & Enums**:
@@ -668,6 +668,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn queue_file_path () -> PathBuf
   fn read_queue (path : & Path) -> Result < Vec < QueueEntry > >
   fn append_entry (path : & Path , entry : & QueueEntry) -> Result < () >
+  fn ensure_mpv_companion_script_installed () -> Result < () >
   fn remove_entries (path : & Path , indices_to_remove : & [usize]) -> Result < () >
   ```
 
@@ -684,9 +685,9 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn collect_ai_results (prep : AiBatchPreparation , candidates : & [CandidateSentence] , cfg : & AppConfig , db : & Database , ai_start : std :: time :: Instant ,) -> HashMap < usize , ai :: AiAnalysisResult >
   ```
 
-### `src/session/card_actions.rs` (Role: general, Lines: 342)
+### `src/session/card_actions.rs` (Role: general, Lines: 183)
 - **Responsibility**: Core general logic in src/session/card_actions.rs
-- **Imports**: use anyhow :: Result , use std :: path :: Path , use std :: sync :: Arc , use crate :: ai :: AiAnalysisResult , use crate :: config :: AppConfig , use crate :: db :: { Database , SaveMinedCardParams } , use crate :: dict :: { self , DictionaryService , LookupLimits , LookupResult } , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence , use crate :: ui :: { CardRenderParams , TerminalUi } 
+- **Imports**: use anyhow :: Result , use std :: path :: Path , use std :: sync :: Arc , use crate :: ai :: AiAnalysisResult , use crate :: config :: AppConfig , use crate :: db :: { Database , SaveMinedCardParams } , use crate :: dict :: { self , DictionaryService , LookupLimits , LookupResult } , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence , use crate :: ui :: card_dashboard :: { DashboardAction , DashboardParams } , use crate :: ui :: TerminalUi 
 - **Types & Enums**:
   ```rust
   pub enum CardActionResult
@@ -695,7 +696,6 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 - **Public Functions & Signatures**:
   ```rust
   async fn handle_card_interaction (mut ctx : CardActionContext < '_ >) -> Result < CardActionResult >
-  fn render_current_card (ctx : & CardActionContext < '_ >)
   ```
 
 ### `src/session/media_preload.rs` (Role: general, Lines: 156)
@@ -706,9 +706,9 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn preload_batch_media (candidates_to_process : & [CandidateSentence] , cfg : & AppConfig , db : & mut Database , http_client : & Arc < reqwest :: Client > ,)
   ```
 
-### `src/session/mining.rs` (Role: general, Lines: 343)
+### `src/session/mining.rs` (Role: general, Lines: 335)
 - **Responsibility**: Core general logic in src/session/mining.rs
-- **Imports**: use anyhow :: Result , use console :: style , use std :: sync :: Arc , use super :: ai_batch :: { collect_ai_results , prepare_ai_batch } , use super :: card_actions :: { handle_card_interaction , render_current_card , CardActionContext , CardActionResult , } , use super :: media_preload :: preload_batch_media , use crate :: ai , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: dict :: { self , DictionaryService , LookupLimits } , use crate :: miner :: CandidateSentence , use crate :: ui :: TerminalUi 
+- **Imports**: use anyhow :: Result , use console :: style , use std :: sync :: Arc , use super :: ai_batch :: { collect_ai_results , prepare_ai_batch } , use super :: card_actions :: { handle_card_interaction , CardActionContext , CardActionResult } , use super :: media_preload :: preload_batch_media , use crate :: ai , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: dict :: { self , DictionaryService , LookupLimits } , use crate :: miner :: CandidateSentence , use crate :: ui :: TerminalUi 
 - **Public Functions & Signatures**:
   ```rust
   async fn run_mining_loop (all_candidates : Vec < CandidateSentence > , cfg : & AppConfig , db : & mut Database , http_client : reqwest :: Client ,) -> Result < () >
@@ -765,22 +765,65 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn prune_bundles_interactive (db : & Database) -> Result < () >
   ```
 
-### `src/ui/card.rs` (Role: tui, Lines: 395)
-- **Responsibility**: Core tui logic in src/ui/card.rs
-- **Imports**: use console :: Style , use crossterm :: terminal , use std :: sync :: LazyLock , use unicode_segmentation :: UnicodeSegmentation 
+### `src/ui/card_dashboard/modal.rs` (Role: tui, Lines: 130)
+- **Responsibility**: Core tui logic in src/ui/card_dashboard/modal.rs
+- **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Clear , List , ListItem , Paragraph } , Frame , } , use super :: theme :: Theme , use crate :: dict :: LookupResult 
 - **Types & Enums**:
   ```rust
-  pub struct CardRenderParams
+  pub enum ActiveModal
   ```
 - **Public Functions & Signatures**:
   ```rust
-  fn visual_width (s : & str) -> usize
-  fn box_width () -> usize
-  fn box_row (content : & str , inner_w : usize) -> String
-  fn box_empty (inner_w : usize) -> String
-  fn highlight_sentence_tokens (sentence : & str , target_word : & str , known_context : & [String] , unknown_context : & [String] , ignored_context : & [String] ,) -> String
-  fn render_progress (current : usize , total : usize , mined : usize , known : usize , skipped : usize , ignored : usize ,)
-  fn render_card (p : CardRenderParams < '_ >)
+  fn render_candidate_modal (f : & mut Frame < '_ > , area : Rect , candidates : & [LookupResult] , selected_idx : usize ,)
+  fn render_edit_reading_modal (f : & mut Frame < '_ > , area : Rect , buffer : & str)
+  ```
+
+### `src/ui/card_dashboard/panes.rs` (Role: tui, Lines: 335)
+- **Responsibility**: Core tui logic in src/ui/card_dashboard/panes.rs
+- **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: render :: DashboardRenderContext , use super :: theme :: Theme , use crate :: miner :: CandidateSentence , use crate :: ui :: helpers :: format_timestamp 
+- **Public Functions & Signatures**:
+  ```rust
+  fn render_sentence_box (f : & mut Frame < '_ > , area : Rect , ctx : & DashboardRenderContext < '_ >)
+  fn build_highlighted_sentence < 'a > (text : & 'a str , target : & 'a str) -> Line < 'a >
+  fn render_split_panes (f : & mut Frame < '_ > , area : Rect , ctx : & DashboardRenderContext < '_ >)
+  fn render_footer_toolbar (f : & mut Frame < '_ > , area : Rect)
+  ```
+
+### `src/ui/card_dashboard/render.rs` (Role: tui, Lines: 131)
+- **Responsibility**: Core tui logic in src/ui/card_dashboard/render.rs
+- **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: modal :: { render_candidate_modal , render_edit_reading_modal , ActiveModal } , use super :: panes :: { render_footer_toolbar , render_sentence_box , render_split_panes } , use super :: theme :: Theme , use crate :: dict :: LookupResult , use crate :: miner :: CandidateSentence 
+- **Types & Enums**:
+  ```rust
+  pub struct DashboardRenderContext
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn render_dashboard (f : & mut Frame < '_ > , ctx : & DashboardRenderContext < '_ >)
+  ```
+
+### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 146)
+- **Responsibility**: Core tui logic in src/ui/card_dashboard/tests.rs
+- **Imports**: use super :: * , use crate :: srt :: SubtitleSentence , use std :: path :: PathBuf 
+
+### `src/ui/card_dashboard/theme.rs` (Role: tui, Lines: 18)
+- **Responsibility**: Core tui logic in src/ui/card_dashboard/theme.rs
+- **Imports**: use ratatui :: style :: Color 
+- **Types & Enums**:
+  ```rust
+  pub struct Theme
+  ```
+
+### `src/ui/card_dashboard.rs` (Role: tui, Lines: 270)
+- **Responsibility**: Core tui logic in src/ui/card_dashboard.rs
+- **Imports**: use anyhow :: Result , use crossterm :: { event :: { self , Event , KeyCode , KeyEventKind , KeyModifiers } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , Terminal } , use std :: io , use std :: path :: Path , use std :: time :: Duration , use crate :: dict :: LookupResult , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence , use modal :: ActiveModal , use render :: { render_dashboard , DashboardRenderContext } 
+- **Types & Enums**:
+  ```rust
+  pub enum DashboardAction
+  pub struct DashboardParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn run_card_dashboard (mut p : DashboardParams < '_ >) -> Result < DashboardAction >
   ```
 
 ### `src/ui/config_menu.rs` (Role: tui, Lines: 329)
@@ -888,11 +931,13 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn run_explorer (p : ExplorerParams < '_ >) -> Result < Vec < crate :: miner :: CandidateSentence > >
   ```
 
-### `src/ui/helpers.rs` (Role: tui, Lines: 104)
+### `src/ui/helpers.rs` (Role: tui, Lines: 123)
 - **Responsibility**: Core tui logic in src/ui/helpers.rs
-- **Imports**: use console :: measure_text_width , use std :: cmp :: Ordering , use super :: card :: box_width 
+- **Imports**: use console :: measure_text_width , use crossterm :: terminal , use std :: cmp :: Ordering , use unicode_segmentation :: UnicodeSegmentation , use unicode_width :: UnicodeWidthStr 
 - **Public Functions & Signatures**:
   ```rust
+  fn box_width () -> usize
+  fn visual_width (s : & str) -> usize
   fn natural_cmp (left : & str , right : & str) -> Ordering
   fn format_word_with_reading (word : & str , reading : & str) -> String
   fn format_timestamp (start_ms : u64) -> String
@@ -902,7 +947,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 
 ### `src/ui/inspector.rs` (Role: tui, Lines: 347)
 - **Responsibility**: Core tui logic in src/ui/inspector.rs
-- **Imports**: use anyhow :: Result , use crossterm :: { event :: { self , Event , KeyCode , KeyEventKind } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , layout :: { Constraint , Direction , Layout , Position } , style :: { Color , Modifier , Style as TuiStyle } , text :: { Line , Span } , widgets :: { Block , Borders , List , ListItem , Paragraph } , Terminal , } , use std :: io , use std :: path :: Path , use std :: time :: { Duration , Instant } , use crate :: ui :: card , use crate :: ui :: format_timestamp 
+- **Imports**: use anyhow :: Result , use crossterm :: { event :: { self , Event , KeyCode , KeyEventKind } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , layout :: { Constraint , Direction , Layout , Position } , style :: { Color , Modifier , Style as TuiStyle } , text :: { Line , Span } , widgets :: { Block , Borders , List , ListItem , Paragraph } , Terminal , } , use std :: io , use std :: path :: Path , use std :: time :: { Duration , Instant } , use crate :: ui :: format_timestamp , use crate :: ui :: helpers :: visual_width 
 - **Types & Enums**:
   ```rust
   pub struct InspectSentencesParams
@@ -965,16 +1010,13 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn select_bundle_source_files () -> Result < Vec < PathBuf > >
   ```
 
-### `src/ui/prompts.rs` (Role: tui, Lines: 281)
+### `src/ui/prompts.rs` (Role: tui, Lines: 83)
 - **Responsibility**: Core tui logic in src/ui/prompts.rs
-- **Imports**: use anyhow :: Result , use inquire :: { Select , Text } , use super :: SessionMode 
+- **Imports**: use anyhow :: Result , use inquire :: Select , use super :: SessionMode 
 - **Public Functions & Signatures**:
   ```rust
   fn select_session_mode (i1_count : usize , known_lines_count : usize) -> Result < SessionMode >
   fn ask_next_batch (next_batch : usize , total_batches : usize , remaining_lines : usize ,) -> Result < bool >
-  fn ask_action () -> Result < char >
-  fn select_or_edit_reading (current_reading : & str , context_reading : & str , candidates : & [crate :: dict :: LookupResult] ,) -> Result < String >
-  fn select_candidate_or_custom (candidates : & [crate :: dict :: LookupResult] , target_word : & str , current_reading : & str , current_pitch : & str , ai_analysis : Option < & crate :: ai :: AiAnalysisResult > ,) -> Result < crate :: dict :: LookupResult >
   fn select_sense (senses : & [String] , target_word : & str) -> Result < Option < String > >
   ```
 
@@ -996,9 +1038,9 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 - **Responsibility**: Core tui logic in src/ui/tests.rs
 - **Imports**: use super :: helpers :: natural_cmp , use super :: picker :: is_hidden_or_ignored_entry , use walkdir :: WalkDir 
 
-### `src/ui.rs` (Role: tui, Lines: 163)
+### `src/ui.rs` (Role: tui, Lines: 125)
 - **Responsibility**: Core tui logic in src/ui.rs
-- **Imports**: pub use card :: CardRenderParams , pub use helpers :: * , pub use inspector :: InspectSentencesParams , use anyhow :: Result , use std :: path :: PathBuf 
+- **Imports**: pub use helpers :: * , pub use inspector :: InspectSentencesParams , use anyhow :: Result , use std :: path :: PathBuf 
 - **Types & Enums**:
   ```rust
   pub enum SessionMode
@@ -1012,13 +1054,8 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn select_bundle_source_files () -> Result < Vec < PathBuf > >
   fn bootstrap_known_words (vocab_items : & [(String , usize , String)]) -> Result < Vec < String > >
   fn bootstrap_ignored_names (vocab_items : & [(String , usize , String)]) -> Result < Vec < String > >
-  fn render_progress (current : usize , total : usize , mined : usize , known : usize , skipped : usize , ignored : usize ,)
-  fn render_card (p : CardRenderParams < '_ >)
   fn select_session_mode (i1_count : usize , known_lines_count : usize) -> Result < SessionMode >
   fn ask_next_batch (next_batch : usize , total_batches : usize , remaining_lines : usize ,) -> Result < bool >
-  fn ask_action () -> Result < char >
-  fn select_or_edit_reading (current_reading : & str , context_reading : & str , candidates : & [crate :: dict :: LookupResult] ,) -> Result < String >
-  fn select_candidate_or_custom (candidates : & [crate :: dict :: LookupResult] , target_word : & str , current_reading : & str , current_pitch : & str , ai_analysis : Option < & crate :: ai :: AiAnalysisResult > ,) -> Result < crate :: dict :: LookupResult >
   fn select_sense (senses : & [String] , target_word : & str) -> Result < Option < String > >
   fn inspect_sentences (p : inspector :: InspectSentencesParams < '_ >) -> Result < () >
   fn manage_known_words (words : & [(String , String)]) -> Result < Vec < String > >
@@ -1030,6 +1067,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn select_queue_entries (entries : & [crate :: queue :: QueueEntry]) -> Result < Vec < usize > >
   fn ask_no_subtitle_action (video_path : & std :: path :: Path , timestamp_ms : u64 ,) -> Result < queue :: QueueNoSubChoice >
   fn select_target_word (sentence_text : & str , words : & [(String , String , bool)] ,) -> Result < Option < String > >
+  fn run_card_dashboard (p : card_dashboard :: DashboardParams < '_ > ,) -> Result < card_dashboard :: DashboardAction >
   ```
 
 ## 4. Execution Lifecycle Trace

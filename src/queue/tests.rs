@@ -75,3 +75,10 @@ fn test_remove_entries() {
 
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+#[test]
+fn test_mpv_companion_script_embedded() {
+    assert!(!MPV_LUA_SCRIPT.is_empty());
+    assert!(MPV_LUA_SCRIPT.contains("kotonoha-queue"));
+    assert!(MPV_LUA_SCRIPT.contains("mp.add_key_binding"));
+}

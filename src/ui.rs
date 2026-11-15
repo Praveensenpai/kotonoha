@@ -1,6 +1,6 @@
 pub mod bootstrap;
 pub mod bundles;
-pub mod card;
+pub mod card_dashboard;
 pub mod config_menu;
 pub mod explorer;
 pub mod helpers;
@@ -12,7 +12,6 @@ pub mod queue;
 #[cfg(test)]
 mod tests;
 
-pub use card::CardRenderParams;
 pub use helpers::*;
 pub use inspector::InspectSentencesParams;
 
@@ -54,21 +53,6 @@ impl TerminalUi {
         bootstrap::bootstrap_ignored_names(vocab_items)
     }
 
-    pub fn render_progress(
-        current: usize,
-        total: usize,
-        mined: usize,
-        known: usize,
-        skipped: usize,
-        ignored: usize,
-    ) {
-        card::render_progress(current, total, mined, known, skipped, ignored);
-    }
-
-    pub fn render_card(p: CardRenderParams<'_>) {
-        card::render_card(p);
-    }
-
     pub fn select_session_mode(i1_count: usize, known_lines_count: usize) -> Result<SessionMode> {
         prompts::select_session_mode(i1_count, known_lines_count)
     }
@@ -79,34 +63,6 @@ impl TerminalUi {
         remaining_lines: usize,
     ) -> Result<bool> {
         prompts::ask_next_batch(next_batch, total_batches, remaining_lines)
-    }
-
-    pub fn ask_action() -> Result<char> {
-        prompts::ask_action()
-    }
-
-    pub fn select_or_edit_reading(
-        current_reading: &str,
-        context_reading: &str,
-        candidates: &[crate::dict::LookupResult],
-    ) -> Result<String> {
-        prompts::select_or_edit_reading(current_reading, context_reading, candidates)
-    }
-
-    pub fn select_candidate_or_custom(
-        candidates: &[crate::dict::LookupResult],
-        target_word: &str,
-        current_reading: &str,
-        current_pitch: &str,
-        ai_analysis: Option<&crate::ai::AiAnalysisResult>,
-    ) -> Result<crate::dict::LookupResult> {
-        prompts::select_candidate_or_custom(
-            candidates,
-            target_word,
-            current_reading,
-            current_pitch,
-            ai_analysis,
-        )
     }
 
     pub fn select_sense(senses: &[String], target_word: &str) -> Result<Option<String>> {
@@ -159,5 +115,11 @@ impl TerminalUi {
         words: &[(String, String, bool)],
     ) -> Result<Option<String>> {
         queue::select_target_word(sentence_text, words)
+    }
+
+    pub fn run_card_dashboard(
+        p: card_dashboard::DashboardParams<'_>,
+    ) -> Result<card_dashboard::DashboardAction> {
+        card_dashboard::run_card_dashboard(p)
     }
 }

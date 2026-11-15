@@ -16,8 +16,8 @@ use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::ui::card;
 use crate::ui::format_timestamp;
+use crate::ui::helpers::visual_width;
 
 pub struct InspectSentencesParams<'a> {
     pub sentences: &'a [crate::srt::SubtitleSentence],
@@ -197,7 +197,7 @@ fn run_inspector(
             );
             frame.render_widget(header, layout[0]);
 
-            let cursor_x = layout[0].x + 10 + card::visual_width(&search_display) as u16;
+            let cursor_x = layout[0].x + 10 + visual_width(&search_display) as u16;
             let cursor_y = layout[0].y + 2;
             frame.set_cursor_position(Position::new(cursor_x, cursor_y));
 

@@ -3,9 +3,7 @@ use console::style;
 use std::sync::Arc;
 
 use super::ai_batch::{collect_ai_results, prepare_ai_batch};
-use super::card_actions::{
-    handle_card_interaction, render_current_card, CardActionContext, CardActionResult,
-};
+use super::card_actions::{handle_card_interaction, CardActionContext, CardActionResult};
 use super::media_preload::preload_batch_media;
 use crate::ai;
 use crate::anki;
@@ -67,15 +65,6 @@ pub async fn run_mining_loop(
         let total_cards = candidates_to_process.len();
 
         for (idx, cand) in candidates_to_process.iter().enumerate() {
-            TerminalUi::render_progress(
-                idx + 1,
-                total_cards,
-                mined_count,
-                known_count,
-                skipped_count,
-                ignored_count,
-            );
-
             let mut dict_info = resolve_dict_info(cand, cfg, db, &http_client).await?;
             let ai_analysis = ai_results_map.get(&idx);
 
@@ -92,6 +81,11 @@ pub async fn run_mining_loop(
 
             let ctx = CardActionContext {
                 card_idx: idx,
+                total_cards,
+                mined_count,
+                known_count,
+                skipped_count,
+                ignored_count,
                 cand,
                 dict_info: &mut dict_info,
                 ai_analysis,
@@ -101,8 +95,6 @@ pub async fn run_mining_loop(
                 db,
                 http_client: &http_client,
             };
-
-            render_current_card(&ctx);
 
             match handle_card_interaction(ctx).await? {
                 CardActionResult::Mined => mined_count += 1,
