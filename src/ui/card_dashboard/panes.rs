@@ -264,67 +264,99 @@ fn render_dict_pane(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderContext<
     f.render_widget(p, area);
 }
 
-fn build_toolbar_line() -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            " [Y/Enter] ",
-            Style::default()
-                .fg(Theme::GREEN)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Mine   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [N/Space] ",
-            Style::default()
-                .fg(Theme::YELLOW)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Skip   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [K] ",
-            Style::default()
-                .fg(Theme::CYAN)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Known   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [R] ",
-            Style::default()
-                .fg(Theme::PINK)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Audio   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [C] ",
-            Style::default()
-                .fg(Theme::LAVENDER)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Candidate   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [F] ",
-            Style::default()
-                .fg(Theme::LAVENDER)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Furigana   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [I] ",
-            Style::default().fg(Theme::RED).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Ignore   ", Style::default().fg(Theme::TEXT)),
-        Span::styled(
-            " [Q] ",
-            Style::default()
-                .fg(Theme::SUBTEXT)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("Quit", Style::default().fg(Theme::SUBTEXT)),
-    ])
+struct ToolbarItem {
+    key: &'static str,
+    compact_key: &'static str,
+    full_label: &'static str,
+    compact_label: &'static str,
+    color: ratatui::style::Color,
+}
+
+const TOOLBAR_ITEMS: &[ToolbarItem] = &[
+    ToolbarItem {
+        key: " [Y/Enter] ",
+        compact_key: " [Y] ",
+        full_label: "Mine   ",
+        compact_label: "Mine  ",
+        color: Theme::GREEN,
+    },
+    ToolbarItem {
+        key: " [N/Space] ",
+        compact_key: " [N] ",
+        full_label: "Skip   ",
+        compact_label: "Skip  ",
+        color: Theme::YELLOW,
+    },
+    ToolbarItem {
+        key: " [K] ",
+        compact_key: " [K] ",
+        full_label: "Known   ",
+        compact_label: "Known  ",
+        color: Theme::CYAN,
+    },
+    ToolbarItem {
+        key: " [R] ",
+        compact_key: " [R] ",
+        full_label: "Audio   ",
+        compact_label: "Audio  ",
+        color: Theme::PINK,
+    },
+    ToolbarItem {
+        key: " [C] ",
+        compact_key: " [C] ",
+        full_label: "Candidate   ",
+        compact_label: "Dict  ",
+        color: Theme::LAVENDER,
+    },
+    ToolbarItem {
+        key: " [F] ",
+        compact_key: " [F] ",
+        full_label: "Furigana   ",
+        compact_label: "Furi  ",
+        color: Theme::LAVENDER,
+    },
+    ToolbarItem {
+        key: " [I] ",
+        compact_key: " [I] ",
+        full_label: "Ignore   ",
+        compact_label: "Ignore  ",
+        color: Theme::RED,
+    },
+    ToolbarItem {
+        key: " [Q] ",
+        compact_key: " [Q] ",
+        full_label: "Quit",
+        compact_label: "Quit",
+        color: Theme::SUBTEXT,
+    },
+];
+
+fn build_toolbar_line(compact: bool) -> Line<'static> {
+    let mut spans = Vec::with_capacity(TOOLBAR_ITEMS.len() * 2);
+    for item in TOOLBAR_ITEMS {
+        let key_str = if compact { item.compact_key } else { item.key };
+        let label = if compact {
+            item.compact_label
+        } else {
+            item.full_label
+        };
+        spans.push(Span::styled(
+            key_str,
+            Style::default().fg(item.color).add_modifier(Modifier::BOLD),
+        ));
+        let text_color = if item.key == " [Q] " {
+            Theme::SUBTEXT
+        } else {
+            Theme::TEXT
+        };
+        spans.push(Span::styled(label, Style::default().fg(text_color)));
+    }
+    Line::from(spans)
 }
 
 pub fn render_footer_toolbar(f: &mut Frame<'_>, area: Rect) {
-    let p = Paragraph::new(build_toolbar_line())
+    let is_compact = area.width < 115;
+    let p = Paragraph::new(build_toolbar_line(is_compact))
         .alignment(ratatui::layout::Alignment::Center)
         .block(
             Block::default()

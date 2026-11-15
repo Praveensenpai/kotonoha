@@ -9,6 +9,7 @@ use ratatui::{
 use super::theme::Theme;
 use crate::dict::LookupResult;
 
+#[derive(Debug, Clone)]
 pub enum ActiveModal {
     None,
     SelectCandidate {
@@ -26,7 +27,7 @@ pub fn render_candidate_modal(
     candidates: &[LookupResult],
     selected_idx: usize,
 ) {
-    let popup_area = centered_rect(area, 70, 60);
+    let popup_area = centered_rect(area, 75, 55);
     f.render_widget(Clear, popup_area);
 
     let items: Vec<ListItem> = candidates
@@ -57,7 +58,7 @@ pub fn render_candidate_modal(
 
     let list = List::new(items).block(
         Block::default()
-            .title(" 📖 Select Dictionary Candidate [↑/↓ Navigate, Enter Select, Esc Cancel] ")
+            .title(" 📖 Dictionary Candidates [↑/↓ Pick, Enter Select, Esc Cancel] ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Theme::BORDER_FOCUSED))
             .style(Style::default().bg(Theme::CARD_BG)),
@@ -67,7 +68,7 @@ pub fn render_candidate_modal(
 }
 
 pub fn render_edit_reading_modal(f: &mut Frame<'_>, area: Rect, buffer: &str) {
-    let popup_area = centered_rect(area, 50, 20);
+    let popup_area = centered_rect_fixed_height(area, 60, 8);
     f.render_widget(Clear, popup_area);
 
     let text = vec![
@@ -116,6 +117,28 @@ fn centered_rect(r: Rect, percent_x: u16, percent_y: u16) -> Rect {
             Constraint::Percentage((100 - percent_y) / 2),
             Constraint::Percentage(percent_y),
             Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
+fn centered_rect_fixed_height(r: Rect, percent_x: u16, height: u16) -> Rect {
+    let actual_height = height.min(r.height.saturating_sub(2));
+    let pad_y = r.height.saturating_sub(actual_height) / 2;
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(pad_y),
+            Constraint::Length(actual_height),
+            Constraint::Min(0),
         ])
         .split(r);
 

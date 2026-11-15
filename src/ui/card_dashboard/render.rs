@@ -90,31 +90,55 @@ fn build_header_title(ctx: &DashboardRenderContext<'_>) -> Line<'static> {
     ])
 }
 
-fn build_header_badges(ctx: &DashboardRenderContext<'_>) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            format!(" ⛏ {} mined  ", ctx.mined_count),
-            Style::default().fg(Theme::GREEN),
-        ),
-        Span::styled(
-            format!("✔ {} known  ", ctx.known_count),
-            Style::default().fg(Theme::CYAN),
-        ),
-        Span::styled(
-            format!("⏭ {} skipped  ", ctx.skipped_count),
-            Style::default().fg(Theme::YELLOW),
-        ),
-        Span::styled(
-            format!("🚫 {} ignored ", ctx.ignored_count),
-            Style::default().fg(Theme::RED),
-        ),
-    ])
+fn build_header_badges(ctx: &DashboardRenderContext<'_>, compact: bool) -> Line<'static> {
+    if compact {
+        Line::from(vec![
+            Span::styled(
+                format!(" ⛏ {} ", ctx.mined_count),
+                Style::default().fg(Theme::GREEN),
+            ),
+            Span::styled(
+                format!("✔ {} ", ctx.known_count),
+                Style::default().fg(Theme::CYAN),
+            ),
+            Span::styled(
+                format!("⏭ {} ", ctx.skipped_count),
+                Style::default().fg(Theme::YELLOW),
+            ),
+            Span::styled(
+                format!("🚫 {} ", ctx.ignored_count),
+                Style::default().fg(Theme::RED),
+            ),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(
+                format!(" ⛏ {} mined  ", ctx.mined_count),
+                Style::default().fg(Theme::GREEN),
+            ),
+            Span::styled(
+                format!("✔ {} known  ", ctx.known_count),
+                Style::default().fg(Theme::CYAN),
+            ),
+            Span::styled(
+                format!("⏭ {} skipped  ", ctx.skipped_count),
+                Style::default().fg(Theme::YELLOW),
+            ),
+            Span::styled(
+                format!("🚫 {} ignored ", ctx.ignored_count),
+                Style::default().fg(Theme::RED),
+            ),
+        ])
+    }
 }
 
 fn render_header(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderContext<'_>) {
+    let is_compact = area.width < 105;
+    let right_width = if is_compact { 28 } else { 48 };
+
     let header_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .constraints([Constraint::Min(35), Constraint::Length(right_width)])
         .split(area);
 
     let border = Block::default()
@@ -122,7 +146,7 @@ fn render_header(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderContext<'_>
         .border_style(Style::default().fg(Theme::BORDER));
 
     let p_left = Paragraph::new(build_header_title(ctx)).block(border.clone());
-    let p_right = Paragraph::new(build_header_badges(ctx))
+    let p_right = Paragraph::new(build_header_badges(ctx, is_compact))
         .alignment(ratatui::layout::Alignment::Right)
         .block(border);
 

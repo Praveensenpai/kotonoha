@@ -765,7 +765,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn prune_bundles_interactive (db : & Database) -> Result < () >
   ```
 
-### `src/ui/card_dashboard/modal.rs` (Role: tui, Lines: 130)
+### `src/ui/card_dashboard/modal.rs` (Role: tui, Lines: 153)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/modal.rs
 - **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Clear , List , ListItem , Paragraph } , Frame , } , use super :: theme :: Theme , use crate :: dict :: LookupResult 
 - **Types & Enums**:
@@ -778,7 +778,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_edit_reading_modal (f : & mut Frame < '_ > , area : Rect , buffer : & str)
   ```
 
-### `src/ui/card_dashboard/panes.rs` (Role: tui, Lines: 335)
+### `src/ui/card_dashboard/panes.rs` (Role: tui, Lines: 367)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/panes.rs
 - **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: render :: DashboardRenderContext , use super :: theme :: Theme , use crate :: miner :: CandidateSentence , use crate :: ui :: helpers :: format_timestamp 
 - **Public Functions & Signatures**:
@@ -789,7 +789,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_footer_toolbar (f : & mut Frame < '_ > , area : Rect)
   ```
 
-### `src/ui/card_dashboard/render.rs` (Role: tui, Lines: 131)
+### `src/ui/card_dashboard/render.rs` (Role: tui, Lines: 155)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/render.rs
 - **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: modal :: { render_candidate_modal , render_edit_reading_modal , ActiveModal } , use super :: panes :: { render_footer_toolbar , render_sentence_box , render_split_panes } , use super :: theme :: Theme , use crate :: dict :: LookupResult , use crate :: miner :: CandidateSentence 
 - **Types & Enums**:
@@ -801,7 +801,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_dashboard (f : & mut Frame < '_ > , ctx : & DashboardRenderContext < '_ >)
   ```
 
-### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 146)
+### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 317)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/tests.rs
 - **Imports**: use super :: * , use crate :: srt :: SubtitleSentence , use std :: path :: PathBuf 
 
