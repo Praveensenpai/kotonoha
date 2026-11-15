@@ -1,5 +1,6 @@
 use super::helpers::natural_cmp;
 use super::picker::is_hidden_or_ignored_entry;
+use super::picker::state::SubtitleStatus;
 use walkdir::WalkDir;
 
 #[test]
@@ -71,4 +72,55 @@ fn test_format_duration() {
     assert_eq!(format_duration(Duration::from_secs(60)), "1m 0.0s");
     assert_eq!(format_duration(Duration::from_millis(84_500)), "1m 24.5s");
     assert_eq!(format_duration(Duration::from_secs(135)), "2m 15.0s");
+}
+
+#[test]
+fn bundle_picker_omits_paired_video_keeps_subtitle() {
+    // Setup: temp dir with one paired video+subtitle, one unpaired video
+    let tmp = std::env::temp_dir().join(format!("koto_bundle_pick_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    // paired episode: both .mkv and .ja.srt exist
+    std::fs::write(tmp.join("Heya Camp - S01E01.mkv"), "").unwrap();
+    std::fs::write(tmp.join("Heya Camp - S01E01.ja.srt"), "").unwrap();
+    // unpaired episode: only .mkv, no subtitle
+    std::fs::write(tmp.join("Heya Camp - S01E02.mkv"), "").unwrap();
+
+    let files: Vec<std::path::PathBuf> = {
+        let mut v: Vec<_> = std::fs::read_dir(&tmp)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        v.sort();
+        v
+    };
+
+    use super::picker::classify_bundle_source_file;
+    use super::picker::state::SelectableFile;
+    // Call classify_bundle_source_file directly
+    let items: Vec<SelectableFile> = files
+        .into_iter()
+        .filter_map(classify_bundle_source_file)
+        .collect();
+
+    // Should have exactly 2 items: the .ja.srt + the unpaired .mkv (not the paired .mkv)
+    assert_eq!(items.len(), 2, "Expected 2 items (1 subtitle + 1 no-sub video), got: {:?}", items.iter().map(|i| i.path.file_name().unwrap().to_str().unwrap()).collect::<Vec<_>>());
+
+    let names: Vec<&str> = items
+        .iter()
+        .map(|i| i.path.file_name().unwrap().to_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Heya Camp - S01E01.ja.srt"), "Subtitle must be present");
+    assert!(names.contains(&"Heya Camp - S01E02.mkv"), "Unpaired video must be present");
+    assert!(!names.contains(&"Heya Camp - S01E01.mkv"), "Paired video must be omitted");
+
+    // Statuses are correct
+    let sub_item = items.iter().find(|i| i.path.extension().map(|e| e == "srt").unwrap_or(false)).unwrap();
+    assert_eq!(sub_item.status, SubtitleStatus::HasSub);
+    let vid_item = items.iter().find(|i| i.path.extension().map(|e| e == "mkv").unwrap_or(false)).unwrap();
+    assert_eq!(vid_item.status, SubtitleStatus::NoSub);
+
+    let _ = std::fs::remove_dir_all(&tmp);
 }

@@ -998,7 +998,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn build_result (self) -> Vec < PathBuf >
   ```
 
-### `src/ui/picker.rs` (Role: tui, Lines: 264)
+### `src/ui/picker.rs` (Role: tui, Lines: 274)
 - **Responsibility**: Core tui logic in src/ui/picker.rs
 - **Imports**: use anyhow :: Result , use indicatif :: { ProgressBar , ProgressStyle } , use inquire :: Text , use std :: path :: { Path , PathBuf } , use walkdir :: WalkDir , pub use selector :: run_file_selector , pub use state :: { SelectableFile , SubtitleStatus } , use super :: helpers :: natural_cmp 
 - **Public Functions & Signatures**:
@@ -1034,9 +1034,9 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn select_target_word (sentence_text : & str , words : & [(String , String , bool)] ,) -> Result < Option < String > >
   ```
 
-### `src/ui/tests.rs` (Role: tui, Lines: 74)
+### `src/ui/tests.rs` (Role: tui, Lines: 126)
 - **Responsibility**: Core tui logic in src/ui/tests.rs
-- **Imports**: use super :: helpers :: natural_cmp , use super :: picker :: is_hidden_or_ignored_entry , use walkdir :: WalkDir 
+- **Imports**: use super :: helpers :: natural_cmp , use super :: picker :: is_hidden_or_ignored_entry , use super :: picker :: state :: SubtitleStatus , use walkdir :: WalkDir 
 
 ### `src/ui.rs` (Role: tui, Lines: 125)
 - **Responsibility**: Core tui logic in src/ui.rs

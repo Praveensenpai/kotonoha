@@ -168,7 +168,10 @@ pub fn select_bundle_source_files() -> Result<Vec<PathBuf>> {
         return Ok(vec![PathBuf::from(input)]);
     }
 
-    let items: Vec<SelectableFile> = files.into_iter().map(classify_bundle_source_file).collect();
+    let items: Vec<SelectableFile> = files
+        .into_iter()
+        .filter_map(classify_bundle_source_file)
+        .collect();
 
     run_file_selector(
         "📦 Select Video or Subtitle File(s) to Bundle into .koto",
@@ -241,7 +244,7 @@ fn classify_media_file(path: PathBuf) -> Option<SelectableFile> {
     None
 }
 
-fn classify_bundle_source_file(path: PathBuf) -> SelectableFile {
+pub(crate) fn classify_bundle_source_file(path: PathBuf) -> Option<SelectableFile> {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -249,16 +252,23 @@ fn classify_bundle_source_file(path: PathBuf) -> SelectableFile {
         .to_lowercase();
 
     if matches!(ext.as_str(), "mkv" | "mp4" | "webm" | "avi") {
-        let status = if crate::commands::find_paired_subtitle_for_video(&path).is_some() {
-            SubtitleStatus::HasSub
-        } else {
-            SubtitleStatus::NoSub
-        };
-        SelectableFile { path, status }
-    } else {
-        SelectableFile {
+        // If this video already has a paired subtitle, omit it — the subtitle
+        // row represents the pair and will be used to drive bundling.
+        if crate::commands::find_paired_subtitle_for_video(&path).is_some() {
+            return None;
+        }
+        return Some(SelectableFile {
+            path,
+            status: SubtitleStatus::NoSub,
+        });
+    }
+
+    if matches!(ext.as_str(), "srt" | "ass" | "vtt") {
+        return Some(SelectableFile {
             path,
             status: SubtitleStatus::HasSub,
-        }
+        });
     }
+
+    None
 }
