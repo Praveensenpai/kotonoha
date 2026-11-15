@@ -66,6 +66,19 @@ else
     fi
 fi
 
+# Install mpv companion script for Shift+Q timestamp queueing
+MPV_SCRIPTS_DIR="$HOME/.config/mpv/scripts"
+mkdir -p "$MPV_SCRIPTS_DIR"
+if [ -f "$TMP_DIR/scripts/kotonoha-queue.lua" ]; then
+    install -m 644 "$TMP_DIR/scripts/kotonoha-queue.lua" "$MPV_SCRIPTS_DIR/kotonoha-queue.lua"
+    echo "🎬 Installed mpv companion script to $MPV_SCRIPTS_DIR/kotonoha-queue.lua (Shift+Q to queue)"
+else
+    curl -sSL "https://raw.githubusercontent.com/$REPO/main/scripts/kotonoha-queue.lua" -o "$MPV_SCRIPTS_DIR/kotonoha-queue.lua" || true
+    if [ -f "$MPV_SCRIPTS_DIR/kotonoha-queue.lua" ]; then
+        echo "🎬 Installed mpv companion script to $MPV_SCRIPTS_DIR/kotonoha-queue.lua (Shift+Q to queue)"
+    fi
+fi
+
 echo "✔ Successfully installed kotonoha to $INSTALL_DIR/kotonoha!"
 
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then

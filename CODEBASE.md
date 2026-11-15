@@ -1,481 +1,1046 @@
 # CODEBASE.md: kotonoha Semantic Digest
 
-> **Notice**: This file is an AI-optimized semantic index adhering to the `codebase-digest` specification. Do not write narrative prose. Keep token density high.
+> **Notice**: AI-optimized semantic index. Do not write narrative prose. Keep token density high.
 
 ## 1. System Topology & Data Flow
-
 ```text
-┌───────────────────────────────┐
-│ Input: Subtitle (.srt/.ass)   │
-│ & Video (.mkv/.mp4/.koto)     │
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│ src/commands.rs & pairing.rs  │  ──> CLI Flag Dispatch / Media File Discovery
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│ srt.rs (Regex / Text Normal)  │  ──> Parses timestamps & clean dialogue
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│ nlp.rs (sudachi.rs + mergers) │  ──> Mode::C tokenization, POS filtering, grammar merging
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│ miner.rs (MiningEngine)       │  ──> Ranks exact i+1 sentences by freq & density tier
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│ session/ (Orchestration Loop) │ ◀──▶ db/ (SeaORM SQLite: known, ignored, cache, mined)
-└───────┬───────────────┬───────┘
-        │               │
-        ▼               ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ dict/ (Local │ │ ai/ (Gemini  │ │ media.rs     │ │ anki/        │
-│ JMdict+Pitch)│ │ Batch API)   │ │ ffmpeg / mpv │ │ AnkiConnect  │
-└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
-        │               │               │               │
-        └───────────────┼───────────────┴───────────────┘
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ ui/ (Terminal TUI: Inquire, Ratatui, Card View, Subtitle Play)  │
-└─────────────────────────────────────────────────────────────────┘
+Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 ```
 
 ## 2. Global Constraints & Architecture Patterns
-
-- **Primary Language & Edition**: Rust 2021 edition (`edition = "2021"`).
-- **Architectural Paradigm**: Domain-driven, role-based architecture with clean separation of domain logic, infrastructure side-effects, session orchestration, and terminal UI presentation.
-- **Hard Constraints**:
-  - File size: <400 lines/file (soft 300).
-  - Function length: <60 lines/function (soft 40).
-  - Nesting depth: $\le 3$.
-  - Parameters: $\le 4$ per function.
-  - Zero tolerance: zero warnings under `-D warnings`, zero clippy warnings (`all = "deny"`), no `#[allow(dead_code)]`, zero production `unwrap()`/`expect()`.
-- **Target Distribution**: Standalone Linux x86_64 binary installed to `~/.local/bin/kotonoha`, companion shell completions (`bash`, `zsh`, `fish`).
-- **Data Directory Specs**: Follows XDG Base Directory specification:
-  - Configuration: `~/.config/kotonoha/config.toml` (`dirs::config_dir()`)
-  - Data / SQLite DB: `~/.local/share/kotonoha/kotonoha.db` (`dirs::data_dir()`)
-  - Yomitan Dictionaries: `~/.local/share/kotonoha/dicts/`
-  - Sudachi NLP Dictionary: `~/.local/share/kotonoha/sudachi/`
-  - Audio/Image Media Cache: `~/.local/share/kotonoha/media/`
-  - Bundles Directory: `~/.local/share/kotonoha/bundles/`
-  - Bundle Runtime Cache: `~/.cache/kotonoha/bundles/` (`dirs::cache_dir()`)
-
----
+- **Primary Language**: Rust 2021 edition
+- **Architectural Paradigm**: Role-based (domain/, infra/, api/cli/, tui/)
+- **Hard Constraints**: <400 lines/file, <60 lines/fn, zero production unwrap(), 0 warnings.
+- **Target Distribution**: Linux x86_64 standalone binary
 
 ## 3. Module & Interface Skeleton
 
-### `src/main.rs` (Role: cli/entrypoint, Lines: 286)
-- **Responsibility**: Application startup wiring, CLI dispatch, service status verification, auto-cleanup, and session initialization.
-- **Imports**: `crate::{ai, anki, bundle, commands, config, db, dict, media, miner, nlp, session, srt, ui}`
-- **Public Functions & Signatures**:
-  ```rust
-  #[tokio::main]
-  async fn main() -> Result<()>
-  ```
-- **Consumers**: OS process execution.
-- **Side Effects / I/O**: Reads CLI arguments, checks AnkiConnect endpoint, initializes SQLite DB, reads files, runs TUI.
+### `src/ai/tests.rs` (Role: general, Lines: 129)
+- **Responsibility**: Core general logic in src/ai/tests.rs
+- **Imports**: use super :: build_prompt 
 
-### `src/commands.rs` (Role: cli/dispatcher, Lines: 348)
-- **Responsibility**: CLI flag parsing, dispatching `--bundle`, `--bundles`, `--clean-bundled`, `--config`, `--show-config`, `--inspect`, `--manage-known`, `--manage-mined`, `--manage-ignored`, `--sync`, and completion scripts.
-- **Imports**: `anyhow::Result`, `crate::{anki, bundle, config, db, nlp, srt, ui}`
-- **Public Functions & Signatures**:
-  ```rust
-  pub async fn handle_cli_flag(arg: &str) -> Result<bool>
-  ```
-- **Consumers**: `src/main.rs`
-- **Side Effects / I/O**: Terminal printing, runs interactive management subroutines, prints completion scripts.
-
-### `src/commands/pairing.rs` (Role: cli/pairing, Lines: 238)
-- **Responsibility**: Media file association, matching subtitle (`.srt`, `.ass`, `.vtt`) with video (`.mkv`, `.mp4`, `.webm`, `.koto`), handling stem normalization, bundle unpacking, and video-subtitle pairing lookups.
-- **Imports**: `crate::{bundle, config, nlp::JapaneseTokenizer}`
-- **Public Functions & Signatures**:
-  ```rust
-  pub fn words_with_readings(tokenizer: &JapaneseTokenizer, words: Vec<String>) -> Vec<(String, String)>
-  pub fn find_paired_subtitle_for_video(vid_path: &Path) -> Option<PathBuf>
-  pub fn find_paired_media(input_path: &Path) -> Result<(PathBuf, PathBuf)>
-  pub fn find_paired_media_for_bundling(input_path: &Path) -> Result<(PathBuf, PathBuf)>
-  ```
-- **Consumers**: `src/main.rs`, `src/commands.rs`, `src/ui/picker.rs`
-- **Side Effects / I/O**: Filesystem directory reads and lookups.
-
-### `src/config.rs` (Role: domain/config, Lines: 284)
-- **Responsibility**: App configuration persistence (`config.toml`), XDG path resolution, home tilde expansion, and legacy DB migration.
-- **Imports**: `serde::{Deserialize, Serialize}`, `dirs`, `toml`
+### `src/ai.rs` (Role: general, Lines: 336)
+- **Responsibility**: Core general logic in src/ai.rs
+- **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } 
 - **Types & Enums**:
   ```rust
-  pub struct AnkiSettings { pub enable_sync: bool, pub connect_url: String, pub deck_name: String, pub model_name: String }
-  pub struct AiSettings { pub enable_ai: bool, pub gemini_api_key: Option<String>, pub gemini_model: String, pub ai_batch_size: usize, pub ai_cache_ttl_minutes: usize }
-  pub struct DictionarySettings { pub max_definition_senses: usize, pub max_glosses_per_sense: usize }
-  pub enum BundleStorageStrategy { Colocated, Central, Subfolder }
-  pub struct AppConfig { pub default_card_limit: usize, pub max_cached_cards: usize, pub media_dir: PathBuf, pub db_path: PathBuf, pub bundle_storage: BundleStorageStrategy, pub bundles_dir: PathBuf, pub audio_padding_secs: f64, pub anki: AnkiSettings, pub ai: AiSettings, pub dict: DictionarySettings }
+  pub struct AiAnalysisResult
+  pub struct BatchAiAnalysisResponse
+  pub struct CardBatchInput
+  pub struct GeminiAiService
+  pub struct UnifiedAiService
+  pub struct DeepSeekAiService
   ```
 - **Public Functions & Signatures**:
   ```rust
-  pub fn default_data_dir() -> PathBuf
-  pub fn default_config_dir() -> PathBuf
-  impl AppConfig { pub fn load() -> Result<Self>; pub fn save(&self) -> Result<()>; }
-  impl AiSettings { pub fn has_valid_api_key(&self) -> bool; }
+  async fn analyze_batch (client : & reqwest :: Client , cfg : & crate :: config :: AppConfig , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
+  async fn analyze_batch (client : & reqwest :: Client , url : & str , model : & str , api_key : & str , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
+  async fn analyze_batch (client : & reqwest :: Client , api_key : & str , model : & str , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
   ```
-- **Consumers**: `main.rs`, `commands.rs`, `session.rs`, `ui/config_menu.rs`
-- **Side Effects / I/O**: Creates `~/.config/kotonoha/` and `~/.local/share/kotonoha/`, reads/writes `config.toml`, migrates legacy DB files.
 
-### `src/srt.rs` (Role: domain/parser, Lines: 142)
-- **Responsibility**: Subtitle parsing for SubRip (`.srt`) and Advanced SubStation Alpha (`.ass`/`.ssa`), speaker/actor name preservation, HTML tag stripping, curly bracket stripping, and timestamp millisecond conversion.
-- **Imports**: `regex::Regex`, `std::sync::LazyLock`
+### `src/anki/client.rs` (Role: cli, Lines: 330)
+- **Responsibility**: Core cli logic in src/anki/client.rs
+- **Imports**: use anyhow :: Result , use base64 :: engine :: general_purpose :: STANDARD as BASE64 , use base64 :: Engine , use std :: path :: Path , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use super :: formatter :: { anki_search_text , format_definition_for_anki , pitch_pattern , sentence_with_furigana , } 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn anki_connected (url : & str) -> bool
+  async fn anki_request (client : & reqwest :: Client , url : & str , action : & str , params : serde_json :: Value ,) -> Result < serde_json :: Value >
+  async fn upload_anki_media (client : & reqwest :: Client , url : & str , card_id : i64 , path : & str , extension : & str ,) -> Result < Option < String > >
+  async fn find_existing_anki_note (client : & reqwest :: Client , url : & str , model_name : & str , sentence : & str , target_word : Option < & str > ,) -> Result < Option < i64 > >
+  async fn sync_to_anki (cfg : & AppConfig , db : & Database) -> Result < () >
+  ```
+
+### `src/anki/formatter.rs` (Role: general, Lines: 174)
+- **Responsibility**: Core general logic in src/anki/formatter.rs
+- **Imports**: use crate :: dict , use crate :: nlp :: JapaneseTokenizer 
+- **Public Functions & Signatures**:
+  ```rust
+  fn escape_html (text : & str) -> String
+  fn anki_search_text (text : & str) -> String
+  fn format_definition_for_anki (def : & str) -> String
+  fn sentence_with_furigana (tokenizer : & JapaneseTokenizer , sentence : & str , target_word : & str ,) -> String
+  fn to_katakana (text : & str) -> String
+  fn pitch_number (pitch_accent : & str , mora_count : usize) -> usize
+  fn pitch_pattern (reading : & str , pitch_accent : & str) -> (String , String)
+  ```
+
+### `src/anki/tests.rs` (Role: general, Lines: 65)
+- **Responsibility**: Core general logic in src/anki/tests.rs
+- **Imports**: use super :: client :: * , use super :: formatter :: * 
+
+### `src/anki.rs` (Role: general, Lines: 7)
+- **Responsibility**: Core general logic in src/anki.rs
+- **Imports**: pub use client :: * 
+
+### `src/bundle/archive.rs` (Role: general, Lines: 150)
+- **Responsibility**: Core general logic in src/bundle/archive.rs
+- **Imports**: use anyhow :: { Context , Result } , use console :: style , use indicatif :: { ProgressBar , ProgressStyle } , use std :: fs :: File , use std :: path :: { Path , PathBuf } , use std :: time :: { Duration , Instant } , use tar :: Builder , use walkdir :: WalkDir , use zstd :: Encoder , use super :: unpack :: read_bundle_manifest , use super :: CreateBundleOptions , use crate :: ui :: format_duration 
 - **Types & Enums**:
   ```rust
-  pub struct SubtitleSentence { pub index: usize, pub start_ms: u64, pub end_ms: u64, pub text: String, pub video_path: Option<PathBuf>, pub actor: Option<String> }
+  pub struct BundleDurations
   ```
 - **Public Functions & Signatures**:
   ```rust
-  pub fn parse_subtitle(path: &Path) -> Result<Vec<SubtitleSentence>>
+  async fn find_matching_bundle (final_output : & Path , video_fp : & str , sub_fp : & str , options : & CreateBundleOptions < '_ > ,) -> Option < PathBuf >
+  fn package_bundle_archive (temp_dir : & Path , final_output : & Path) -> Result < Duration >
+  fn print_bundle_summary (final_output : & Path , video_path : & Path , durations : BundleDurations)
   ```
-- **Consumers**: `main.rs`, `commands.rs`, `session.rs`
-- **Side Effects / I/O**: Reads subtitle files from disk.
 
-### `src/nlp.rs` (Role: domain/nlp, Lines: 293)
-- **Responsibility**: Japanese morphological tokenization via `sudachi.rs` (Mode C), kana conversions, linguistic POS classification with contextual `て`/`で` subsidiary verb detection (preserving independent `非自立可能` verbs/adjectives), and coordinating grammar merger & dictionary lemma reading resolution pipelines.
-- **Imports**: `sudachi::analysis::{stateless_tokenizer::StatelessTokenizer, Mode, Tokenize}`, `sudachi::dic::dictionary::JapaneseDictionary`, `filters::{is_conjunction_particle, is_formal_noun, is_predicate_lemma, is_predicate_suffix, is_symbol_or_junk, MorphemeMeta}`
+### `src/bundle/create.rs` (Role: general, Lines: 301)
+- **Responsibility**: Core general logic in src/bundle/create.rs
+- **Imports**: use anyhow :: { Context , Result } , use console :: style , use indicatif :: { ProgressBar , ProgressStyle } , use std :: path :: { Path , PathBuf } , use std :: process :: { Command , Stdio } , use std :: time :: { Duration , Instant } , use crate :: srt :: { parse_subtitle , SubtitleSentence } , use crate :: ui :: format_duration , use super :: archive :: { find_matching_bundle , package_bundle_archive , print_bundle_summary , BundleDurations , } , use super :: destination :: resolve_bundle_destination , use super :: fingerprint :: { compute_subtitle_fingerprint , compute_video_fingerprint } , use super :: { BundleManifest , CreateBundleOptions } 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn create_bundle (video_path : & Path , subtitle_path : & Path , options : CreateBundleOptions < '_ > ,) -> Result < PathBuf >
+  ```
+
+### `src/bundle/destination.rs` (Role: general, Lines: 177)
+- **Responsibility**: Core general logic in src/bundle/destination.rs
+- **Imports**: use anyhow :: { Context , Result } , use console :: style , use std :: path :: { Path , PathBuf } , use crate :: config :: BundleStorageStrategy 
+- **Public Functions & Signatures**:
+  ```rust
+  fn is_directory_writable (dir : & Path) -> bool
+  fn resolve_bundle_destination (source_path : & Path , clean_stem : & str , strategy : BundleStorageStrategy , central_dir : & Path ,) -> Result < PathBuf >
+  ```
+
+### `src/bundle/duplicate_guard.rs` (Role: general, Lines: 135)
+- **Responsibility**: Core general logic in src/bundle/duplicate_guard.rs
+- **Imports**: use anyhow :: { Context , Result } , use console :: style , use inquire :: Confirm , use std :: path :: PathBuf , use super :: unpack :: read_bundle_manifest , use crate :: db :: Database 
 - **Types & Enums**:
   ```rust
-  pub struct TokenInfo { pub surface: String, pub dictionary_form: String, pub reading: String, pub surface_reading: String, pub is_content_word: bool, pub is_proper_noun: bool }
-  pub struct SpannedToken { pub token: TokenInfo, pub begin: usize, pub end: usize }
-  pub struct JapaneseTokenizer { dict: JapaneseDictionary }
+  pub struct DuplicateSubtitleMatch
   ```
 - **Public Functions & Signatures**:
   ```rust
-  pub fn kata_to_hira(s: &str) -> String
-  pub use filters::{is_predicate_lemma, is_predicate_suffix};
-  impl JapaneseTokenizer { pub fn new() -> Result<Self>; pub fn tokenize(&self, text: &str) -> Result<Vec<TokenInfo>>; }
+  async fn check_duplicate_subtitle (video_name : & str , video_fp : & str , sub_fp : & str , db : Option < & Database > , search_dirs : & [PathBuf] ,) -> Option < DuplicateSubtitleMatch >
+  fn prompt_duplicate_subtitle_warning (dup : & DuplicateSubtitleMatch , current_video_name : & str , sub_fp : & str , force : bool ,) -> Result < bool >
   ```
-- **Consumers**: `miner.rs`, `commands.rs`, `session.rs`, `anki/formatter.rs`, `ui/card.rs`
-- **Side Effects / I/O**: Ensures Sudachi dictionary exists, writes default `char.def`, `rewrite.def`, `unk.def`.
 
-### `src/nlp/filters.rs` (Role: domain/nlp-filters, Lines: 260)
-- **Responsibility**: Morpheme metadata structures and linguistic filter predicates: formal noun retention (including temporal/formal `時`), sentence-initial conjunction particles (`でも`, `だって`), audio scream and noise filtering (`is_scream_or_noise` for anime shouts/screams ending in `っ`/`ッ` or vowel elongation), laughter & audio grunt filtering (`ニヒヒ`, `ヒヒ`, `狒々`, `じゃっ`), symbol/junk morpheme identification, and predicate inflection suffix analysis (`is_predicate_suffix`, `is_predicate_lemma`).
+### `src/bundle/fingerprint.rs` (Role: general, Lines: 65)
+- **Responsibility**: Core general logic in src/bundle/fingerprint.rs
+- **Imports**: use anyhow :: { Context , Result } , use std :: fs :: File , use std :: io :: { Read , Seek , SeekFrom } , use std :: path :: Path 
 - **Public Functions & Signatures**:
   ```rust
-  pub struct MorphemeMeta<'a> { pub pos_category: &'a str, pub pos_sub: &'a str, pub dictionary_form: &'a str, pub surface: &'a str, pub is_subsidiary_verb: bool }
-  pub fn is_formal_noun(dict_form: &str) -> bool
-  pub fn is_conjunction_particle(dict_form: &str) -> bool
-  pub fn is_audio_grunt(dict_form: &str, surface: &str) -> bool
-  pub fn is_scream_or_noise(dict_form: &str, surface: &str) -> bool
-  pub fn is_symbol_or_junk(meta: &MorphemeMeta<'_>) -> bool
-  pub fn is_predicate_suffix(is_content_word: bool, surface: &str) -> bool
-  pub fn is_predicate_lemma(dict_form: &str) -> bool
+  fn compute_subtitle_fingerprint (subtitle_path : & Path) -> Result < String >
+  fn compute_video_fingerprint (video_path : & Path) -> Result < String >
   ```
-- **Consumers**: `src/nlp.rs`, `src/anki/formatter.rs`, `src/ui/card.rs`
 
-### `src/nlp/dictionary.rs` (Role: infra/nlp-dict, Lines: 60)
-- **Responsibility**: Pure Rust automatic download and extraction of `sudachi-dictionary-latest-core.zip` (~72 MB) from CloudFront CDN if missing.
-- **Imports**: `reqwest::blocking`, `zip::ZipArchive`
-- **Public Functions & Signatures**:
-  ```rust
-  pub fn ensure_system_dict(dict_path: &Path) -> Result<()>
-  ```
-- **Consumers**: `src/nlp.rs`
-- **Side Effects / I/O**: HTTP GET from CloudFront, unpacks `.dic` to disk.
-
-### `src/nlp/mergers/` (Role: domain/nlp-mergers, Lines: ~850)
-- **Files**: `mergers.rs`, `colloquial.rs`, `counters.rs`, `counters/numerals.rs`, `grammar.rs`, `verbs.rs`
-- **Responsibility**: Normalizes and merges complex spoken Japanese tokens:
-  - `colloquial.rs`: Negative verb endings (じゃない, ねえ), greetings (おはよう, こんにちは), small tsu drops, Kansai dialect negative auxiliary (`〜へん`), and explanatory negative normalization (`〜んじゃない`).
-  - `counters.rs` & `counters/numerals.rs`: Number and counter compounds normalization (converting ASCII/full-width digits into Kanji numerals, preserving lexical compounds like 一人, 二人, 一つ, 一日, 二十歳, attaching bill/coin suffixes `〜札`/`〜玉`, and resolving formal noun `時` to `とき`).
-  - `grammar.rs`: Compound grammatical patterns (よりにもよって, もしかして, わけにはいかない, にあたって, について, でも).
-  - `verbs.rs`: Causative-passive inflections, aspect contractions (ちゃった, ちゃう, じゃう) with base-verb lemma preservation, auxiliary stems, compound verb mergers (`〜続ける`, `〜始める`, `〜直す`, `〜過ぎる`), and potential forms.
-- **Consumers**: `src/nlp.rs`
-
-### `src/miner.rs` (Role: domain/miner, Lines: 270)
-- **Responsibility**: Core $i+1$ candidate discovery algorithm. Filters sentences with exactly one unknown content word, respects user ignored words, extracts $\pm 2$ dialogue context lines with temporal cutoff, scores and ranks candidates using multi-factor sentence naturalness/completeness (`QualityScorer`), frequency, and density tier.
-- **Submodules**: `pub mod context;` (`src/miner/context.rs`), `pub mod quality;` (`src/miner/quality.rs`)
-- **Imports**: `crate::{media, nlp::{JapaneseTokenizer, TokenInfo}, srt::SubtitleSentence}`, `context::*`, `quality::QualityScorer`
+### `src/bundle/manage.rs` (Role: general, Lines: 244)
+- **Responsibility**: Core general logic in src/bundle/manage.rs
+- **Imports**: use anyhow :: { Context , Result } , use std :: path :: { Path , PathBuf } , use crate :: db :: Database 
 - **Types & Enums**:
   ```rust
-  pub struct CandidateSentence { pub sentence: SubtitleSentence, pub target_word: String, pub target_reading: String, pub known_context_words: Vec<String>, pub unknown_context_words: Vec<String>, pub ignored_context_words: Vec<String>, pub episode_freq: usize, pub density_tier: usize, pub quality_score: f32, pub video_path: PathBuf, pub before_context: Vec<String>, pub after_context: Vec<String>, pub series_title: Option<String> }
-  pub struct MiningEngine { tokenizer: JapaneseTokenizer }
-  pub struct BuildCandidateParams<'a> { pub sentence: &'a SubtitleSentence, pub target_word: &'a str, pub tokens: &'a [TokenInfo], pub known_words: &'a HashSet<String>, pub ignored_words: &'a HashSet<String>, pub before_context: Vec<String>, pub after_context: Vec<String>, pub series_title: Option<String> }
+  pub struct BundledSourceCleanupItem
   ```
 - **Public Functions & Signatures**:
   ```rust
-  impl MiningEngine {
-      pub fn new(tokenizer: JapaneseTokenizer) -> Self;
-      pub fn find_candidates(&self, sentences: &[SubtitleSentence], known_words: &HashSet<String>, ignored_words: &HashSet<String>) -> Vec<CandidateSentence>;
-      pub fn build_candidate(p: BuildCandidateParams<'_>) -> CandidateSentence;
-  }
+  fn total_source_size (& self) -> u64
+  fn display_name (& self) -> String
+  fn format_size (bytes : u64) -> String
+  async fn get_bundled_items_with_existing_sources (db : & Database ,) -> Result < Vec < BundledSourceCleanupItem > >
+  fn delete_source_media_files (items : & [BundledSourceCleanupItem]) -> Result < u64 >
+  async fn delete_bundle_archive (bundle_path : & Path , db : Option < & Database >) -> Result < () >
   ```
-- **Consumers**: `src/session.rs`, `src/ui/explorer/state.rs`
 
-### `src/miner/context.rs` (Role: domain/dialogue-context, Lines: 83)
-- **Responsibility**: Dialogue window extraction ($\pm 2$ lines) surrounding target sentences with temporal cutoff guards (`DEFAULT_MAX_DIALOGUE_GAP_MS = 10_000`), formatting speaker names when available from ASS subtitles.
+### `src/bundle/replace.rs` (Role: general, Lines: 189)
+- **Responsibility**: Core general logic in src/bundle/replace.rs
+- **Imports**: use anyhow :: { Context , Result } , use console :: style , use std :: fs :: File , use std :: path :: { Path , PathBuf } , use super :: archive :: package_bundle_archive , use super :: fingerprint :: compute_subtitle_fingerprint , use super :: { get_bundles_cache_dir , BundleManifest } , use crate :: srt :: parse_subtitle 
 - **Public Functions & Signatures**:
   ```rust
-  pub fn extract_dialogue_context(sentences: &[SubtitleSentence], target_idx: usize, max_lines_before: usize, max_lines_after: usize, max_gap_ms: u64) -> (Vec<String>, Vec<String>);
-  pub fn extract_dialogue_context_for_sentence(sentences: &[SubtitleSentence], target: &SubtitleSentence, max_lines_before: usize, max_lines_after: usize, max_gap_ms: u64) -> (Vec<String>, Vec<String>);
+  async fn replace_bundle_subtitle (bundle_path : & Path , new_sub_path : & Path) -> Result < () >
   ```
-- **Consumers**: `src/miner.rs`, `src/session.rs`, `src/ui/explorer/state.rs`
 
-### `src/miner/quality.rs` (Role: domain/quality, Lines: 276)
-- **Responsibility**: Multi-factor Japanese sentence naturalness, completeness, and flashcard suitability evaluator (`QualityScorer`). Evaluates predicate terminations (polite/terminal forms vs. dangling connective/particle cut-offs), case marker relationships, length distribution curves (14-32 char sweet spot), and interjection/grunt penalties.
+### `src/bundle/screenshots.rs` (Role: general, Lines: 258)
+- **Responsibility**: Core general logic in src/bundle/screenshots.rs
+- **Imports**: use anyhow :: { Context , Result } , use indicatif :: ProgressBar , use rayon :: prelude :: * , use std :: path :: Path , use std :: process :: { Command , Stdio } , use crate :: media :: MediaExtractor , use crate :: srt :: SubtitleSentence 
+- **Public Functions & Signatures**:
+  ```rust
+  fn detect_video_fps (video_path : & Path) -> f64
+  fn find_best_keyframe (target_frame : u64 , kf_frames : & [u64]) -> u64
+  fn extract_bundle_screenshots (video_path : & Path , sentences : & [SubtitleSentence] , dest_dir : & Path , pb : & ProgressBar ,) -> Result < () >
+  ```
+
+### `src/bundle/tests.rs` (Role: general, Lines: 346)
+- **Responsibility**: Core general logic in src/bundle/tests.rs
+- **Imports**: use super :: fingerprint :: * , use super :: * , use std :: fs :: File , use std :: io :: Write , use zip :: write :: SimpleFileOptions , use zip :: ZipWriter 
+
+### `src/bundle/unpack.rs` (Role: general, Lines: 155)
+- **Responsibility**: Core general logic in src/bundle/unpack.rs
+- **Imports**: use anyhow :: { Context , Result } , use std :: fs :: File , use std :: io :: Read , use std :: path :: Path , use zip :: ZipArchive , use super :: { get_bundles_cache_dir , BundleManifest , UnpackedBundle } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn unpack_bundle (koto_path : & Path) -> Result < UnpackedBundle >
+  fn read_bundle_manifest (koto_path : & Path) -> Result < BundleManifest >
+  ```
+
+### `src/bundle.rs` (Role: general, Lines: 76)
+- **Responsibility**: Core general logic in src/bundle.rs
+- **Imports**: pub use create :: create_bundle , pub use manage :: * , pub use replace :: replace_bundle_subtitle , pub use unpack :: { read_bundle_manifest , unpack_bundle } , use serde :: { Deserialize , Serialize } , use std :: path :: { Path , PathBuf } , use crate :: db :: Database 
 - **Types & Enums**:
   ```rust
-  pub struct QualityScorer;
+  pub struct CreateBundleOptions
+  pub struct BundleManifest
+  pub struct UnpackedBundle
   ```
 - **Public Functions & Signatures**:
   ```rust
-  impl QualityScorer {
-      pub fn score(text: &str, target_word: &str, tokens: &[TokenInfo]) -> f32;
-  }
+  fn get_bundles_cache_dir () -> PathBuf
+  fn is_bundle_file (path : & Path) -> bool
+  fn is_bundle_dir (path : & Path) -> bool
   ```
-- **Consumers**: `src/miner.rs`
 
-### `src/dict/` (Role: domain/dict, Lines: ~920)
-- **Files**: `dict.rs`, `service.rs`, `offline.rs`, `pitch.rs`, `context.rs`
-- **Responsibility**:
-  - `dict.rs`: `LookupResult { expression, reading, definition, pitch_accent }`.
-  - `service.rs`: Dual-mode lookup (Offline SQLite first, fallback to Jisho API); verb stem unwinding fallbacks; candidate sorting.
-  - `offline.rs`: Downloads and indexes Yomitan `JMdict_english.zip` (~15 MB) and `kanjium_pitch_accents.zip` (~1 MB) into SQLite table `offline_terms` for sub-millisecond local queries.
-  - `pitch.rs`: Pitch accent pattern classification (`Heiban [0]`, `Atamadaka [1]`, `Nakadaka [n]`).
-  - `context.rs`: Context-aware definition formatting, sense parsing, placeholder filtering, and `sort_candidates_for_context` (prioritizes contextual reading and exact expression matches).
+### `src/commands/pairing.rs` (Role: general, Lines: 238)
+- **Responsibility**: Core general logic in src/commands/pairing.rs
+- **Imports**: use anyhow :: Result , use std :: path :: { Path , PathBuf } , use crate :: nlp :: JapaneseTokenizer 
 - **Public Functions & Signatures**:
   ```rust
-  impl DictionaryService {
-      pub async fn lookup_with_limits(client: &reqwest::Client, word: &str, max_senses: usize, max_glosses: usize) -> Result<LookupResult>;
-      pub async fn lookup_all_candidates_cached(client: &reqwest::Client, db: Option<&Database>, word: &str, limits: LookupLimits) -> Result<Vec<LookupResult>>;
-      pub async fn ensure_offline_dictionaries_ready(client: &reqwest::Client, db: &mut Database) -> Result<()>;
-  }
-  pub fn sort_candidates_for_context(candidates: &mut [LookupResult], target_word: &str, target_reading: &str);
+  fn words_with_readings (tokenizer : & JapaneseTokenizer , words : Vec < String > ,) -> Vec < (String , String) >
+  fn find_paired_subtitle_for_video (vid_path : & Path) -> Option < PathBuf >
+  fn find_paired_media (input_path : & Path) -> Result < (PathBuf , PathBuf) >
+  fn find_paired_media_for_bundling (input_path : & Path) -> Result < (PathBuf , PathBuf) >
   ```
-- **Consumers**: `main.rs`, `session/mining.rs`, `session/ai_batch.rs`
 
-### `src/bundle/` (Role: domain/bundle, Lines: ~1700)
-- **Files**: `bundle.rs`, `create.rs`, `unpack.rs`, `archive.rs`, `manage.rs`, `replace.rs`, `duplicate_guard.rs`, `screenshots.rs`, `fingerprint.rs`, `destination.rs`
-- **Responsibility**: Lightweight pre-saved `.koto` archives (>98.5% space saved over video).
-  - `create.rs`: Orchestrates 3-step pipeline: Opus 64kbps extraction, parallel sentence screenshot generation, and Zstandard Tar packaging.
-  - `unpack.rs`: Dynamically decompresses `.koto` archives into `~/.cache/kotonoha/bundles/<hash>/` on demand.
-  - `replace.rs`: Hot-swaps internal `subtitles.srt` within existing `.koto` archives and updates manifest metadata (`--replace-sub`).
-  - `duplicate_guard.rs`: Warns and prompts confirmation when a subtitle fingerprint has already been bundled with another episode or video.
-  - `archive.rs`: Tar + Zstandard encoder/decoder at compression level 3.
-  - `screenshots.rs`: Batch screenshot generation with fast bilinear scaling (360p) and keyframe skipping.
-  - `fingerprint.rs`: Fast partial-hashing of video and subtitle files to avoid duplicate bundle work.
-  - `destination.rs`: Resolves destination paths according to `BundleStorageStrategy` (`Colocated`, `Subfolder`, `Central`).
-  - `manage.rs`: Inspects, lists, and purges bundled packages and source video files.
-- **Consumers**: `commands.rs`, `commands/pairing.rs`, `ui/bundles.rs`
+### `src/commands/queue/tests.rs` (Role: general, Lines: 82)
+- **Responsibility**: Core general logic in src/commands/queue/tests.rs
+- **Imports**: use super :: * , use std :: collections :: HashSet , use std :: path :: PathBuf 
 
-### `src/media.rs` (Role: infra/media, Lines: 388)
-- **Responsibility**: External process integration with `ffmpeg` and `mpv`/audio daemons. Re-exports clean show/episode title context extraction.
-- **Submodules**: `pub mod title;` (`src/media/title.rs`)
+### `src/commands/queue.rs` (Role: general, Lines: 251)
+- **Responsibility**: Core general logic in src/commands/queue.rs
+- **Imports**: use anyhow :: Result , use console :: style , use std :: collections :: HashSet , use std :: path :: Path , use crate :: commands , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: miner :: { context , BuildCandidateParams , CandidateSentence , MiningEngine } , use crate :: nlp :: JapaneseTokenizer , use crate :: queue :: { self , QueueEntry } , use crate :: srt :: { self , SubtitleSentence } , use crate :: ui :: queue :: QueueNoSubChoice , use crate :: ui :: TerminalUi 
 - **Public Functions & Signatures**:
   ```rust
-  pub use title::extract_clean_show_context;
-  impl MediaExtractor {
-      pub fn media_source_stem(video_path: &Path) -> String;
-      pub fn card_media_stem(target_word: &str, video_path: &Path, start_ms: u64, index: usize) -> String;
-      pub fn extract_preview_audio(video_path: &Path, start_ms: u64, end_ms: u64, output_path: &Path) -> Result<()>;
-      pub fn extract_screenshot_with_index(video_path: &Path, timestamp_ms: u64, sentence_index: Option<usize>, output_path: &Path) -> Result<()>;
-      pub fn play_preview_audio(audio_path: &Path) -> Option<std::process::Child>;
-      pub fn play_subtitle_segment(video_path: &Path, start_ms: u64, end_ms: u64) -> Option<std::process::Child>;
-      pub fn clean_old_media(media_dir: &Path, max_cards: usize, protected_paths: &HashSet<PathBuf>) -> Result<usize>;
-  }
+  async fn run_queue_command (cfg : & AppConfig , db : & mut Database , http_client : reqwest :: Client ,) -> Result < () >
   ```
-- **Consumers**: `session/card_actions.rs`, `session/media_preload.rs`, `ui/inspector.rs`, `main.rs`, `miner.rs`
-- **Side Effects / I/O**: Spawns `ffmpeg` subprocesses, spawns background audio players (`mpv`, `pw-play`, `paplay`, `ffplay`), deletes expired media.
 
-### `src/media/title.rs` (Role: domain/media-title, Lines: 70)
-- **Responsibility**: Cleans and extracts user- and AI-friendly show and episode titles from media paths, stripping bracketed release tags (`[SubsPlease]`), codec/resolution tokens (`1080p`, `x264`), and standardizing episode naming.
+### `src/commands.rs` (Role: general, Lines: 349)
+- **Responsibility**: Core general logic in src/commands.rs
+- **Imports**: pub use pairing :: * , use anyhow :: Result , use console :: style , use std :: path :: PathBuf , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: parse_subtitle , use crate :: ui :: TerminalUi 
 - **Public Functions & Signatures**:
   ```rust
-  pub fn extract_clean_show_context(video_path: &Path) -> String;
+  async fn handle_cli_flag (arg : & str) -> Result < bool >
   ```
-- **Consumers**: `src/media.rs`, `src/miner.rs`, `src/session.rs`, `src/ui/explorer/state.rs`
 
-### `src/db/` (Role: infra/db, Lines: ~850)
-- **Files**: `db.rs`, `words.rs`, `cards.rs`, `cache.rs`, `bundles.rs`, `entities.rs`, `entities/*.rs`
-- **Responsibility**: SeaORM SQLite connection management, automatic table creation, column migrations, and queries for:
-  - `known_words`: Vocabulary marked as known or mined (prevents re-mining).
-  - `ignored_words`: Character names, sound effects, or skipped tokens.
-  - `mined_cards`: Full history of mined cards with timestamps, note IDs, audio/image paths.
-  - `dictionary_cache` & `all_candidates_cache`: Cached Jisho/JMdict responses.
-  - `ai_analysis_cache`: Cached Gemini disambiguation results with TTL expiry.
-  - `offline_terms`: Indexed Yomitan bilingual dictionary entries and pitch accents.
-  - `bundled_media`: Registry of created `.koto` bundles and file fingerprints.
-- **Consumers**: `main.rs`, `commands.rs`, `session.rs`, `dict/service.rs`
-- **Side Effects / I/O**: SQLite file read/write with WAL mode.
-
-### `src/ai.rs` (Role: infra/ai, Lines: 206)
-- **Responsibility**: Google Gemini REST API client. Sends structured batches of sentences with surrounding dialogue context ($\pm 2$ lines) and show/episode metadata, target words, and dictionary candidates to obtain context-specific definition suggestions, sense selections, contextual reading recommendations, and segmentation warnings.
-- **Imports**: `serde_json`, `reqwest`
+### `src/config.rs` (Role: general, Lines: 317)
+- **Responsibility**: Core general logic in src/config.rs
+- **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } , use std :: path :: PathBuf 
 - **Types & Enums**:
   ```rust
-  pub struct AiAnalysisResult { pub card_index: usize, pub recommended_candidate_index: Option<usize>, pub recommended_sense_index: Option<usize>, pub recommended_reading: Option<String>, pub parsing_warning: Option<String>, pub custom_definition_suggestion: Option<String>, pub explanation: Option<String>, pub english_natural: Option<String>, pub english_literal: Option<String>, pub kannada_natural: Option<String>, pub kannada_literal: Option<String> }
-  pub struct CardBatchInput<'a> { pub card_index: usize, pub sentence: &'a str, pub target_word: &'a str, pub target_reading: &'a str, pub candidates: &'a [LookupResult], pub series_title: Option<&'a str>, pub before_context: &'a [String], pub after_context: &'a [String] }
-  pub struct GeminiAiService;
+  pub struct AnkiSettings
+  pub struct AiSettings
+  pub struct DictionarySettings
+  pub enum BundleStorageStrategy
+  pub struct AppConfig
   ```
 - **Public Functions & Signatures**:
   ```rust
-  impl GeminiAiService { pub async fn analyze_batch(client: &reqwest::Client, api_key: &str, model: &str, cards: &[CardBatchInput<'_>]) -> Result<Vec<AiAnalysisResult>>; }
+  fn has_valid_api_key (& self) -> bool
+  fn has_valid_gemini_key (& self) -> bool
+  fn default_data_dir () -> PathBuf
+  fn default_config_dir () -> PathBuf
+  fn load () -> Result < Self >
+  fn save (& self) -> Result < () >
   ```
-- **Consumers**: `src/session/ai_batch.rs`
-- **Side Effects / I/O**: HTTPS POST to `generativelanguage.googleapis.com` with exponential retry backoff.
 
-### `src/anki/` (Role: infra/anki, Lines: ~460)
-- **Files**: `anki.rs`, `client.rs`, `formatter.rs`
-- **Responsibility**:
-  - `client.rs`: AnkiConnect HTTP client (`http://127.0.0.1:8765`). Verifies connection, creates decks, checks note models (`Japanese sentences+`), uploads media files (`storeMediaFile` with base64 data), queries existing notes (`findNotes`), and inserts notes (`addNote`).
-  - `formatter.rs`: Formats HTML definition blocks, pitch accent graphs/numbers, furigana bracket notation (`Kanji[Reading]`), and search queries.
-- **Consumers**: `commands.rs`, `session/mining.rs`
-- **Side Effects / I/O**: HTTP POST to AnkiConnect API.
+### `src/db/bundles.rs` (Role: general, Lines: 115)
+- **Responsibility**: Core general logic in src/db/bundles.rs
+- **Imports**: use anyhow :: { Context , Result } , use sea_orm :: { sea_query :: OnConflict , ColumnTrait , EntityTrait , QueryFilter , QueryOrder , Set } , use std :: path :: { Path , PathBuf } , use super :: entities :: * , use super :: Database 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn record_bundle (& self , bundle_path : & Path , source_video : & str , source_subtitle : & str , video_fingerprint : & str , subtitle_fingerprint : & str ,) -> Result < () >
+  async fn find_existing_bundle (& self , video_fingerprint : & str , subtitle_fingerprint : & str ,) -> Result < Option < PathBuf > >
+  async fn find_bundle_by_subtitle_fingerprint (& self , subtitle_fingerprint : & str ,) -> Result < Option < bundled_media :: Model > >
+  async fn get_all_bundled_media (& self) -> Result < Vec < bundled_media :: Model > >
+  async fn delete_bundled_media_by_id (& self , id : i32) -> Result < () >
+  async fn delete_bundled_media_by_path (& self , bundle_path : & str) -> Result < () >
+  async fn prune_missing_bundles (& self) -> Result < usize >
+  ```
 
-### `src/session/` (Role: domain/session, Lines: ~1320)
-- **Files**: `session.rs`, `mining.rs`, `card_actions.rs`, `media_preload.rs`, `ai_batch.rs`
-- **Responsibility**:
-  - `session.rs`: High-frequency vocabulary bootstrapping (identifying names vs general vocab), line comprehension statistics calculation (known vs $i+1$ vs hard lines), mode selection.
-  - `mining.rs`: Main interactive loop. Splits candidates into batches, dispatches background AI batch queries and media preloading, renders cards, applies AI recommendations with contextual reading preservation, enforces `align_contextual_reading`, executes user decisions, and auto-syncs to Anki upon completion.
-  - `card_actions.rs`: Keyboard action handlers for card review: `m` (mine), `k` (known), `i` (ignore), `s` (skip), `c` (choose candidate), `d` (choose sense), `r` (edit reading), `p` (replay audio), `q` (quit).
-  - `media_preload.rs`: Asynchronously pre-extracts Opus audio snippets and JPG screenshots in the background for upcoming batch items.
-  - `ai_batch.rs`: Prepares candidate lookups synchronized with offline SQLite dictionaries, sorts candidates for context, queries `ai_analysis_cache`, and invokes `GeminiAiService::analyze_batch` for uncached cards.
-- **Consumers**: `src/main.rs`
+### `src/db/cache.rs` (Role: general, Lines: 315)
+- **Responsibility**: Core general logic in src/db/cache.rs
+- **Imports**: use anyhow :: Result , use sea_orm :: { sea_query :: OnConflict , ColumnTrait , Condition , ConnectionTrait , EntityTrait , PaginatorTrait , QueryFilter , QueryOrder , QuerySelect , Set , } , use super :: entities :: * , use super :: Database 
+- **Types & Enums**:
+  ```rust
+  pub struct GetCachedAiParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn get_cached_definition (& self , expression : & str ,) -> Result < Option < (String , String , String) > >
+  async fn cache_definition (& self , expression : & str , reading : & str , definition : & str , pitch : & str ,) -> Result < () >
+  async fn get_cached_candidates (& self , expression : & str ,) -> Result < Option < Vec < crate :: dict :: LookupResult > > >
+  async fn cache_candidates (& self , expression : & str , candidates : & [crate :: dict :: LookupResult] ,) -> Result < () >
+  async fn get_cached_ai_analysis (& self , p : GetCachedAiParams < '_ > ,) -> Result < Option < crate :: ai :: AiAnalysisResult > >
+  async fn cache_ai_analysis (& self , sentence : & str , target_word : & str , model : & str , res : & crate :: ai :: AiAnalysisResult ,) -> Result < () >
+  async fn clean_expired_ai_cache (& self , ttl_minutes : usize) -> Result < usize >
+  async fn is_offline_dict_indexed (& self) -> Result < bool >
+  async fn insert_offline_terms_batch (& mut self , terms : & [(String , String , String , String , String , i64)] ,) -> Result < usize >
+  async fn query_offline_terms (& self , word : & str , exact_only : bool ,) -> Result < Vec < crate :: dict :: LookupResult > >
+  ```
 
-### `src/ui/` (Role: tui, Lines: ~3500)
-- **Files**: `ui.rs`, `card.rs`, `inspector.rs`, `picker.rs`, `picker/selector.rs`, `picker/state.rs`, `picker/render.rs`, `prompts.rs`, `bundles.rs`, `config_menu.rs`, `bootstrap.rs`, `helpers.rs`, `explorer.rs`, `explorer/model.rs`, `explorer/state.rs`, `explorer/render.rs`, `explorer/inspector_pane.rs`, `explorer/actions.rs`, `explorer/tests.rs`
-- **Responsibility**:
-  - `ui.rs`: Public facade for terminal UI interactions, exposing `TerminalUi::run_explorer` and `SessionMode::Explore`.
-  - `explorer/`: Interactive Sentence Explorer & Difficulty Browser (`kotonoha --explore` or `-e`):
-    - `model.rs`: Categorizes sentences by unknown count into tiers: $i+0$ (fully known), $i+1$, $i+2$, $i+3+$. Provides difficulty ($i+0 \to i+n$) and chronological timeline sorting.
-    - `state.rs`: Controller state, offline caching, and multi-card selection tracking (`selected_cards: HashSet<(usize, String)>`). Handles `toggle_selection`, `toggle_all_in_current_sentence`, and `build_selected_candidates`. Zero AI network calls during browsing.
-    - `render.rs` & `inspector_pane.rs`: Dual-pane ratatui interface. Left pane displays sentences with tier badges, selection checkboxes (`[✓]`, `[~]`, `[ ]`), and highlighted unknowns. Right pane displays active unknown word JMdict definitions and review selection status.
-    - `actions.rs`: Debounced audio snippet playback on scroll.
-    - Two-stage flow: Pressing `Enter` with selected cards transitions seamlessly into standard Kotonoha Card Review (`mining::run_mining_loop`) for candidate refinement, sense switching, custom readings, and Gemini AI analysis.
-  - `card.rs`: Unicode box-drawing visual card layout, displaying target word, reading, pitch badge, frequency, highlighted sentence, definitions, AI suggestions, and key shortcuts.
-  - `inspector.rs`: Subtitle inspection screen with live audio playback (`Space`), $i+1$ indicator badges (★), and instant text filtering.
-  - `picker.rs` & `picker/`: Interactive Ratatui multi-select file picker:
-    - `picker.rs`: Auto-discovery of media and subtitle files across standard directories, deduplicating paired `.srt` files and classifying media items with `SubtitleStatus`.
-    - `picker/selector.rs`: Alternate-screen event loop with RAII `TerminalGuard` cleanup.
-    - `picker/state.rs`: `SubtitleStatus` (`HasSub`, `Bundle`, `NoSub`), `CategoryFilter` (`All`, `Videos`, `Bundles` cycled via `Ctrl+F` / `F2`), multi-token whitespace search query filtering (spaces allowed in queries like `"yuru camp"`), `Tab`/`Shift+Tab` item toggle, `Ctrl+A`/`Ctrl+D` batch selection, and smooth offset scrolling.
-    - `picker/render.rs`: Filter bar with active Category pill and dynamic match/selection stats, subtitle status badges (`[✓ SUB]`, `📦 [BUNDLE]`, `[NO SUB]`), hierarchical short path display (`~` prefix, dim directory, bold filename), and intuitive keybindings footer.
-  - `prompts.rs`: Interactive selection prompts for candidates, dictionary senses, readings, and session modes (including `Explore`).
-  - `bundles.rs`: TUI manager for `.koto` bundles and original media source cleanup.
-  - `config_menu.rs`: Interactive editor for AI keys, models, Anki decks, and storage strategies.
-  - `bootstrap.rs`: Multi-select checklists for marking initial known words and ignored character names.
-  - `helpers.rs`: Japanese text width truncation (`unicode-width`) and duration formatting.
-- **Consumers**: `main.rs`, `commands.rs`, `session.rs`
+### `src/db/cards.rs` (Role: general, Lines: 138)
+- **Responsibility**: Core general logic in src/db/cards.rs
+- **Imports**: use anyhow :: Result , use sea_orm :: { ActiveModelTrait , ColumnTrait , EntityTrait , QueryFilter , QueryOrder , Set } , use std :: collections :: HashSet , use std :: path :: PathBuf , use super :: entities :: * , use super :: Database 
+- **Types & Enums**:
+  ```rust
+  pub struct MinedCard
+  pub struct SaveMinedCardParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn save_mined_card (& self , params : SaveMinedCardParams < '_ >) -> Result < i64 >
+  async fn get_all_mined_cards (& self) -> Result < Vec < (MinedCard , Option < i64 >) > >
+  async fn get_unsynced_mined_cards (& self) -> Result < Vec < MinedCard > >
+  async fn mark_mined_card_synced (& self , card_id : i64 , anki_note_id : i64) -> Result < () >
+  async fn get_unsynced_media_paths (& self) -> Result < HashSet < PathBuf > >
+  ```
 
----
+### `src/db/entities/ai_analysis_cache.rs` (Role: general, Lines: 24)
+- **Responsibility**: Core general logic in src/db/entities/ai_analysis_cache.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/all_candidates_cache.rs` (Role: general, Lines: 15)
+- **Responsibility**: Core general logic in src/db/entities/all_candidates_cache.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/bundled_media.rs` (Role: general, Lines: 20)
+- **Responsibility**: Core general logic in src/db/entities/bundled_media.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/dictionary_cache.rs` (Role: general, Lines: 17)
+- **Responsibility**: Core general logic in src/db/entities/dictionary_cache.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/ignored_words.rs` (Role: general, Lines: 14)
+- **Responsibility**: Core general logic in src/db/entities/ignored_words.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/known_words.rs` (Role: general, Lines: 15)
+- **Responsibility**: Core general logic in src/db/entities/known_words.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/mined_cards.rs` (Role: general, Lines: 26)
+- **Responsibility**: Core general logic in src/db/entities/mined_cards.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities/offline_terms.rs` (Role: general, Lines: 19)
+- **Responsibility**: Core general logic in src/db/entities/offline_terms.rs
+- **Imports**: use sea_orm :: entity :: prelude :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Model
+  pub enum Relation
+  ```
+
+### `src/db/entities.rs` (Role: general, Lines: 17)
+- **Responsibility**: Core general logic in src/db/entities.rs
+- **Imports**: pub use ai_analysis_cache :: Entity as AiAnalysisCache , pub use all_candidates_cache :: Entity as AllCandidatesCache , pub use bundled_media :: Entity as BundledMedia , pub use dictionary_cache :: Entity as DictionaryCache , pub use ignored_words :: Entity as IgnoredWords , pub use known_words :: Entity as KnownWords , pub use mined_cards :: Entity as MinedCards , pub use offline_terms :: Entity as OfflineTerms 
+
+### `src/db/words.rs` (Role: general, Lines: 130)
+- **Responsibility**: Core general logic in src/db/words.rs
+- **Imports**: use anyhow :: Result , use sea_orm :: { sea_query :: OnConflict , ColumnTrait , EntityTrait , QueryFilter , QueryOrder , Set } , use std :: collections :: HashSet , use super :: entities :: * , use super :: Database 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn get_known_words (& self) -> Result < HashSet < String > >
+  async fn get_known_words_by_source (& self , source : & str) -> Result < HashSet < String > >
+  async fn add_known_words (& self , words : & [String]) -> Result < usize >
+  async fn add_known_words_with_source (& self , words : & [String] , source : & str ,) -> Result < usize >
+  async fn get_known_words_sorted_by_source (& self , source : & str) -> Result < Vec < String > >
+  async fn remove_known_words (& self , words : & [String]) -> Result < usize >
+  async fn get_ignored_words (& self) -> Result < HashSet < String > >
+  async fn add_ignored_word (& self , word : & str) -> Result < () >
+  async fn get_ignored_words_sorted (& self) -> Result < Vec < String > >
+  async fn remove_ignored_words (& self , words : & [String]) -> Result < usize >
+  ```
+
+### `src/db.rs` (Role: general, Lines: 152)
+- **Responsibility**: Core general logic in src/db.rs
+- **Imports**: use anyhow :: { Context , Result } , use sea_orm :: { ConnectionTrait , Database as SeaDatabase , DatabaseConnection } , use std :: path :: Path , pub use cache :: * , pub use cards :: * , pub use entities :: * 
+- **Types & Enums**:
+  ```rust
+  pub struct Database
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn open (db_path : & Path) -> Result < Self >
+  ```
+
+### `src/dict/context.rs` (Role: general, Lines: 257)
+- **Responsibility**: Core general logic in src/dict/context.rs
+- **Types & Enums**:
+  ```rust
+  pub enum ContextHint
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn context_hint (sentence : & str , target_word : & str) -> Option < ContextHint >
+  fn sense_line_score (line : & str , hint : ContextHint) -> i32
+  fn format_contextual_definition (definition : & str , hint : Option < ContextHint > , max_senses : usize , max_glosses : usize ,) -> String
+  fn has_contextual_sense (definition : & str , hint : ContextHint) -> bool
+  fn parse_senses (def : & str) -> Vec < String >
+  fn is_placeholder_definition (definition : & str) -> bool
+  fn truncate_definition (def : & str , max_senses : usize , max_glosses : usize) -> String
+  fn sort_candidates_for_context (candidates : & mut [crate :: dict :: LookupResult] , target_word : & str , target_reading : & str ,)
+  ```
+
+### `src/dict/offline.rs` (Role: general, Lines: 262)
+- **Responsibility**: Core general logic in src/dict/offline.rs
+- **Imports**: use anyhow :: Result , use indicatif :: { ProgressBar , ProgressStyle } , use std :: io :: Read 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn ensure_offline_dictionaries_ready (client : & reqwest :: Client , db : & mut crate :: db :: Database ,) -> Result < () >
+  async fn download_file_with_progress (client : & reqwest :: Client , url : & str , target_path : & std :: path :: Path ,) -> Result < () >
+  fn extract_text_from_yomitan_json (v : & serde_json :: Value , out : & mut Vec < String >)
+  ```
+
+### `src/dict/pitch.rs` (Role: general, Lines: 63)
+- **Responsibility**: Core general logic in src/dict/pitch.rs
+- **Public Functions & Signatures**:
+  ```rust
+  fn split_morae (reading : & str) -> Vec < String >
+  fn format_pitch_accent (reading : & str , pitch_num : usize) -> (String , String , usize)
+  ```
+
+### `src/dict/service.rs` (Role: general, Lines: 363)
+- **Responsibility**: Core general logic in src/dict/service.rs
+- **Imports**: use anyhow :: Result , use super :: context :: is_placeholder_definition , use super :: offline , use super :: LookupResult 
+- **Types & Enums**:
+  ```rust
+  pub struct LookupLimits
+  pub struct DictionaryService
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn lookup (client : & reqwest :: Client , word : & str) -> Result < LookupResult >
+  async fn lookup_with_limits (client : & reqwest :: Client , word : & str , max_senses : usize , max_glosses : usize ,) -> Result < LookupResult >
+  fn parse_entry (data : & serde_json :: Value , word : & str , max_senses : usize , max_glosses : usize ,) -> LookupResult
+  async fn lookup_all_candidates (client : & reqwest :: Client , word : & str , max_senses : usize , max_glosses : usize ,) -> Result < Vec < LookupResult > >
+  async fn ensure_offline_dictionaries_ready (client : & reqwest :: Client , db : & mut crate :: db :: Database ,) -> Result < () >
+  async fn lookup_all_candidates_cached (client : & reqwest :: Client , db : Option < & crate :: db :: Database > , word : & str , limits : LookupLimits ,) -> Result < Vec < LookupResult > >
+  ```
+
+### `src/dict/tests.rs` (Role: general, Lines: 300)
+- **Responsibility**: Core general logic in src/dict/tests.rs
+- **Imports**: use super :: * 
+
+### `src/dict.rs` (Role: general, Lines: 21)
+- **Responsibility**: Core general logic in src/dict.rs
+- **Imports**: pub use context :: * , pub use pitch :: * , pub use service :: * , use serde :: { Deserialize , Serialize } 
+- **Types & Enums**:
+  ```rust
+  pub struct LookupResult
+  ```
+
+### `src/main.rs` (Role: general, Lines: 300)
+- **Responsibility**: Core general logic in src/main.rs
+- **Imports**: use anyhow :: Result , use config :: AppConfig , use console :: style , use db :: Database , use dict :: DictionaryService , use srt :: parse_subtitle , use std :: path :: { Path , PathBuf } , use ui :: TerminalUi 
+
+### `src/media/tests.rs` (Role: general, Lines: 121)
+- **Responsibility**: Core general logic in src/media/tests.rs
+- **Imports**: use super :: * , use std :: collections :: HashSet , use std :: fs :: File 
+
+### `src/media/title.rs` (Role: general, Lines: 72)
+- **Responsibility**: Core general logic in src/media/title.rs
+- **Imports**: use regex :: Regex , use std :: path :: Path , use std :: sync :: LazyLock , use super :: MediaExtractor 
+- **Public Functions & Signatures**:
+  ```rust
+  fn extract_clean_show_context (video_path : & Path) -> String
+  ```
+
+### `src/media.rs` (Role: general, Lines: 388)
+- **Responsibility**: Core general logic in src/media.rs
+- **Imports**: use anyhow :: { Context , Result } , use std :: path :: Path , use std :: process :: { Command , Stdio } , pub use title :: extract_clean_show_context 
+- **Types & Enums**:
+  ```rust
+  pub struct MediaExtractor
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn media_source_stem (video_path : & Path) -> String
+  fn card_media_stem (target_word : & str , video_path : & Path , start_ms : u64 , index : usize ,) -> String
+  fn extract_preview_audio (video_path : & Path , start_ms : u64 , end_ms : u64 , output_path : & Path ,) -> Result < () >
+  fn extract_screenshot_with_index (video_path : & Path , timestamp_ms : u64 , sentence_index : Option < usize > , output_path : & Path ,) -> Result < () >
+  fn extract_screenshot (video_path : & Path , timestamp_ms : u64 , output_path : & Path ,) -> Result < () >
+  fn play_preview_audio (audio_path : & Path) -> Option < std :: process :: Child >
+  fn play_subtitle_segment (video_path : & Path , start_ms : u64 , end_ms : u64 ,) -> Option < std :: process :: Child >
+  fn clean_old_media (media_dir : & Path , max_cards : usize , protected_paths : & std :: collections :: HashSet < std :: path :: PathBuf > ,) -> Result < usize >
+  ```
+
+### `src/miner/context.rs` (Role: general, Lines: 83)
+- **Responsibility**: Core general logic in src/miner/context.rs
+- **Imports**: use crate :: srt :: SubtitleSentence 
+- **Public Functions & Signatures**:
+  ```rust
+  fn extract_dialogue_context (sentences : & [SubtitleSentence] , target_idx : usize , max_lines_before : usize , max_lines_after : usize , max_gap_ms : u64 ,) -> (Vec < String > , Vec < String >)
+  fn extract_dialogue_context_for_sentence (sentences : & [SubtitleSentence] , target : & SubtitleSentence , max_lines_before : usize , max_lines_after : usize , max_gap_ms : u64 ,) -> (Vec < String > , Vec < String >)
+  ```
+
+### `src/miner/quality/tests.rs` (Role: general, Lines: 326)
+- **Responsibility**: Core general logic in src/miner/quality/tests.rs
+- **Imports**: use super :: * , use crate :: nlp :: TokenInfo 
+
+### `src/miner/quality.rs` (Role: general, Lines: 276)
+- **Responsibility**: Core general logic in src/miner/quality.rs
+- **Imports**: use crate :: nlp :: TokenInfo 
+- **Types & Enums**:
+  ```rust
+  pub struct QualityScorer
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn score (text : & str , target_word : & str , tokens : & [TokenInfo]) -> f32
+  ```
+
+### `src/miner/tests.rs` (Role: general, Lines: 236)
+- **Responsibility**: Core general logic in src/miner/tests.rs
+- **Imports**: use super :: * , use crate :: srt :: SubtitleSentence 
+
+### `src/miner.rs` (Role: general, Lines: 270)
+- **Responsibility**: Core general logic in src/miner.rs
+- **Imports**: use self :: context :: { extract_dialogue_context , DEFAULT_MAX_CONTEXT_LINES , DEFAULT_MAX_DIALOGUE_GAP_MS , } , use self :: quality :: QualityScorer , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence , use std :: collections :: HashSet 
+- **Types & Enums**:
+  ```rust
+  pub struct CandidateSentence
+  pub struct MiningEngine
+  pub struct BuildCandidateParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn new (tokenizer : JapaneseTokenizer) -> Self
+  fn find_candidates (& self , sentences : & [SubtitleSentence] , known_words : & HashSet < String > , ignored_words : & HashSet < String > ,) -> Vec < CandidateSentence >
+  fn build_candidate (p : BuildCandidateParams < '_ >) -> CandidateSentence
+  ```
+
+### `src/nlp/dictionary.rs` (Role: general, Lines: 59)
+- **Responsibility**: Core general logic in src/nlp/dictionary.rs
+- **Imports**: use anyhow :: { bail , Context , Result } , use std :: fs :: File , use std :: io :: Cursor , use std :: path :: Path 
+- **Public Functions & Signatures**:
+  ```rust
+  fn ensure_system_dict (dict_path : & Path) -> Result < () >
+  ```
+
+### `src/nlp/filters.rs` (Role: general, Lines: 260)
+- **Responsibility**: Core general logic in src/nlp/filters.rs
+- **Types & Enums**:
+  ```rust
+  pub struct MorphemeMeta
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn is_formal_noun (dict_form : & str) -> bool
+  fn is_conjunction_particle (dict_form : & str) -> bool
+  fn is_audio_grunt (dict_form : & str , surface : & str) -> bool
+  fn is_scream_or_noise (dict_form : & str , surface : & str) -> bool
+  fn is_symbol_or_junk (meta : & MorphemeMeta < '_ >) -> bool
+  fn is_predicate_suffix (is_content_word : bool , surface : & str) -> bool
+  fn is_predicate_lemma (dict_form : & str) -> bool
+  fn normalize_canonical_lemma_reading (dictionary_form : & str , current_reading : & str) -> String
+  fn is_name_honorific (surface : & str) -> bool
+  ```
+
+### `src/nlp/mergers/colloquial.rs` (Role: tui, Lines: 220)
+- **Responsibility**: Core tui logic in src/nlp/mergers/colloquial.rs
+- **Imports**: use crate :: nlp :: { kata_to_hira , SpannedToken , TokenInfo } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn normalize_colloquial_negative (surface : & str , dictionary_form : String , reading : String ,) -> (String , String)
+  fn merge_colloquial_small_tsu (tokens : Vec < SpannedToken >) -> Vec < TokenInfo >
+  fn normalize_explanatory_nan (tokens : & mut [SpannedToken] , text : & str)
+  fn normalize_colloquial_greetings (tokens : & mut Vec < SpannedToken >)
+  fn normalize_kansai_negative (tokens : & mut Vec < SpannedToken >)
+  fn normalize_explanatory_njanai (tokens : & mut [SpannedToken])
+  ```
+
+### `src/nlp/mergers/counters/numerals.rs` (Role: general, Lines: 228)
+- **Responsibility**: Core general logic in src/nlp/mergers/counters/numerals.rs
+- **Public Functions & Signatures**:
+  ```rust
+  fn is_numeric_token (surface : & str) -> bool
+  fn digits_to_kanji (s : & str) -> String
+  fn is_lexical_counter_compound (kanji_num : & str , counter : & str) -> bool
+  fn derive_special_reading (kanji_num : & str , counter : & str) -> Option < & 'static str >
+  fn derive_numeric_reading (surface : & str , raw_reading : & str) -> String
+  ```
+
+### `src/nlp/mergers/counters/tests.rs` (Role: general, Lines: 139)
+- **Responsibility**: Core general logic in src/nlp/mergers/counters/tests.rs
+- **Imports**: use crate :: nlp :: JapaneseTokenizer 
+
+### `src/nlp/mergers/counters.rs` (Role: general, Lines: 204)
+- **Responsibility**: Core general logic in src/nlp/mergers/counters.rs
+- **Imports**: use crate :: nlp :: { SpannedToken , TokenInfo } , use numerals :: * 
+- **Public Functions & Signatures**:
+  ```rust
+  fn merge_number_counters (tokens : Vec < SpannedToken >) -> Vec < SpannedToken >
+  ```
+
+### `src/nlp/mergers/grammar.rs` (Role: general, Lines: 225)
+- **Responsibility**: Core general logic in src/nlp/mergers/grammar.rs
+- **Imports**: use crate :: nlp :: { kata_to_hira , SpannedToken , TokenInfo } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn merge_adverb_naru (tokens : Vec < SpannedToken >) -> Vec < SpannedToken >
+  fn merge_fixed_expression (tokens : Vec < SpannedToken > , expression : & str) -> Vec < SpannedToken >
+  fn merge_grammar_expressions (mut tokens : Vec < SpannedToken >) -> Vec < SpannedToken >
+  ```
+
+### `src/nlp/mergers/verbs.rs` (Role: general, Lines: 262)
+- **Responsibility**: Core general logic in src/nlp/mergers/verbs.rs
+- **Imports**: use crate :: nlp :: { SpannedToken , TokenInfo } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn merge_complex_verb_inflections (tokens : Vec < SpannedToken >) -> Vec < SpannedToken >
+  fn merge_compound_verbs (tokens : Vec < SpannedToken >) -> Vec < SpannedToken >
+  fn normalize_subsidiary_verb_lemma (surface : & str , raw_dict : & str , pos_type : & str , _pos_form : & str ,) -> String
+  fn normalize_ambiguous_imperatives (tokens : & mut [SpannedToken] , text : & str)
+  ```
+
+### `src/nlp/mergers.rs` (Role: general, Lines: 9)
+- **Responsibility**: Core general logic in src/nlp/mergers.rs
+- **Imports**: pub use colloquial :: * , pub use counters :: * , pub use grammar :: * , pub use verbs :: * 
+
+### `src/nlp/tests.rs` (Role: general, Lines: 389)
+- **Responsibility**: Core general logic in src/nlp/tests.rs
+- **Imports**: use super :: mergers :: normalize_colloquial_negative 
+
+### `src/nlp.rs` (Role: general, Lines: 319)
+- **Responsibility**: Core general logic in src/nlp.rs
+- **Imports**: pub use filters :: { is_predicate_lemma , is_predicate_suffix } , use anyhow :: Result , use filters :: { is_conjunction_particle , is_formal_noun , is_symbol_or_junk , MorphemeMeta } , use std :: path :: PathBuf , use sudachi :: analysis :: stateless_tokenizer :: StatelessTokenizer , use sudachi :: analysis :: Mode , use sudachi :: analysis :: Tokenize , use sudachi :: config :: Config , use sudachi :: dic :: dictionary :: JapaneseDictionary 
+- **Types & Enums**:
+  ```rust
+  pub struct TokenInfo
+  pub struct SpannedToken
+  pub struct JapaneseTokenizer
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn kata_to_hira (s : & str) -> String
+  fn new () -> Result < Self >
+  fn tokenize (& self , text : & str) -> Result < Vec < TokenInfo > >
+  ```
+
+### `src/queue/tests.rs` (Role: general, Lines: 77)
+- **Responsibility**: Core general logic in src/queue/tests.rs
+- **Imports**: use super :: * , use std :: fs 
+
+### `src/queue.rs` (Role: general, Lines: 81)
+- **Responsibility**: Core general logic in src/queue.rs
+- **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } , use std :: path :: { Path , PathBuf } 
+- **Types & Enums**:
+  ```rust
+  pub struct QueueEntry
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn queue_file_path () -> PathBuf
+  fn read_queue (path : & Path) -> Result < Vec < QueueEntry > >
+  fn append_entry (path : & Path , entry : & QueueEntry) -> Result < () >
+  fn remove_entries (path : & Path , indices_to_remove : & [usize]) -> Result < () >
+  ```
+
+### `src/session/ai_batch.rs` (Role: general, Lines: 260)
+- **Responsibility**: Core general logic in src/session/ai_batch.rs
+- **Imports**: use anyhow :: Result , use std :: collections :: HashMap , use std :: sync :: Arc , use tokio :: task :: JoinHandle , use crate :: ai , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: dict :: { self , DictionaryService , LookupLimits } , use crate :: miner :: CandidateSentence 
+- **Types & Enums**:
+  ```rust
+  pub struct AiBatchPreparation
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn prepare_ai_batch (candidates_to_process : & [CandidateSentence] , cfg : & AppConfig , db : & Database , http_client : & Arc < reqwest :: Client > ,) -> AiBatchPreparation
+  async fn collect_ai_results (prep : AiBatchPreparation , candidates : & [CandidateSentence] , cfg : & AppConfig , db : & Database , ai_start : std :: time :: Instant ,) -> HashMap < usize , ai :: AiAnalysisResult >
+  ```
+
+### `src/session/card_actions.rs` (Role: general, Lines: 342)
+- **Responsibility**: Core general logic in src/session/card_actions.rs
+- **Imports**: use anyhow :: Result , use std :: path :: Path , use std :: sync :: Arc , use crate :: ai :: AiAnalysisResult , use crate :: config :: AppConfig , use crate :: db :: { Database , SaveMinedCardParams } , use crate :: dict :: { self , DictionaryService , LookupLimits , LookupResult } , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence , use crate :: ui :: { CardRenderParams , TerminalUi } 
+- **Types & Enums**:
+  ```rust
+  pub enum CardActionResult
+  pub struct CardActionContext
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn handle_card_interaction (mut ctx : CardActionContext < '_ >) -> Result < CardActionResult >
+  fn render_current_card (ctx : & CardActionContext < '_ >)
+  ```
+
+### `src/session/media_preload.rs` (Role: general, Lines: 156)
+- **Responsibility**: Core general logic in src/session/media_preload.rs
+- **Imports**: use indicatif :: { ProgressBar , ProgressStyle } , use rayon :: prelude :: * , use std :: sync :: Arc , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: dict :: { self , DictionaryService } , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn preload_batch_media (candidates_to_process : & [CandidateSentence] , cfg : & AppConfig , db : & mut Database , http_client : & Arc < reqwest :: Client > ,)
+  ```
+
+### `src/session/mining.rs` (Role: general, Lines: 343)
+- **Responsibility**: Core general logic in src/session/mining.rs
+- **Imports**: use anyhow :: Result , use console :: style , use std :: sync :: Arc , use super :: ai_batch :: { collect_ai_results , prepare_ai_batch } , use super :: card_actions :: { handle_card_interaction , render_current_card , CardActionContext , CardActionResult , } , use super :: media_preload :: preload_batch_media , use crate :: ai , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: dict :: { self , DictionaryService , LookupLimits } , use crate :: miner :: CandidateSentence , use crate :: ui :: TerminalUi 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn run_mining_loop (all_candidates : Vec < CandidateSentence > , cfg : & AppConfig , db : & mut Database , http_client : reqwest :: Client ,) -> Result < () >
+  ```
+
+### `src/session.rs` (Role: general, Lines: 344)
+- **Responsibility**: Core general logic in src/session.rs
+- **Imports**: use anyhow :: Result , use console :: style , use std :: collections :: { HashMap , HashSet } , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: miner :: { CandidateSentence , MiningEngine } , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence , use crate :: ui :: { SessionMode , TerminalUi } 
+- **Types & Enums**:
+  ```rust
+  pub struct ComprehensionStats
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn bootstrap_vocabulary (sentences : & [SubtitleSentence] , tokenizer : & JapaneseTokenizer , db : & mut Database , known_words : & HashSet < String > , ignored_words : & HashSet < String > ,) -> Result < () >
+  async fn calculate_comprehension_stats (sentences : & [SubtitleSentence] , tokenizer : & JapaneseTokenizer , db : & Database , ignored_words : & HashSet < String > ,) -> Result < ComprehensionStats >
+  fn collect_review_known_candidates (sentences : & [SubtitleSentence] , tokenizer : & JapaneseTokenizer , known_words : & HashSet < String > , ignored_words : & HashSet < String > ,) -> Vec < CandidateSentence >
+  async fn run_session (sentences : Vec < SubtitleSentence > , cfg : & AppConfig , mut db : Database , http_client : reqwest :: Client ,) -> Result < () >
+  ```
+
+### `src/srt.rs` (Role: general, Lines: 142)
+- **Responsibility**: Core general logic in src/srt.rs
+- **Imports**: use anyhow :: { Context , Result } , use regex :: Regex , use std :: path :: Path , use std :: sync :: LazyLock 
+- **Types & Enums**:
+  ```rust
+  pub struct SubtitleSentence
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn parse_subtitle (path : & Path) -> Result < Vec < SubtitleSentence > >
+  ```
+
+### `src/ui/bootstrap.rs` (Role: tui, Lines: 189)
+- **Responsibility**: Core tui logic in src/ui/bootstrap.rs
+- **Imports**: use anyhow :: Result , use inquire :: MultiSelect , use super :: helpers :: format_word_with_reading 
+- **Public Functions & Signatures**:
+  ```rust
+  fn bootstrap_known_words (vocab_items : & [(String , usize , String)]) -> Result < Vec < String > >
+  fn bootstrap_ignored_names (vocab_items : & [(String , usize , String)]) -> Result < Vec < String > >
+  fn manage_known_words (words : & [(String , String)]) -> Result < Vec < String > >
+  fn manage_ignored_words (words : & [(String , String)]) -> Result < Vec < String > >
+  fn manage_mined_words (words : & [(String , String)]) -> Result < Vec < String > >
+  ```
+
+### `src/ui/bundles.rs` (Role: tui, Lines: 334)
+- **Responsibility**: Core tui logic in src/ui/bundles.rs
+- **Imports**: use anyhow :: Result , use console :: style , use inquire :: { Confirm , MultiSelect , Select } , use std :: path :: { Path , PathBuf } , use super :: TerminalUi , use crate :: bundle :: { delete_bundle_archive , delete_source_media_files , format_size , get_bundled_items_with_existing_sources , read_bundle_manifest , } , use crate :: db :: Database 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn manage_bundles_interactive (db : & Database) -> Result < () >
+  async fn list_bundles_view (db : & Database) -> Result < () >
+  async fn clean_bundled_sources_interactive (db : & Database) -> Result < () >
+  async fn delete_bundles_interactive (db : & Database) -> Result < () >
+  async fn prune_bundles_interactive (db : & Database) -> Result < () >
+  ```
+
+### `src/ui/card.rs` (Role: tui, Lines: 395)
+- **Responsibility**: Core tui logic in src/ui/card.rs
+- **Imports**: use console :: Style , use crossterm :: terminal , use std :: sync :: LazyLock , use unicode_segmentation :: UnicodeSegmentation 
+- **Types & Enums**:
+  ```rust
+  pub struct CardRenderParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn visual_width (s : & str) -> usize
+  fn box_width () -> usize
+  fn box_row (content : & str , inner_w : usize) -> String
+  fn box_empty (inner_w : usize) -> String
+  fn highlight_sentence_tokens (sentence : & str , target_word : & str , known_context : & [String] , unknown_context : & [String] , ignored_context : & [String] ,) -> String
+  fn render_progress (current : usize , total : usize , mined : usize , known : usize , skipped : usize , ignored : usize ,)
+  fn render_card (p : CardRenderParams < '_ >)
+  ```
+
+### `src/ui/config_menu.rs` (Role: tui, Lines: 329)
+- **Responsibility**: Core tui logic in src/ui/config_menu.rs
+- **Imports**: use anyhow :: Result , use console :: Style , use inquire :: { Select , Text } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn show_config (cfg : & crate :: config :: AppConfig)
+  fn configure_interactive (cfg : & mut crate :: config :: AppConfig) -> Result < () >
+  ```
+
+### `src/ui/explorer/actions.rs` (Role: tui, Lines: 26)
+- **Responsibility**: Core tui logic in src/ui/explorer/actions.rs
+- **Imports**: use anyhow :: Result , use std :: path :: Path , use std :: process :: Child , use crate :: db :: Database , use crate :: media :: MediaExtractor 
+- **Public Functions & Signatures**:
+  ```rust
+  fn play_sentence_audio (video_path : & Path , start_ms : u64 , end_ms : u64) -> Option < Child >
+  async fn mark_word_known (word : & str , db : & Database) -> Result < () >
+  async fn mark_all_known (words : & [String] , db : & Database) -> Result < () >
+  async fn mark_word_ignored (word : & str , db : & Database) -> Result < () >
+  ```
+
+### `src/ui/explorer/inspector_pane.rs` (Role: tui, Lines: 165)
+- **Responsibility**: Core tui logic in src/ui/explorer/inspector_pane.rs
+- **Imports**: use ratatui :: { layout :: Rect , style :: { Color , Modifier , Style as TuiStyle } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: render :: RenderExplorerContext 
+- **Public Functions & Signatures**:
+  ```rust
+  fn render_word_inspector (frame : & mut Frame < '_ > , area : Rect , ctx : & RenderExplorerContext < '_ >)
+  ```
+
+### `src/ui/explorer/model.rs` (Role: tui, Lines: 223)
+- **Responsibility**: Core tui logic in src/ui/explorer/model.rs
+- **Imports**: use std :: collections :: HashSet , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence 
+- **Types & Enums**:
+  ```rust
+  pub enum Tier
+  pub struct UnknownWord
+  pub struct ExplorerSentence
+  pub enum SortOrder
+  pub enum TierFilter
+  pub struct SentenceStats
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn toggle (self) -> Self
+  fn label (self) -> & 'static str
+  fn next (self) -> Self
+  fn label (self) -> & 'static str
+  fn calculate_stats (sentences : & [ExplorerSentence]) -> SentenceStats
+  fn sort_sentences (sentences : & mut [ExplorerSentence] , order : SortOrder)
+  fn filter_sentences (sentences : & [ExplorerSentence] , tier_filter : TierFilter , search : & str ,) -> Vec < usize >
+  fn refresh_sentence_unknowns (sentence : & mut ExplorerSentence , known_words : & HashSet < String > , ignored_words : & HashSet < String > ,)
+  fn build_explorer_sentences (sentences : & [SubtitleSentence] , tokenizer : & JapaneseTokenizer , known_words : & HashSet < String > , ignored_words : & HashSet < String > ,) -> Vec < ExplorerSentence >
+  ```
+
+### `src/ui/explorer/render.rs` (Role: tui, Lines: 388)
+- **Responsibility**: Core tui logic in src/ui/explorer/render.rs
+- **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Color , Modifier , Style as TuiStyle } , text :: { Line , Span } , widgets :: { Block , Borders , List , ListItem , Paragraph } , Frame , } , use std :: time :: Instant , use super :: model :: { ExplorerSentence , SentenceStats , SortOrder , Tier , TierFilter } , use crate :: dict :: LookupResult , use crate :: ui :: format_timestamp 
+- **Types & Enums**:
+  ```rust
+  pub struct RenderExplorerContext
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn render_explorer (frame : & mut Frame < '_ > , ctx : RenderExplorerContext < '_ >)
+  ```
+
+### `src/ui/explorer/state.rs` (Role: tui, Lines: 324)
+- **Responsibility**: Core tui logic in src/ui/explorer/state.rs
+- **Imports**: use anyhow :: Result , use std :: collections :: { HashMap , HashSet } , use std :: process :: Child , use std :: time :: { Duration , Instant } , use crate :: dict :: { DictionaryService , LookupLimits , LookupResult } , use super :: actions , use super :: model :: { build_explorer_sentences , filter_sentences , refresh_sentence_unknowns , ExplorerSentence , SortOrder , TierFilter , } , use super :: ExplorerParams 
+- **Types & Enums**:
+  ```rust
+  pub struct ExplorerController
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn new (p : ExplorerParams < 'a >) -> Self
+  fn set_status (& mut self , text : impl Into < String >)
+  fn visible_indices (& self) -> Vec < usize >
+  fn current_sentence_and_word (& self) -> Option < (& ExplorerSentence , usize , String) >
+  fn trigger_audio_for_current (& mut self)
+  async fn ensure_active_word_cached (& mut self)
+  fn toggle_selection (& mut self)
+  fn toggle_all_in_current_sentence (& mut self)
+  fn clear_selection (& mut self)
+  fn build_selected_candidates (& self) -> Vec < crate :: miner :: CandidateSentence >
+  async fn handle_mark_known (& mut self) -> Result < () >
+  async fn handle_mark_all_known (& mut self) -> Result < () >
+  async fn handle_mark_ignored (& mut self) -> Result < () >
+  ```
+
+### `src/ui/explorer/tests.rs` (Role: tui, Lines: 184)
+- **Responsibility**: Core tui logic in src/ui/explorer/tests.rs
+- **Imports**: use std :: collections :: HashSet , use super :: model :: * , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence 
+
+### `src/ui/explorer.rs` (Role: tui, Lines: 258)
+- **Responsibility**: Core tui logic in src/ui/explorer.rs
+- **Imports**: use anyhow :: Result , use crossterm :: { event :: { self , Event , KeyCode , KeyEvent , KeyEventKind , KeyModifiers } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , Terminal } , use std :: collections :: HashSet , use std :: io , use std :: path :: Path , use std :: time :: { Duration , Instant } , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence , use model :: { calculate_stats , sort_sentences } , use render :: { render_explorer , RenderExplorerContext } , use state :: ExplorerController 
+- **Types & Enums**:
+  ```rust
+  pub struct ExplorerParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  async fn run_explorer (p : ExplorerParams < '_ >) -> Result < Vec < crate :: miner :: CandidateSentence > >
+  ```
+
+### `src/ui/helpers.rs` (Role: tui, Lines: 104)
+- **Responsibility**: Core tui logic in src/ui/helpers.rs
+- **Imports**: use console :: measure_text_width , use std :: cmp :: Ordering , use super :: card :: box_width 
+- **Public Functions & Signatures**:
+  ```rust
+  fn natural_cmp (left : & str , right : & str) -> Ordering
+  fn format_word_with_reading (word : & str , reading : & str) -> String
+  fn format_timestamp (start_ms : u64) -> String
+  fn format_duration (d : std :: time :: Duration) -> String
+  fn print_banner ()
+  ```
+
+### `src/ui/inspector.rs` (Role: tui, Lines: 347)
+- **Responsibility**: Core tui logic in src/ui/inspector.rs
+- **Imports**: use anyhow :: Result , use crossterm :: { event :: { self , Event , KeyCode , KeyEventKind } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , layout :: { Constraint , Direction , Layout , Position } , style :: { Color , Modifier , Style as TuiStyle } , text :: { Line , Span } , widgets :: { Block , Borders , List , ListItem , Paragraph } , Terminal , } , use std :: io , use std :: path :: Path , use std :: time :: { Duration , Instant } , use crate :: ui :: card , use crate :: ui :: format_timestamp 
+- **Types & Enums**:
+  ```rust
+  pub struct InspectSentencesParams
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn inspect_sentences (p : InspectSentencesParams < '_ >) -> Result < () >
+  ```
+
+### `src/ui/picker/render.rs` (Role: tui, Lines: 339)
+- **Responsibility**: Core tui logic in src/ui/picker/render.rs
+- **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Color , Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: state :: { FileSelectorState , SelectableFile } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn render_selector (frame : & mut Frame < '_ > , state : & FileSelectorState) -> usize
+  ```
+
+### `src/ui/picker/selector.rs` (Role: tui, Lines: 78)
+- **Responsibility**: Core tui logic in src/ui/picker/selector.rs
+- **Imports**: use anyhow :: { bail , Result } , use crossterm :: { cursor :: Show , event :: { self , Event , KeyEventKind } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , Terminal } , use std :: io , use std :: path :: PathBuf , use std :: time :: Duration , use super :: render :: render_selector , use super :: state :: { FileSelectorState , SelectableFile , SelectorAction } 
+- **Public Functions & Signatures**:
+  ```rust
+  fn run_file_selector (title : impl Into < String > , items : Vec < SelectableFile > , multi : bool ,) -> Result < Vec < PathBuf > >
+  ```
+
+### `src/ui/picker/state.rs` (Role: tui, Lines: 343)
+- **Responsibility**: Core tui logic in src/ui/picker/state.rs
+- **Imports**: use crossterm :: event :: { KeyCode , KeyEvent , KeyModifiers } , use std :: collections :: HashSet , use std :: path :: PathBuf 
+- **Types & Enums**:
+  ```rust
+  pub enum SubtitleStatus
+  pub struct SelectableFile
+  pub enum SelectorAction
+  pub enum CategoryFilter
+  pub struct FileSelectorState
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn next (self) -> Self
+  fn label (self) -> & 'static str
+  fn matches (self , item : & SelectableFile) -> bool
+  fn new (title : impl Into < String > , items : Vec < SelectableFile > , multi : bool) -> Self
+  fn recompute_filter (& mut self)
+  fn toggle_and_advance (& mut self)
+  fn toggle_and_retreat (& mut self)
+  fn ensure_cursor_visible (& mut self , visible_height : usize)
+  fn handle_key (& mut self , key : KeyEvent , visible_height : usize) -> SelectorAction
+  fn build_result (self) -> Vec < PathBuf >
+  ```
+
+### `src/ui/picker.rs` (Role: tui, Lines: 264)
+- **Responsibility**: Core tui logic in src/ui/picker.rs
+- **Imports**: use anyhow :: Result , use indicatif :: { ProgressBar , ProgressStyle } , use inquire :: Text , use std :: path :: { Path , PathBuf } , use walkdir :: WalkDir , pub use selector :: run_file_selector , pub use state :: { SelectableFile , SubtitleStatus } , use super :: helpers :: natural_cmp 
+- **Public Functions & Signatures**:
+  ```rust
+  fn is_hidden_or_ignored_entry (entry : & walkdir :: DirEntry) -> bool
+  fn discover_media_files (allowed_exts : & [& str] , spinner_msg : & str) -> Result < Vec < PathBuf > >
+  fn select_media_file () -> Result < PathBuf >
+  fn select_media_files () -> Result < Vec < PathBuf > >
+  fn select_bundle_source_files () -> Result < Vec < PathBuf > >
+  ```
+
+### `src/ui/prompts.rs` (Role: tui, Lines: 281)
+- **Responsibility**: Core tui logic in src/ui/prompts.rs
+- **Imports**: use anyhow :: Result , use inquire :: { Select , Text } , use super :: SessionMode 
+- **Public Functions & Signatures**:
+  ```rust
+  fn select_session_mode (i1_count : usize , known_lines_count : usize) -> Result < SessionMode >
+  fn ask_next_batch (next_batch : usize , total_batches : usize , remaining_lines : usize ,) -> Result < bool >
+  fn ask_action () -> Result < char >
+  fn select_or_edit_reading (current_reading : & str , context_reading : & str , candidates : & [crate :: dict :: LookupResult] ,) -> Result < String >
+  fn select_candidate_or_custom (candidates : & [crate :: dict :: LookupResult] , target_word : & str , current_reading : & str , current_pitch : & str , ai_analysis : Option < & crate :: ai :: AiAnalysisResult > ,) -> Result < crate :: dict :: LookupResult >
+  fn select_sense (senses : & [String] , target_word : & str) -> Result < Option < String > >
+  ```
+
+### `src/ui/queue.rs` (Role: tui, Lines: 114)
+- **Responsibility**: Core tui logic in src/ui/queue.rs
+- **Imports**: use anyhow :: Result , use console :: style , use inquire :: { MultiSelect , Select } , use std :: path :: Path , use crate :: queue :: QueueEntry , use crate :: ui :: helpers :: format_timestamp 
+- **Types & Enums**:
+  ```rust
+  pub enum QueueNoSubChoice
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn select_queue_entries (entries : & [QueueEntry]) -> Result < Vec < usize > >
+  fn ask_no_subtitle_action (video_path : & Path , timestamp_ms : u64) -> Result < QueueNoSubChoice >
+  fn select_target_word (sentence_text : & str , words : & [(String , String , bool)] ,) -> Result < Option < String > >
+  ```
+
+### `src/ui/tests.rs` (Role: tui, Lines: 74)
+- **Responsibility**: Core tui logic in src/ui/tests.rs
+- **Imports**: use super :: helpers :: natural_cmp , use super :: picker :: is_hidden_or_ignored_entry , use walkdir :: WalkDir 
+
+### `src/ui.rs` (Role: tui, Lines: 163)
+- **Responsibility**: Core tui logic in src/ui.rs
+- **Imports**: pub use card :: CardRenderParams , pub use helpers :: * , pub use inspector :: InspectSentencesParams , use anyhow :: Result , use std :: path :: PathBuf 
+- **Types & Enums**:
+  ```rust
+  pub enum SessionMode
+  pub struct TerminalUi
+  ```
+- **Public Functions & Signatures**:
+  ```rust
+  fn print_banner ()
+  fn select_media_file () -> Result < PathBuf >
+  fn select_media_files () -> Result < Vec < PathBuf > >
+  fn select_bundle_source_files () -> Result < Vec < PathBuf > >
+  fn bootstrap_known_words (vocab_items : & [(String , usize , String)]) -> Result < Vec < String > >
+  fn bootstrap_ignored_names (vocab_items : & [(String , usize , String)]) -> Result < Vec < String > >
+  fn render_progress (current : usize , total : usize , mined : usize , known : usize , skipped : usize , ignored : usize ,)
+  fn render_card (p : CardRenderParams < '_ >)
+  fn select_session_mode (i1_count : usize , known_lines_count : usize) -> Result < SessionMode >
+  fn ask_next_batch (next_batch : usize , total_batches : usize , remaining_lines : usize ,) -> Result < bool >
+  fn ask_action () -> Result < char >
+  fn select_or_edit_reading (current_reading : & str , context_reading : & str , candidates : & [crate :: dict :: LookupResult] ,) -> Result < String >
+  fn select_candidate_or_custom (candidates : & [crate :: dict :: LookupResult] , target_word : & str , current_reading : & str , current_pitch : & str , ai_analysis : Option < & crate :: ai :: AiAnalysisResult > ,) -> Result < crate :: dict :: LookupResult >
+  fn select_sense (senses : & [String] , target_word : & str) -> Result < Option < String > >
+  fn inspect_sentences (p : inspector :: InspectSentencesParams < '_ >) -> Result < () >
+  fn manage_known_words (words : & [(String , String)]) -> Result < Vec < String > >
+  fn manage_ignored_words (words : & [(String , String)]) -> Result < Vec < String > >
+  fn manage_mined_words (words : & [(String , String)]) -> Result < Vec < String > >
+  fn show_config (cfg : & crate :: config :: AppConfig)
+  async fn run_explorer (p : explorer :: ExplorerParams < '_ > ,) -> Result < Vec < crate :: miner :: CandidateSentence > >
+  fn configure_interactive (cfg : & mut crate :: config :: AppConfig) -> Result < () >
+  fn select_queue_entries (entries : & [crate :: queue :: QueueEntry]) -> Result < Vec < usize > >
+  fn ask_no_subtitle_action (video_path : & std :: path :: Path , timestamp_ms : u64 ,) -> Result < queue :: QueueNoSubChoice >
+  fn select_target_word (sentence_text : & str , words : & [(String , String , bool)] ,) -> Result < Option < String > >
+  ```
 
 ## 4. Execution Lifecycle Trace
-
-1. **Startup & Pre-flight (`main.rs`)**:
-   - Parses first positional argument. If a CLI flag (`--bundle`, `--inspect`, `--config`, etc.) is passed, dispatches to `commands::handle_cli_flag` and exits immediately.
-   - Prints visual banner. Loads configuration from `~/.config/kotonoha/config.toml` (auto-migrating legacy paths).
-   - Opens SQLite database (`kotonoha.db`), executes schema migrations.
-   - Checks AnkiConnect availability; counts unsynced cards. Runs LRU cache cleaner on `~/.local/share/kotonoha/media/` preserving unsynced files.
-   - Ensures offline Yomitan dictionaries (`JMdict`, `Kanjium`) and Sudachi dictionary are downloaded and indexed.
-2. **Input Selection & Pairing (`commands/pairing.rs`)**:
-   - If file arguments are passed via CLI, pairs each subtitle/video. If no arguments are provided, prompts user via interactive file picker.
-   - Resolves paired subtitle (`.srt`/`.ass`) and video/audio (`.mkv`/`.mp4`/`.koto`).
-3. **Comprehension Analysis & Mode Selection (`session.rs`)**:
-   - Parses subtitle lines into `SubtitleSentence` structs.
-   - If first run or new words detected, presents bootstrap prompts to batch-classify character names and frequent known words.
-   - Tokenizes dialogue lines with `sudachi.rs`, categorizes lines into Known, $i+1$ Candidates, and Hard ($i+2+$) lines.
-   - Displays comprehension ratio and prompts user for session mode (`MineI1Candidates` vs `ReviewKnownLines`).
-4. **Batch Processing Loop (`session/mining.rs`)**:
-   - Chunks eligible candidates into batches (default 25 cards).
-   - Fires background media preloading (`media_preload.rs`) for audio and screenshots.
-   - Collects candidate lookups and dispatches Gemini AI batch analysis (`session/ai_batch.rs`).
-5. **Interactive Card Review (`session/card_actions.rs`, `ui/card.rs`)**:
-   - Renders interactive card with target word, pitch accent, dictionary definitions, and highlighted sentence.
-   - Plays audio snippet via background `mpv` / system player.
-   - Awaits keyboard command:
-     - `Enter` / `m`: Mine card to SQLite (`mined_cards`) with audio and image paths.
-     - `k`: Mark word as known (`known_words`).
-     - `i`: Add word to ignore list (`ignored_words`).
-     - `c` / `d`: Switch dictionary candidate or specific sense.
-     - `r`: Edit reading.
-     - `p`: Replay audio preview.
-     - `s`: Skip sentence.
-     - `q`: Exit mining loop.
-6. **Persistence & Sync (`anki/client.rs`)**:
-   - After completing or exiting the mining session, checks if Anki is running.
-   - If connected, automatically pushes mined cards to AnkiConnect: uploads audio/image assets and creates `Japanese sentences+` notes. Marks cards as synced in SQLite.
-   - Prunes old cached media files according to `max_cached_cards`.
-
----
+1. **Startup**: Entrypoint parses CLI flags & dispatches command.
+2. **Execution**: Core domain logic processes inputs and evaluates rules.
+3. **Persistence / I/O**: Domain logic calls infra for disk/terminal I/O.
+4. **Exit**: Graceful termination with standard exit codes.
 
 ## 5. Verification Commands
-
 ```bash
-# Build binary
-cargo build --release
-
-# Run full test suite
+cargo build --release --target x86_64-unknown-linux-gnu
 cargo test --all-targets
-
-# Strict linting (warnings are denied)
-cargo clippy --all-targets --all-features -- -D warnings
-
-# Code format check
-cargo fmt --check
+cargo clippy --all-targets -- -D warnings && cargo fmt --check
 ```
-
----
-
-## 6. Recent Iteration Changes
-
-- **2026-09-14 (v0.0.70: Sentence Explorer Cherry-Picking & Direct Review Flow)**:
-  - Overhauled Sentence Explorer into a snappy two-stage curation workflow: users browse sentences, toggle card selections (`[✓]` with `Space`/`x`, sentence with `X`, clear with `C`), and press `Enter` to directly enter the standard Kotonoha Card Review UI (`mining::run_mining_loop`).
-  - Preserved full interactive card refinement controls: sense selection (`d`), custom reading (`r`), definition editing (`e`), Gemini AI contextual analysis (`g`), audio replay (`p`), and candidate switching (`c`) in the standard review stage.
-  - Completely eliminated AI calls from Explorer browsing; word inspection uses fast, 100% offline JMdict lookups, preventing terminal buffer corruption, rate limits, and scrolling lag.
-  - Added `BuildCandidateParams` and `MiningEngine::build_candidate` in `src/miner.rs` to reconstruct full `CandidateSentence` items from selected Explorer sentences and unknown words.
-  - Added unit tests `test_build_candidate_from_explorer_selection` and `test_multi_unknown_candidate_generation` in `src/ui/explorer/tests.rs` (67/67 tests passing).
-- **2026-09-14 (v0.0.69: Terminal Sanitization & Status Bar Error Surfacing)**:
-  - Eliminated raw `eprintln!` writes to stderr during Gemini API batch retries in `src/ai.rs`, preventing Ratatui alternate-screen buffer corruption and top header scroll-off during TUI sessions.
-  - Added structured HTTP 429 rate limit detection in `src/ai.rs`.
-  - Routed AI contextual analysis errors into the bottom status bar (`ctrl.set_status`) in `src/ui/explorer/state.rs` with clean user-facing diagnostics.
-  - Bumped crate version to `0.0.69`.
-- **2026-09-14 (Sentence Explorer & Multi-Card Generation)**:
-  - Added interactive Sentence Explorer & Difficulty Browser (`kotonoha --explore [FILE]` or `-e`, also selectable from session mode prompt).
-  - Implemented sentence categorization by unknown count into difficulty tiers ($i+0 \to i+n$): $i+0$ (fully known), $i+1$, $i+2$, $i+3+$.
-  - Built debounced auto-play audio on scroll (`↑`/`↓` / `k`/`j`), toggleable with `a`, manual replay with `r`/`Space`.
-  - Added unknown word selector (`←`/`→` / `Tab`/`Shift+Tab`) with live visual highlight on the sentence line and instant dictionary/AI analysis updates in the right pane.
-  - Implemented multi-card mining for $i+2+$ sentences (`M` or `Shift+M`), generating individual Anki cards for each unknown word while sharing sentence audio and screenshot frames.
-  - Updated `src/anki/client.rs` (`find_existing_anki_note`) to match both `SentKanji` and `VocabKanji`, preventing multi-card Anki collisions on the same sentence.
-  - Added unit test suite in `src/ui/explorer/tests.rs` (65/65 unit tests passing).
-  - Updated shell completions (`bash`, `zsh`, `fish`) with `--explore` and `-e`.
-- **2026-09-14 (Proper Nouns & Codebase Digest)**:
-  - Fixed proper noun bypass issue in `src/miner.rs`, `src/session.rs`, and `src/ui/card.rs`: stopped unconditionally bypassing proper nouns; only skip them if explicitly present in `ignored_words`.
-  - Tightened `is_proper_noun` in `src/nlp.rs` to only tag tokens with explicit proper/person/place name POS tags, eliminating overbroad Katakana noun misclassification and allowing standard Katakana vocabulary to be mined.
-  - Added unit tests in `src/nlp/tests.rs` and `src/miner.rs` covering proper noun classification, ignored names, and katakana loanword mining.
-- **2026-09-18 (v0.0.73: Naturalness & i+1 Quality Scorer)**:
-  - Added `src/miner/quality.rs` (`QualityScorer`): multi-factor Japanese sentence naturalness, grammatical completeness, and flashcard suitability evaluator.
-  - Replaced naive shortest-character-count heuristic with `QualityScorer` composite evaluation: predicate/copula termination checks, dangling connective/particle gating, case marker relational analysis, length sweet-spot curve (14-32 chars), and interjection penalty.
-  - Added `quality_score: f32` to `CandidateSentence` and `CardRenderParams`.
-  - Added star rating display (`★★★★★`) to the interactive terminal card preview UI (`src/ui/card.rs`, `src/session/card_actions.rs`).
-  - Added full test suite in `src/miner/quality/tests.rs` (83/83 tests passing), including real-world anime subtitle dataset verification on *Yuru Camp* Ep 01.
-- **2026-09-23 (v0.0.78: Real-World Subtitle Tokenizer Enhancements & Full Predicate Highlighting)**:
-  - Fixed aspect contraction base-lemma preservation in `src/nlp/mergers/verbs.rs` (`行っちゃっ` -> `行く`, `抜けちゃっ` -> `抜ける`), eliminating truncated stem lemmas.
-  - Added `resolve_lemma_readings` in `src/nlp.rs` to dynamically look up true dictionary-form readings for inflected verbs/adjectives (`聞こう` -> `きく`, `知っ` -> `しる`), ensuring accurate Anki furigana and pitch accent matching.
-  - Added sentence-initial `でも` conjunction particle retention to `src/nlp/mergers/grammar.rs`.
-  - Added Kansai dialect negative auxiliary merger (`〜へん`) in `src/nlp/mergers/colloquial.rs` (`できへん` -> `できる`).
-  - Added compound verb merger (`merge_compound_verbs`) in `src/nlp/mergers/verbs.rs` (`待ち続ける`, `支え続ける`, `追いかける`).
-  - Added explanatory negative normalization (`normalize_explanatory_njanai`) to filter out isolated `ない`/`ねえ` content words from `〜んじゃない`.
-  - Extracted linguistic filter predicates into `src/nlp/filters.rs` to strictly adhere to file size limits (<300 lines).
-  - Added full inflected predicate highlighting (`<b>食べたい</b>`, `<b>読んだ</b>`, `<b>見ている</b>`) and surface-accurate furigana in `src/anki/formatter.rs` and `src/ui/card.rs`, while preserving dictionary lemma in `VocabKanji`/`VocabFurigana`.
-  - Added `surface_reading` to `TokenInfo` and predicate helper predicates (`is_predicate_suffix`, `is_predicate_lemma`) in `src/nlp/filters.rs`.
-  - Added canonical lemma reading normalization (`normalize_canonical_lemma_reading`) for `私` (`わたし`), `何` (`なに`), and `言う` (`いう`).
-  - Added contextual candidate prioritization in `src/dict/context.rs` (`sort_candidates_for_context`) resolving homophone collisions (`良い` over `宵`, `いい` over `謂`, `何` over `難`, conversational `そう`).
-  - Added definition stub cleaner stripping `see:, ...` cross-reference artifacts from card definitions.
-  - Added `いってらっしゃい` greeting expression merger to prevent splitting into `いう` ("to say").
-  - Added honorific-following Katakana nickname detection in `src/nlp.rs` (e.g. `パンジーちゃん`) tagging them as proper nouns.
-  - Verified across all 36 `.koto` archives (100/100 unit tests passing, 0 clippy warnings).
-- **2026-11-10 (v0.0.84: AI Candidate Selection Index Fix)**:
-  - Fixed AI-recommended dictionary candidate highlighting the wrong entry in `src/session/card_actions.rs`: the `c` action now runs `sort_candidates_for_context` before displaying, matching the ordering used when candidates were fed to the AI in `src/session/ai_batch.rs` and `src/session/mining.rs`, so `recommended_candidate_index` resolves to the same entry in both lists.
-  - Fixed `with_starting_cursor` being discarded by `inquire`'s default `reset_cursor` behaviour in `src/ui/prompts.rs`; `select_candidate_or_custom` now uses `.with_reset_cursor(false)` so the cursor starts on the AI-tagged candidate.
-  - Verified: 113/113 tests passing, 0 clippy warnings, release binary smoke-tested (`--version`, `--help`, `--show-config`, `--completions`).
-

@@ -13,6 +13,7 @@ _kotonoha() {
         '(-m --manage-mined)'{-m,--manage-mined}'[View & remove words from the mined list]'
         '(-I --manage-ignored)'{-I,--manage-ignored}'[View & remove words from the ignore list]'
         '(-s --sync)'{-s,--sync}'[Push locally mined cards to Anki]'
+        '(-q --queue)'{-q,--queue}'[Review & mine queued mpv moments (Shift+Q in mpv)]'
         '(-f --force)'{-f,--force}'[Force re-bundling or overwriting]'
         '(-v -V --version)'{-v,-V,--version}'[Print version information]'
         '(-h --help)'{-h,--help}'[Show help information]'

@@ -96,12 +96,19 @@ impl UnifiedAiService {
 
         if let Some(ref api_key) = cfg.ai.gemini_api_key {
             if cfg.ai.has_valid_gemini_key() {
-                return GeminiAiService::analyze_batch(client, api_key, &cfg.ai.gemini_model, cards)
-                    .await;
+                return GeminiAiService::analyze_batch(
+                    client,
+                    api_key,
+                    &cfg.ai.gemini_model,
+                    cards,
+                )
+                .await;
             }
         }
 
-        anyhow::bail!("No AI provider available (DeepSeek failed and no valid Gemini API key configured)")
+        anyhow::bail!(
+            "No AI provider available (DeepSeek failed and no valid Gemini API key configured)"
+        )
     }
 }
 

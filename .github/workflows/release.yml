@@ -39,10 +39,11 @@ jobs:
       - name: Create Release Package
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          mkdir -p staging/completions
+          mkdir -p staging/completions staging/scripts
           cp target/release/kotonoha staging/
           cp README.md LICENSE config.toml.example staging/ 2>/dev/null || true
           cp completions/* staging/completions/ 2>/dev/null || true
+          cp scripts/* staging/scripts/ 2>/dev/null || true
           tar -czvf kotonoha-x86_64-unknown-linux-gnu.tar.gz -C staging .
 
       - name: Generate Dynamic Changelog

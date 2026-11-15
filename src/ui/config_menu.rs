@@ -52,14 +52,23 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
         yellow.apply_to("Disabled")
     };
     println!("  • DeepSeek AI:           {ds_status}");
-    println!("  • DeepSeek URL:          {}", dim.apply_to(&cfg.ai.deepseek_url));
-    println!("  • DeepSeek Model:        {}", cyan.apply_to(&cfg.ai.deepseek_model));
+    println!(
+        "  • DeepSeek URL:          {}",
+        dim.apply_to(&cfg.ai.deepseek_url)
+    );
+    println!(
+        "  • DeepSeek Model:        {}",
+        cyan.apply_to(&cfg.ai.deepseek_model)
+    );
     let ds_key_display = if cfg.ai.deepseek_api_key.len() > 4 {
         format!("{}... (Set)", &cfg.ai.deepseek_api_key[..3])
     } else {
         "Default".to_string()
     };
-    println!("  • DeepSeek Key:          {}", dim.apply_to(ds_key_display));
+    println!(
+        "  • DeepSeek Key:          {}",
+        dim.apply_to(ds_key_display)
+    );
     println!(
         "  • Gemini Fallback Model: {}",
         cyan.apply_to(&cfg.ai.gemini_model)

@@ -50,19 +50,17 @@ pub async fn prepare_ai_batch(
         }
     }
 
-    let task_handle = if cfg.ai.enable_ai
-        && cfg.ai.has_valid_api_key()
-        && !uncached_card_targets.is_empty()
-    {
-        let cfg_clone = cfg.clone();
-        let client = Arc::clone(http_client);
-        let db_clone = db.clone();
-        let max_senses = cfg.dict.max_definition_senses;
-        let max_glosses = cfg.dict.max_glosses_per_sense;
-        let card_targets = uncached_card_targets;
-        let cfg_ai_batch_size = cfg.ai.ai_batch_size;
+    let task_handle =
+        if cfg.ai.enable_ai && cfg.ai.has_valid_api_key() && !uncached_card_targets.is_empty() {
+            let cfg_clone = cfg.clone();
+            let client = Arc::clone(http_client);
+            let db_clone = db.clone();
+            let max_senses = cfg.dict.max_definition_senses;
+            let max_glosses = cfg.dict.max_glosses_per_sense;
+            let card_targets = uncached_card_targets;
+            let cfg_ai_batch_size = cfg.ai.ai_batch_size;
 
-        Some(tokio::spawn(async move {
+            Some(tokio::spawn(async move {
                 let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
                 let mut all_results = Vec::new();
                 let ai_batch_size = cfg_ai_batch_size.max(1);
@@ -169,9 +167,9 @@ pub async fn prepare_ai_batch(
 
                 Ok::<Vec<ai::AiAnalysisResult>, anyhow::Error>(all_results)
             }))
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     AiBatchPreparation {
         cached_results,
@@ -195,10 +193,7 @@ pub async fn collect_ai_results(
             } else {
                 format!("Gemini ({})", cfg.ai.gemini_model)
             };
-            println!(
-                " 🤖 [4/4] AI Context Analysis ({}) ...",
-                provider_name
-            );
+            println!(" 🤖 [4/4] AI Context Analysis ({}) ...", provider_name);
             match handle.await {
                 Ok(Ok(fresh_results)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
@@ -233,10 +228,7 @@ pub async fn collect_ai_results(
                 }
                 Ok(Err(e)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
-                    eprintln!(
-                        " ⚠️ AI batch analysis failed after {:.2}s: {e}\n",
-                        elapsed
-                    );
+                    eprintln!(" ⚠️ AI batch analysis failed after {:.2}s: {e}\n", elapsed);
                     prep.cached_results
                         .into_iter()
                         .map(|r| (r.card_index, r))

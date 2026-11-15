@@ -8,6 +8,7 @@ mod dict;
 mod media;
 mod miner;
 mod nlp;
+mod queue;
 mod session;
 mod srt;
 mod ui;
@@ -61,6 +62,19 @@ fn print_service_status(cfg: &AppConfig, anki_connected: bool, unsynced_count: u
             if unsynced_count == 1 { "" } else { "s" },
             style("kotonoha --sync").cyan()
         );
+    }
+
+    let queue_path = crate::queue::queue_file_path();
+    if let Ok(entries) = crate::queue::read_queue(&queue_path) {
+        if !entries.is_empty() {
+            println!(
+                " {}  {} queued timestamp{} from mpv. Run {} to mine.",
+                style("📥").cyan(),
+                style(entries.len()).cyan().bold(),
+                if entries.len() == 1 { "" } else { "s" },
+                style("kotonoha --queue").cyan().bold()
+            );
+        }
     }
 }
 

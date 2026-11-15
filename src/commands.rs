@@ -1,4 +1,5 @@
 mod pairing;
+pub mod queue;
 pub use pairing::*;
 
 use anyhow::Result;
@@ -41,6 +42,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         println!("  kotonoha --manage-mined   | -m     View & remove words from the mined list");
         println!("  kotonoha --manage-ignored | -I     View & remove words from the ignore list");
         println!("  kotonoha --sync           | -s     Push locally mined cards to Anki");
+        println!("  kotonoha --queue          | -q     Review & mine queued mpv moments (Shift+Q in mpv)");
         println!(
             "  kotonoha --completions [SHELL]     Generate shell completions (bash, zsh, fish)"
         );
@@ -328,6 +330,18 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             println!(" ℹ No changes made.");
         }
+        return Ok(true);
+    }
+    if arg == "--queue" || arg == "-q" || arg == "queue" {
+        let cfg = AppConfig::load()?;
+        let mut db = Database::open(&cfg.db_path).await?;
+        let http_client = reqwest::Client::new();
+        let _ = crate::dict::DictionaryService::ensure_offline_dictionaries_ready(
+            &http_client,
+            &mut db,
+        )
+        .await;
+        queue::run_queue_command(&cfg, &mut db, http_client).await?;
         return Ok(true);
     }
 

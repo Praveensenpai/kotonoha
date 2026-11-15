@@ -188,6 +188,27 @@ kotonoha --bundles
 
 ---
 
+## 📺 MPV Timestamp Queue
+
+Mine cards seamlessly while watching anime in `mpv`:
+
+```bash
+# 1. Install companion script to mpv
+mkdir -p ~/.config/mpv/scripts
+cp scripts/kotonoha-queue.lua ~/.config/mpv/scripts/
+
+# 2. While watching video in mpv, press Shift+Q (Q)
+# The current timestamp is instantly saved to ~/.local/share/kotonoha/queue.jsonl
+
+# 3. Process queued moments in kotonoha
+kotonoha --queue
+```
+
+- **With subtitles**: Matches the exact dialogue line, lets you pick which unknown word you want, and initiates card mining.
+- **Without subtitles**: Warns you with a hint to fetch/sync subtitles using [`subsink`](https://github.com/Praveensenpai/subsink) (`subsink`), letting you keep the timestamp in the queue to process later or skip it.
+
+---
+
 ## 🛠️ CLI Reference
 
 | Command / Flag | Short | Description |
@@ -206,6 +227,7 @@ kotonoha --bundles
 | `--manage-mined` | `-m` | View and edit mined vocabulary cards |
 | `--manage-ignored`| `-I` | View and edit ignored words list |
 | `--sync` | `-s` | Push pending cards to Anki via AnkiConnect |
+| `--queue` | `-q` | Review & mine queued moments saved from mpv (`Shift+Q`) |
 | `--completions [SHELL]` | | Output shell completions (`bash`, `zsh`, `fish`) |
 | `--force` | `-f` | Force overwrite or re-encoding |
 | `--version` | `-v` | Display version information |

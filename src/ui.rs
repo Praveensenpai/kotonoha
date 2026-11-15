@@ -7,6 +7,7 @@ pub mod helpers;
 pub mod inspector;
 pub mod picker;
 pub mod prompts;
+pub mod queue;
 
 #[cfg(test)]
 mod tests;
@@ -140,5 +141,23 @@ impl TerminalUi {
 
     pub fn configure_interactive(cfg: &mut crate::config::AppConfig) -> Result<()> {
         config_menu::configure_interactive(cfg)
+    }
+
+    pub fn select_queue_entries(entries: &[crate::queue::QueueEntry]) -> Result<Vec<usize>> {
+        queue::select_queue_entries(entries)
+    }
+
+    pub fn ask_no_subtitle_action(
+        video_path: &std::path::Path,
+        timestamp_ms: u64,
+    ) -> Result<queue::QueueNoSubChoice> {
+        queue::ask_no_subtitle_action(video_path, timestamp_ms)
+    }
+
+    pub fn select_target_word(
+        sentence_text: &str,
+        words: &[(String, String, bool)],
+    ) -> Result<Option<String>> {
+        queue::select_target_word(sentence_text, words)
     }
 }

@@ -22,14 +22,15 @@ _kotonoha_completions() {
         --manage-mined
         --manage-ignored
         --sync
+        --queue
         --force
         --version
         --help
         --completions
     "
 
-    local short_opts="-b -B -C -c -S -i -e -k -m -I -s -f -v -h"
-    local subcommands="bundle bundles"
+    local short_opts="-b -B -C -c -S -i -e -k -m -I -s -q -f -v -h"
+    local subcommands="bundle bundles queue"
 
     case "${prev}" in
         --bundle|-b|bundle|--inspect|-i|--explore|-e)
@@ -44,7 +45,7 @@ _kotonoha_completions() {
             COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
             return 0
             ;;
-        --config|-c|--show-config|-S|--manage-known|-k|--manage-mined|-m|--manage-ignored|-I|--sync|-s|--clean-bundled|-C|--bundles|-B|bundles|--version|-v|-V)
+        --config|-c|--show-config|-S|--manage-known|-k|--manage-mined|-m|--manage-ignored|-I|--sync|-s|--queue|-q|queue|--clean-bundled|-C|--bundles|-B|bundles|--version|-v|-V)
             return 0
             ;;
     esac

@@ -10,6 +10,7 @@ complete -c kotonoha -s k -l manage-known -d "View & remove words from known dat
 complete -c kotonoha -s m -l manage-mined -d "View & remove words from mined list"
 complete -c kotonoha -s I -l manage-ignored -d "View & remove words from ignore list"
 complete -c kotonoha -s s -l sync -d "Push locally mined cards to Anki"
+complete -c kotonoha -s q -l queue -d "Review & mine queued mpv moments (Shift+Q in mpv)"
 complete -c kotonoha -s f -l force -d "Force re-bundling or overwriting"
 complete -c kotonoha -s v -s V -l version -d "Print version information"
 complete -c kotonoha -s h -l help -d "Show help information"
