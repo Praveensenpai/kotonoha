@@ -17,6 +17,7 @@ pub struct MinedCard {
     pub audio_path: Option<String>,
     pub image_path: Option<String>,
     pub english_natural: Option<String>,
+    pub english_literal: Option<String>,
 }
 
 pub struct SaveMinedCardParams<'a> {
@@ -79,6 +80,7 @@ impl Database {
                         audio_path: m.audio_path,
                         image_path: m.image_path,
                         english_natural: m.english_natural,
+                        english_literal: m.english_literal,
                     },
                     m.anki_note_id,
                 )
@@ -106,8 +108,52 @@ impl Database {
                 audio_path: m.audio_path,
                 image_path: m.image_path,
                 english_natural: m.english_natural,
+                english_literal: m.english_literal,
             })
             .collect())
+    }
+
+    pub async fn get_cards_missing_translations(&self) -> Result<Vec<MinedCard>> {
+        let items = MinedCards::find()
+            .filter(
+                mined_cards::Column::EnglishNatural
+                    .is_null()
+                    .or(mined_cards::Column::EnglishNatural.eq("")),
+            )
+            .order_by_asc(mined_cards::Column::Id)
+            .all(&self.conn)
+            .await?;
+
+        Ok(items
+            .into_iter()
+            .map(|m| MinedCard {
+                id: m.id,
+                sentence: m.sentence,
+                target_word: m.target_word,
+                reading: m.reading.unwrap_or_default(),
+                pitch_accent: m.pitch_accent.unwrap_or_default(),
+                definition: m.definition.unwrap_or_default(),
+                audio_path: m.audio_path,
+                image_path: m.image_path,
+                english_natural: m.english_natural,
+                english_literal: m.english_literal,
+            })
+            .collect())
+    }
+
+    pub async fn update_card_translations(
+        &self,
+        card_id: i64,
+        english_natural: Option<&str>,
+        english_literal: Option<&str>,
+    ) -> Result<()> {
+        if let Some(card) = MinedCards::find_by_id(card_id).one(&self.conn).await? {
+            let mut active: mined_cards::ActiveModel = card.into();
+            active.english_natural = Set(english_natural.map(str::to_string));
+            active.english_literal = Set(english_literal.map(str::to_string));
+            active.update(&self.conn).await?;
+        }
+        Ok(())
     }
 
     pub async fn mark_mined_card_synced(&self, card_id: i64, anki_note_id: i64) -> Result<()> {

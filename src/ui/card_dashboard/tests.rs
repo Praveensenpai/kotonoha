@@ -58,6 +58,8 @@ fn test_handle_main_dashboard_keys() {
         dict_info: &mut dict_info,
         ai_suggestion: None,
         is_ai_selected: false,
+        ai_translation_natural: None,
+        ai_translation_literal: None,
         audio_path: None,
         all_candidates: Vec::new(),
     };
@@ -122,6 +124,8 @@ fn test_modal_transitions() {
         dict_info: &mut dict_info,
         ai_suggestion: None,
         is_ai_selected: false,
+        ai_translation_natural: None,
+        ai_translation_literal: None,
         audio_path: None,
         all_candidates: cand_list,
     };
@@ -165,6 +169,8 @@ fn test_render_dashboard_visual_layout() {
         dict_info: &dict_info,
         ai_suggestion: Some("Contextual nuance for test"),
         is_ai_selected: true,
+        ai_translation_natural: Some("Natural test translation"),
+        ai_translation_literal: Some("Literal test translation"),
         audio_playing: false,
         modal: &modal,
     };
@@ -194,6 +200,14 @@ fn test_render_dashboard_visual_layout() {
     assert!(
         output.contains("AI Recommended"),
         "Sentence box must display AI badge"
+    );
+    assert!(
+        output.contains("Natural test translation"),
+        "Sentence box must display natural translation"
+    );
+    assert!(
+        output.contains("Literal test translation"),
+        "Sentence box must display literal translation"
     );
     assert!(output.contains("4.50"), "Sentence box must display score");
 
@@ -262,6 +276,8 @@ fn test_render_dashboard_modal_overlays() {
         dict_info: &dict_info,
         ai_suggestion: None,
         is_ai_selected: false,
+        ai_translation_natural: None,
+        ai_translation_literal: None,
         audio_playing: false,
         modal: &candidate_modal,
     };

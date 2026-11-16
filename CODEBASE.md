@@ -15,11 +15,11 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 
 ## 3. Module & Interface Skeleton
 
-### `src/ai/tests.rs` (Role: general, Lines: 129)
+### `src/ai/tests.rs` (Role: general, Lines: 165)
 - **Responsibility**: Core general logic in src/ai/tests.rs
 - **Imports**: use super :: build_prompt 
 
-### `src/ai.rs` (Role: general, Lines: 336)
+### `src/ai.rs` (Role: general, Lines: 341)
 - **Responsibility**: Core general logic in src/ai.rs
 - **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } 
 - **Types & Enums**:
@@ -38,9 +38,9 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn analyze_batch (client : & reqwest :: Client , api_key : & str , model : & str , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
   ```
 
-### `src/anki/client.rs` (Role: cli, Lines: 330)
+### `src/anki/client.rs` (Role: cli, Lines: 368)
 - **Responsibility**: Core cli logic in src/anki/client.rs
-- **Imports**: use anyhow :: Result , use base64 :: engine :: general_purpose :: STANDARD as BASE64 , use base64 :: Engine , use std :: path :: Path , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use super :: formatter :: { anki_search_text , format_definition_for_anki , pitch_pattern , sentence_with_furigana , } 
+- **Imports**: use anyhow :: Result , use base64 :: engine :: general_purpose :: STANDARD as BASE64 , use base64 :: Engine , use std :: path :: Path , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use super :: formatter :: { anki_search_text , format_definition_for_anki , format_sentence_translation_for_anki , pitch_pattern , sentence_with_furigana , } 
 - **Public Functions & Signatures**:
   ```rust
   async fn anki_connected (url : & str) -> bool
@@ -50,7 +50,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn sync_to_anki (cfg : & AppConfig , db : & Database) -> Result < () >
   ```
 
-### `src/anki/formatter.rs` (Role: general, Lines: 174)
+### `src/anki/formatter.rs` (Role: general, Lines: 195)
 - **Responsibility**: Core general logic in src/anki/formatter.rs
 - **Imports**: use crate :: dict , use crate :: nlp :: JapaneseTokenizer 
 - **Public Functions & Signatures**:
@@ -62,9 +62,10 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn to_katakana (text : & str) -> String
   fn pitch_number (pitch_accent : & str , mora_count : usize) -> usize
   fn pitch_pattern (reading : & str , pitch_accent : & str) -> (String , String)
+  fn format_sentence_translation_for_anki (natural : Option < & str > , literal : Option < & str > ,) -> String
   ```
 
-### `src/anki/tests.rs` (Role: general, Lines: 65)
+### `src/anki/tests.rs` (Role: general, Lines: 91)
 - **Responsibility**: Core general logic in src/anki/tests.rs
 - **Imports**: use super :: client :: * , use super :: formatter :: * 
 
@@ -189,6 +190,14 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn is_bundle_dir (path : & Path) -> bool
   ```
 
+### `src/commands/backfill.rs` (Role: general, Lines: 119)
+- **Responsibility**: Core general logic in src/commands/backfill.rs
+- **Imports**: use anyhow :: Result , use console :: style , use crate :: ai :: { CardBatchInput , UnifiedAiService } , use crate :: config :: AppConfig , use crate :: db :: cards :: MinedCard , use crate :: db :: Database , use crate :: dict :: LookupResult 
+- **Public Functions & Signatures**:
+  ```rust
+  async fn run_backfill_translations_command (cfg : & AppConfig , db : & Database) -> Result < () >
+  ```
+
 ### `src/commands/pairing.rs` (Role: general, Lines: 238)
 - **Responsibility**: Core general logic in src/commands/pairing.rs
 - **Imports**: use anyhow :: Result , use std :: path :: { Path , PathBuf } , use crate :: nlp :: JapaneseTokenizer 
@@ -212,9 +221,9 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn run_queue_command (cfg : & AppConfig , db : & mut Database , http_client : reqwest :: Client ,) -> Result < () >
   ```
 
-### `src/commands.rs` (Role: general, Lines: 349)
+### `src/commands.rs` (Role: general, Lines: 360)
 - **Responsibility**: Core general logic in src/commands.rs
-- **Imports**: pub use pairing :: * , use anyhow :: Result , use console :: style , use std :: path :: PathBuf , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: parse_subtitle , use crate :: ui :: TerminalUi 
+- **Imports**: pub use backfill :: * , pub use pairing :: * , use anyhow :: Result , use console :: style , use std :: path :: PathBuf , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: parse_subtitle , use crate :: ui :: TerminalUi 
 - **Public Functions & Signatures**:
   ```rust
   async fn handle_cli_flag (arg : & str) -> Result < bool >
@@ -276,7 +285,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn query_offline_terms (& self , word : & str , exact_only : bool ,) -> Result < Vec < crate :: dict :: LookupResult > >
   ```
 
-### `src/db/cards.rs` (Role: general, Lines: 138)
+### `src/db/cards.rs` (Role: general, Lines: 184)
 - **Responsibility**: Core general logic in src/db/cards.rs
 - **Imports**: use anyhow :: Result , use sea_orm :: { ActiveModelTrait , ColumnTrait , EntityTrait , QueryFilter , QueryOrder , Set } , use std :: collections :: HashSet , use std :: path :: PathBuf , use super :: entities :: * , use super :: Database 
 - **Types & Enums**:
@@ -289,6 +298,8 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn save_mined_card (& self , params : SaveMinedCardParams < '_ >) -> Result < i64 >
   async fn get_all_mined_cards (& self) -> Result < Vec < (MinedCard , Option < i64 >) > >
   async fn get_unsynced_mined_cards (& self) -> Result < Vec < MinedCard > >
+  async fn get_cards_missing_translations (& self) -> Result < Vec < MinedCard > >
+  async fn update_card_translations (& self , card_id : i64 , english_natural : Option < & str > , english_literal : Option < & str > ,) -> Result < () >
   async fn mark_mined_card_synced (& self , card_id : i64 , anki_note_id : i64) -> Result < () >
   async fn get_unsynced_media_paths (& self) -> Result < HashSet < PathBuf > >
   ```
@@ -685,7 +696,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn collect_ai_results (prep : AiBatchPreparation , candidates : & [CandidateSentence] , cfg : & AppConfig , db : & Database , ai_start : std :: time :: Instant ,) -> HashMap < usize , ai :: AiAnalysisResult >
   ```
 
-### `src/session/card_actions.rs` (Role: general, Lines: 183)
+### `src/session/card_actions.rs` (Role: general, Lines: 185)
 - **Responsibility**: Core general logic in src/session/card_actions.rs
 - **Imports**: use anyhow :: Result , use std :: path :: Path , use std :: sync :: Arc , use crate :: ai :: AiAnalysisResult , use crate :: config :: AppConfig , use crate :: db :: { Database , SaveMinedCardParams } , use crate :: dict :: { self , DictionaryService , LookupLimits , LookupResult } , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence , use crate :: ui :: card_dashboard :: { DashboardAction , DashboardParams } , use crate :: ui :: TerminalUi 
 - **Types & Enums**:
@@ -778,7 +789,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_edit_reading_modal (f : & mut Frame < '_ > , area : Rect , buffer : & str)
   ```
 
-### `src/ui/card_dashboard/panes.rs` (Role: tui, Lines: 367)
+### `src/ui/card_dashboard/panes.rs` (Role: tui, Lines: 390)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/panes.rs
 - **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: render :: DashboardRenderContext , use super :: theme :: Theme , use crate :: miner :: CandidateSentence , use crate :: ui :: helpers :: format_timestamp 
 - **Public Functions & Signatures**:
@@ -789,7 +800,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_footer_toolbar (f : & mut Frame < '_ > , area : Rect)
   ```
 
-### `src/ui/card_dashboard/render.rs` (Role: tui, Lines: 155)
+### `src/ui/card_dashboard/render.rs` (Role: tui, Lines: 157)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/render.rs
 - **Imports**: use ratatui :: { layout :: { Constraint , Direction , Layout , Rect } , style :: { Modifier , Style } , text :: { Line , Span } , widgets :: { Block , Borders , Paragraph } , Frame , } , use super :: modal :: { render_candidate_modal , render_edit_reading_modal , ActiveModal } , use super :: panes :: { render_footer_toolbar , render_sentence_box , render_split_panes } , use super :: theme :: Theme , use crate :: dict :: LookupResult , use crate :: miner :: CandidateSentence 
 - **Types & Enums**:
@@ -801,7 +812,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_dashboard (f : & mut Frame < '_ > , ctx : & DashboardRenderContext < '_ >)
   ```
 
-### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 317)
+### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 333)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/tests.rs
 - **Imports**: use super :: * , use crate :: srt :: SubtitleSentence , use std :: path :: PathBuf 
 
@@ -813,7 +824,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   pub struct Theme
   ```
 
-### `src/ui/card_dashboard.rs` (Role: tui, Lines: 270)
+### `src/ui/card_dashboard.rs` (Role: tui, Lines: 274)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard.rs
 - **Imports**: use anyhow :: Result , use crossterm :: { event :: { self , Event , KeyCode , KeyEventKind , KeyModifiers } , execute , terminal :: { disable_raw_mode , enable_raw_mode , EnterAlternateScreen , LeaveAlternateScreen } , } , use ratatui :: { backend :: CrosstermBackend , Terminal } , use std :: io , use std :: path :: Path , use std :: time :: Duration , use crate :: dict :: LookupResult , use crate :: media :: MediaExtractor , use crate :: miner :: CandidateSentence , use modal :: ActiveModal , use render :: { render_dashboard , DashboardRenderContext } 
 - **Types & Enums**:
@@ -1034,7 +1045,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn select_target_word (sentence_text : & str , words : & [(String , String , bool)] ,) -> Result < Option < String > >
   ```
 
-### `src/ui/tests.rs` (Role: tui, Lines: 126)
+### `src/ui/tests.rs` (Role: tui, Lines: 149)
 - **Responsibility**: Core tui logic in src/ui/tests.rs
 - **Imports**: use super :: helpers :: natural_cmp , use super :: picker :: is_hidden_or_ignored_entry , use super :: picker :: state :: SubtitleStatus , use walkdir :: WalkDir 
 

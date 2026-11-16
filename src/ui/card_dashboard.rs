@@ -43,6 +43,8 @@ pub struct DashboardParams<'a> {
     pub dict_info: &'a mut LookupResult,
     pub ai_suggestion: Option<&'a str>,
     pub is_ai_selected: bool,
+    pub ai_translation_natural: Option<&'a str>,
+    pub ai_translation_literal: Option<&'a str>,
     pub audio_path: Option<&'a Path>,
     pub all_candidates: Vec<LookupResult>,
 }
@@ -91,6 +93,8 @@ pub fn run_card_dashboard(mut p: DashboardParams<'_>) -> Result<DashboardAction>
                     dict_info: p.dict_info,
                     ai_suggestion: p.ai_suggestion,
                     is_ai_selected: p.is_ai_selected,
+                    ai_translation_natural: p.ai_translation_natural,
+                    ai_translation_literal: p.ai_translation_literal,
                     audio_playing: state.audio_playing,
                     modal: &state.modal,
                 },

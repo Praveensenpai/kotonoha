@@ -106,20 +106,43 @@ fn bundle_picker_omits_paired_video_keeps_subtitle() {
         .collect();
 
     // Should have exactly 2 items: the .ja.srt + the unpaired .mkv (not the paired .mkv)
-    assert_eq!(items.len(), 2, "Expected 2 items (1 subtitle + 1 no-sub video), got: {:?}", items.iter().map(|i| i.path.file_name().unwrap().to_str().unwrap()).collect::<Vec<_>>());
+    assert_eq!(
+        items.len(),
+        2,
+        "Expected 2 items (1 subtitle + 1 no-sub video), got: {:?}",
+        items
+            .iter()
+            .map(|i| i.path.file_name().unwrap().to_str().unwrap())
+            .collect::<Vec<_>>()
+    );
 
     let names: Vec<&str> = items
         .iter()
         .map(|i| i.path.file_name().unwrap().to_str().unwrap())
         .collect();
-    assert!(names.contains(&"Heya Camp - S01E01.ja.srt"), "Subtitle must be present");
-    assert!(names.contains(&"Heya Camp - S01E02.mkv"), "Unpaired video must be present");
-    assert!(!names.contains(&"Heya Camp - S01E01.mkv"), "Paired video must be omitted");
+    assert!(
+        names.contains(&"Heya Camp - S01E01.ja.srt"),
+        "Subtitle must be present"
+    );
+    assert!(
+        names.contains(&"Heya Camp - S01E02.mkv"),
+        "Unpaired video must be present"
+    );
+    assert!(
+        !names.contains(&"Heya Camp - S01E01.mkv"),
+        "Paired video must be omitted"
+    );
 
     // Statuses are correct
-    let sub_item = items.iter().find(|i| i.path.extension().map(|e| e == "srt").unwrap_or(false)).unwrap();
+    let sub_item = items
+        .iter()
+        .find(|i| i.path.extension().map(|e| e == "srt").unwrap_or(false))
+        .unwrap();
     assert_eq!(sub_item.status, SubtitleStatus::HasSub);
-    let vid_item = items.iter().find(|i| i.path.extension().map(|e| e == "mkv").unwrap_or(false)).unwrap();
+    let vid_item = items
+        .iter()
+        .find(|i| i.path.extension().map(|e| e == "mkv").unwrap_or(false))
+        .unwrap();
     assert_eq!(vid_item.status, SubtitleStatus::NoSub);
 
     let _ = std::fs::remove_dir_all(&tmp);

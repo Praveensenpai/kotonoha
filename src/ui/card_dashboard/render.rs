@@ -23,6 +23,8 @@ pub struct DashboardRenderContext<'a> {
     pub dict_info: &'a LookupResult,
     pub ai_suggestion: Option<&'a str>,
     pub is_ai_selected: bool,
+    pub ai_translation_natural: Option<&'a str>,
+    pub ai_translation_literal: Option<&'a str>,
     pub audio_playing: bool,
     pub modal: &'a ActiveModal,
 }
@@ -35,7 +37,7 @@ pub fn render_dashboard(f: &mut Frame<'_>, ctx: &DashboardRenderContext<'_>) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // Header & progress
-            Constraint::Length(7), // Japanese sentence box
+            Constraint::Length(9), // Japanese sentence box
             Constraint::Min(10),   // Split pane (Context vs Dict)
             Constraint::Length(3), // Keybind toolbar
         ])

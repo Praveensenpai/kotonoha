@@ -172,3 +172,24 @@ pub fn pitch_pattern(reading: &str, pitch_accent: &str) -> (String, String) {
         pitch.to_string(),
     )
 }
+
+pub fn format_sentence_translation_for_anki(
+    natural: Option<&str>,
+    literal: Option<&str>,
+) -> String {
+    let nat = natural.map(str::trim).filter(|s| !s.is_empty());
+    let lit = literal.map(str::trim).filter(|s| !s.is_empty());
+
+    match (nat, lit) {
+        (Some(n), Some(l)) if !n.eq_ignore_ascii_case(l) => {
+            format!(
+                "<div>{}</div><div style=\"margin-top: 4px; font-size: 0.88em; opacity: 0.8;\">(Literal: {})</div>",
+                escape_html(n),
+                escape_html(l)
+            )
+        }
+        (Some(n), _) => escape_html(n),
+        (None, Some(l)) => escape_html(l),
+        (None, None) => String::new(),
+    }
+}

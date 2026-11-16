@@ -1,5 +1,7 @@
+mod backfill;
 mod pairing;
 pub mod queue;
+pub use backfill::*;
 pub use pairing::*;
 
 use anyhow::Result;
@@ -41,6 +43,9 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         );
         println!("  kotonoha --manage-mined   | -m     View & remove words from the mined list");
         println!("  kotonoha --manage-ignored | -I     View & remove words from the ignore list");
+        println!(
+            "  kotonoha --backfill-translations | -T Generate missing translations for mined cards"
+        );
         println!("  kotonoha --sync           | -s     Push locally mined cards to Anki");
         println!("  kotonoha --queue          | -q     Review & mine queued mpv moments (Shift+Q in mpv)");
         println!(
@@ -330,6 +335,12 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             println!(" ℹ No changes made.");
         }
+        return Ok(true);
+    }
+    if arg == "--backfill-translations" || arg == "-T" || arg == "backfill-translations" {
+        let cfg = AppConfig::load()?;
+        let db = Database::open(&cfg.db_path).await?;
+        run_backfill_translations_command(&cfg, &db).await?;
         return Ok(true);
     }
     if arg == "--queue" || arg == "-q" || arg == "queue" {

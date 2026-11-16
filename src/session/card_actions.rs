@@ -88,6 +88,8 @@ pub async fn handle_card_interaction(mut ctx: CardActionContext<'_>) -> Result<C
         dict_info: ctx.dict_info,
         ai_suggestion: ai_suggestion.as_deref(),
         is_ai_selected: ctx.is_ai_selected,
+        ai_translation_natural: ctx.ai_analysis.and_then(|r| r.english_natural.as_deref()),
+        ai_translation_literal: ctx.ai_analysis.and_then(|r| r.english_literal.as_deref()),
         audio_path: if audio_path.exists() {
             Some(&audio_path)
         } else {

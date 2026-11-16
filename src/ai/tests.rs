@@ -127,3 +127,39 @@ fn test_has_valid_api_key() {
     };
     assert!(ai_deepseek.has_valid_api_key());
 }
+
+#[test]
+fn test_prompt_requests_dual_translations() {
+    let prompt = build_prompt("dummy cards");
+    assert!(prompt.contains("english_natural"));
+    assert!(prompt.contains("english_literal"));
+    assert!(prompt.contains("TWO distinct English translations"));
+}
+
+#[test]
+fn test_json_deserialization_includes_dual_translations() {
+    let json_text = r#"{
+        "results": [
+            {
+                "card_index": 0,
+                "recommended_candidate_index": null,
+                "recommended_sense_index": null,
+                "recommended_reading": null,
+                "parsing_warning": null,
+                "custom_definition_suggestion": "senior; superior",
+                "explanation": null,
+                "english_natural": "Let's do it too, senpai.",
+                "english_literal": "Senpai too, let's do it."
+            }
+        ]
+    }"#;
+    let parsed: super::BatchAiAnalysisResponse = serde_json::from_str(json_text).unwrap();
+    assert_eq!(
+        parsed.results[0].english_natural.as_deref(),
+        Some("Let's do it too, senpai.")
+    );
+    assert_eq!(
+        parsed.results[0].english_literal.as_deref(),
+        Some("Senpai too, let's do it.")
+    );
+}

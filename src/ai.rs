@@ -47,6 +47,9 @@ For EACH card index:
 2. Always provide a concise, custom English `custom_definition_suggestion` for the target word's meaning in THIS sentence context. Leverage the surrounding conversation and show theme to resolve ambiguity, figurative usage, and domain nuances. It must be a short gloss, not a sentence translation. For example, for `私のせいですか？`, return exactly `fault; blame; cause of a bad result`.
 3. Set `recommended_candidate_index` and `recommended_sense_index` to null when the custom gloss is the best display definition. Use candidate/sense indexes only when the dictionary entry itself is already an ideal contextual definition and no custom gloss is needed.
 4. Provide `recommended_reading` as the contextual hiragana reading for the target word in this sentence (e.g. for `先に出た`, return `さき`). If identical or unknown, return null.
+5. Provide TWO distinct English translations for the full target sentence in context:
+   - `english_natural`: Fluent, natural, idiomatic English translation capturing conversational tone and intent.
+   - `english_literal`: Direct, faithful English translation tracking Japanese phrasing, word order, and grammatical nuance closely.
 
 Return ONLY a valid JSON object matching this exact schema:
 {{
@@ -58,7 +61,9 @@ Return ONLY a valid JSON object matching this exact schema:
       "recommended_reading": string or null,
       "parsing_warning": string or null,
       "custom_definition_suggestion": string or null,
-      "explanation": string or null
+      "explanation": string or null,
+      "english_natural": string or null,
+      "english_literal": string or null
     }}
   ]
 }}"#

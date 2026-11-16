@@ -8,7 +8,8 @@ use crate::db::Database;
 use crate::nlp::JapaneseTokenizer;
 
 use super::formatter::{
-    anki_search_text, format_definition_for_anki, pitch_pattern, sentence_with_furigana,
+    anki_search_text, format_definition_for_anki, format_sentence_translation_for_anki,
+    pitch_pattern, sentence_with_furigana,
 };
 
 pub async fn anki_connected(url: &str) -> bool {
@@ -222,7 +223,28 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
     let mut synced_new = 0;
 
     for (card, existing_anki_id) in all_cards {
+        let sent_eng = format_sentence_translation_for_anki(
+            card.english_natural.as_deref(),
+            card.english_literal.as_deref(),
+        );
+
         let _note_id = if let Some(id) = existing_anki_id {
+            if !sent_eng.is_empty() {
+                let _ = anki_request(
+                    &client,
+                    &cfg.anki.connect_url,
+                    "updateNoteFields",
+                    serde_json::json!({
+                        "note": {
+                            "id": id,
+                            "fields": {
+                                "SentEng": sent_eng
+                            }
+                        }
+                    }),
+                )
+                .await;
+            }
             id
         } else {
             let existing_note_id = find_existing_anki_note(
@@ -235,6 +257,22 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
             .await?;
 
             if let Some(note_id) = existing_note_id {
+                if !sent_eng.is_empty() {
+                    let _ = anki_request(
+                        &client,
+                        &cfg.anki.connect_url,
+                        "updateNoteFields",
+                        serde_json::json!({
+                            "note": {
+                                "id": note_id,
+                                "fields": {
+                                    "SentEng": sent_eng
+                                }
+                            }
+                        }),
+                    )
+                    .await;
+                }
                 db.mark_mined_card_synced(card.id, note_id).await?;
                 note_id
             } else {
@@ -274,7 +312,7 @@ pub async fn sync_to_anki(cfg: &AppConfig, db: &Database) -> Result<()> {
                             "fields": {
                                 "SentKanji": card.sentence,
                                 "SentFurigana": sentence_furigana,
-                                "SentEng": card.english_natural.as_deref().unwrap_or_default(),
+                                "SentEng": sent_eng,
                                 "SentAudio": sentence_audio,
                                 "VocabKanji": card.target_word,
                                 "VocabFurigana": card.reading,

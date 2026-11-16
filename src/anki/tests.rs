@@ -63,3 +63,29 @@ fn test_sentence_with_furigana_highlights_full_predicate() {
         "<b><ruby>学校<rt>がっこう</rt></ruby></b>に<ruby>行く<rt>いく</rt></ruby>"
     );
 }
+
+#[test]
+fn test_format_sentence_translation_for_anki() {
+    // Both present and different
+    let dual = format_sentence_translation_for_anki(
+        Some("Let's do it too, senpai."),
+        Some("Senpai too, let's do it."),
+    );
+    assert_eq!(
+        dual,
+        "<div>Let&#39;s do it too, senpai.</div><div style=\"margin-top: 4px; font-size: 0.88em; opacity: 0.8;\">(Literal: Senpai too, let&#39;s do it.)</div>"
+    );
+
+    // Identical translations: collapse to single
+    let identical =
+        format_sentence_translation_for_anki(Some("Good morning."), Some("Good morning."));
+    assert_eq!(identical, "Good morning.");
+
+    // Only natural present
+    let only_nat = format_sentence_translation_for_anki(Some("Let's go."), None);
+    assert_eq!(only_nat, "Let&#39;s go.");
+
+    // None present
+    let none = format_sentence_translation_for_anki(None, None);
+    assert_eq!(none, "");
+}

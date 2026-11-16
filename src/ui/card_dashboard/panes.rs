@@ -11,12 +11,30 @@ use super::theme::Theme;
 use crate::miner::CandidateSentence;
 use crate::ui::helpers::format_timestamp;
 
-pub fn render_sentence_box(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderContext<'_>) {
-    let text = &ctx.cand.sentence.text;
-    let target = &ctx.cand.target_word;
+fn build_translation_lines(ctx: &DashboardRenderContext<'_>) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if let Some(nat) = ctx.ai_translation_natural {
+        lines.push(Line::from(vec![
+            Span::styled("   💬 ", Style::default().fg(Theme::GREEN)),
+            Span::styled(format!("\"{}\"", nat), Style::default().fg(Theme::TEXT)),
+        ]));
+    }
+    if let Some(lit) = ctx.ai_translation_literal {
+        if ctx
+            .ai_translation_natural
+            .is_none_or(|n| !n.eq_ignore_ascii_case(lit))
+        {
+            lines.push(Line::from(vec![
+                Span::styled("   📝 Literal: ", Style::default().fg(Theme::CYAN)),
+                Span::styled(format!("\"{}\"", lit), Style::default().fg(Theme::SUBTEXT)),
+            ]));
+        }
+    }
+    lines
+}
 
-    let highlighted_line = build_highlighted_sentence(text, target);
-    let mut meta_spans = vec![
+fn build_sentence_meta_spans(ctx: &DashboardRenderContext<'_>) -> Vec<Span<'static>> {
+    let mut spans = vec![
         Span::styled(
             format!(" ★ {:.2} ", ctx.cand.quality_score),
             Style::default()
@@ -38,14 +56,14 @@ pub fn render_sentence_box(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderC
     ];
 
     if let Some(ref actor) = ctx.cand.sentence.actor {
-        meta_spans.push(Span::styled(
+        spans.push(Span::styled(
             format!(" Speaker: {} ", actor),
             Style::default().fg(Theme::LAVENDER),
         ));
     }
 
     if ctx.is_ai_selected {
-        meta_spans.push(Span::styled(
+        spans.push(Span::styled(
             " 🤖 [AI Recommended] ",
             Style::default()
                 .fg(Theme::CYAN)
@@ -53,13 +71,18 @@ pub fn render_sentence_box(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderC
         ));
     }
 
-    let p = Paragraph::new(vec![
-        Line::from(""),
-        highlighted_line,
-        Line::from(""),
-        Line::from(meta_spans),
-    ])
-    .block(
+    spans
+}
+
+pub fn render_sentence_box(f: &mut Frame<'_>, area: Rect, ctx: &DashboardRenderContext<'_>) {
+    let highlighted_line =
+        build_highlighted_sentence(&ctx.cand.sentence.text, &ctx.cand.target_word);
+    let mut sentence_lines = vec![Line::from(""), highlighted_line];
+    sentence_lines.extend(build_translation_lines(ctx));
+    sentence_lines.push(Line::from(""));
+    sentence_lines.push(Line::from(build_sentence_meta_spans(ctx)));
+
+    let p = Paragraph::new(sentence_lines).block(
         Block::default()
             .title(" 📝 Sentence ")
             .borders(Borders::ALL)
