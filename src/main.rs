@@ -241,6 +241,15 @@ async fn main() -> Result<()> {
         .map(PathBuf::from)
         .collect();
 
+    for path in &input_paths {
+        if path.to_string_lossy().starts_with('-') {
+            anyhow::bail!(
+                "Unknown option '{}'. Run 'kotonoha --help' for usage.",
+                path.display()
+            );
+        }
+    }
+
     let input_paths = if input_paths.is_empty() {
         TerminalUi::select_media_files()?
     } else {

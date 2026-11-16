@@ -475,7 +475,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   pub struct LookupResult
   ```
 
-### `src/main.rs` (Role: general, Lines: 302)
+### `src/main.rs` (Role: general, Lines: 311)
 - **Responsibility**: Core general logic in src/main.rs
 - **Imports**: use anyhow :: Result , use config :: AppConfig , use console :: style , use db :: Database , use dict :: DictionaryService , use srt :: parse_subtitle , use std :: path :: { Path , PathBuf } , use ui :: TerminalUi 
 
