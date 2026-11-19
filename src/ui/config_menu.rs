@@ -46,31 +46,8 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
         yellow.apply_to("false")
     };
     println!("  • Enable AI:             {ai_status}");
-    let ds_status = if cfg.ai.enable_deepseek {
-        green.apply_to("Enabled (Primary)")
-    } else {
-        yellow.apply_to("Disabled")
-    };
-    println!("  • DeepSeek AI:           {ds_status}");
     println!(
-        "  • DeepSeek URL:          {}",
-        dim.apply_to(&cfg.ai.deepseek_url)
-    );
-    println!(
-        "  • DeepSeek Model:        {}",
-        cyan.apply_to(&cfg.ai.deepseek_model)
-    );
-    let ds_key_display = if cfg.ai.deepseek_api_key.len() > 4 {
-        format!("{}... (Set)", &cfg.ai.deepseek_api_key[..3])
-    } else {
-        "Default".to_string()
-    };
-    println!(
-        "  • DeepSeek Key:          {}",
-        dim.apply_to(ds_key_display)
-    );
-    println!(
-        "  • Gemini Fallback Model: {}",
+        "  • Gemini Model:          {}",
         cyan.apply_to(&cfg.ai.gemini_model)
     );
     let key_status = match cfg.ai.gemini_api_key.as_deref() {
@@ -78,9 +55,9 @@ pub fn show_config(cfg: &crate::config::AppConfig) {
             let mask_len = k.len().saturating_sub(6);
             format!("{}{} (Set)", &k[..3.min(k.len())], "*".repeat(mask_len))
         }
-        _ => "Not set (Optional fallback)".to_string(),
+        _ => "Not set".to_string(),
     };
-    println!("  • Gemini Fallback Key:   {}", yellow.apply_to(key_status));
+    println!("  • Gemini Key:            {}", yellow.apply_to(key_status));
     let anki_status = if cfg.anki.enable_sync {
         green.apply_to("true")
     } else {

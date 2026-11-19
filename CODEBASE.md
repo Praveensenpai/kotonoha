@@ -15,11 +15,11 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 
 ## 3. Module & Interface Skeleton
 
-### `src/ai/tests.rs` (Role: general, Lines: 165)
+### `src/ai/tests.rs` (Role: general, Lines: 152)
 - **Responsibility**: Core general logic in src/ai/tests.rs
 - **Imports**: use super :: build_prompt 
 
-### `src/ai.rs` (Role: general, Lines: 341)
+### `src/ai.rs` (Role: general, Lines: 253)
 - **Responsibility**: Core general logic in src/ai.rs
 - **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } 
 - **Types & Enums**:
@@ -29,12 +29,10 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   pub struct CardBatchInput
   pub struct GeminiAiService
   pub struct UnifiedAiService
-  pub struct DeepSeekAiService
   ```
 - **Public Functions & Signatures**:
   ```rust
   async fn analyze_batch (client : & reqwest :: Client , cfg : & crate :: config :: AppConfig , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
-  async fn analyze_batch (client : & reqwest :: Client , url : & str , model : & str , api_key : & str , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
   async fn analyze_batch (client : & reqwest :: Client , api_key : & str , model : & str , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
   ```
 
@@ -229,7 +227,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn handle_cli_flag (arg : & str) -> Result < bool >
   ```
 
-### `src/config.rs` (Role: general, Lines: 317)
+### `src/config.rs` (Role: general, Lines: 287)
 - **Responsibility**: Core general logic in src/config.rs
 - **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } , use std :: path :: PathBuf 
 - **Types & Enums**:
@@ -683,7 +681,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn remove_entries (path : & Path , indices_to_remove : & [usize]) -> Result < () >
   ```
 
-### `src/session/ai_batch.rs` (Role: general, Lines: 260)
+### `src/session/ai_batch.rs` (Role: general, Lines: 254)
 - **Responsibility**: Core general logic in src/session/ai_batch.rs
 - **Imports**: use anyhow :: Result , use std :: collections :: HashMap , use std :: sync :: Arc , use tokio :: task :: JoinHandle , use crate :: ai , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: dict :: { self , DictionaryService , LookupLimits } , use crate :: miner :: CandidateSentence 
 - **Types & Enums**:
@@ -837,7 +835,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn run_card_dashboard (mut p : DashboardParams < '_ >) -> Result < DashboardAction >
   ```
 
-### `src/ui/config_menu.rs` (Role: tui, Lines: 329)
+### `src/ui/config_menu.rs` (Role: tui, Lines: 306)
 - **Responsibility**: Core tui logic in src/ui/config_menu.rs
 - **Imports**: use anyhow :: Result , use console :: Style , use inquire :: { Select , Text } 
 - **Public Functions & Signatures**:

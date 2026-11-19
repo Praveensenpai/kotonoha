@@ -237,9 +237,7 @@ kotonoha --queue
 
 ## ⚙️ Configuration & AI Architecture
 
-`kotonoha` supports an autonomous dual-tier AI architecture for contextual vocabulary disambiguation, idiomatic gloss generation, and multilingual translations (English & Kannada):
-1. **Primary Provider**: **DeepSeek** via OpenAI-compatible endpoints (`http://mochi:4000/v1/chat/completions` or custom proxy).
-2. **Secondary Fallback**: **Google Gemini** (`gemini-3.1-flash-lite`) when DeepSeek is unreachable or rate-limited.
+`kotonoha` supports Google Gemini for contextual vocabulary disambiguation, idiomatic gloss generation, and multilingual translations:
 
 ### 1. Interactive CLI Configuration
 ```bash
@@ -258,13 +256,7 @@ bundle_storage = "colocated"
 [ai]
 enable_ai = true
 
-# Primary Provider: DeepSeek (Web Reverse Proxy / OpenAI Compatible)
-enable_deepseek = true
-deepseek_url = "http://mochi:4000/v1/chat/completions"
-deepseek_model = "v4.1flash"
-deepseek_api_key = "dseeker"
-
-# Secondary Fallback: Google Gemini
+# AI Provider: Google Gemini
 gemini_api_key = "AIzaSy..."
 gemini_model = "gemini-3.1-flash-lite"
 
@@ -280,13 +272,7 @@ model_name = "Japanese sentences+"
 
 ### 3. Environment Variable Overrides
 ```bash
-# DeepSeek Primary Configuration
-export DEEPSEEK_URL="http://mochi:4000/v1/chat/completions"
-export DEEPSEEK_MODEL="v4.1flash"          # or "v4.1flash-think" for deep reasoning
-export DEEPSEEK_API_KEY="dseeker"
-export ENABLE_DEEPSEEK="true"
-
-# Gemini Secondary Fallback
+# Gemini Configuration
 export GEMINI_API_KEY="AIzaSy..."
 export GEMINI_MODEL="gemini-3.1-flash-lite"
 ```

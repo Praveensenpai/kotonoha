@@ -82,23 +82,6 @@ impl UnifiedAiService {
             return Ok(Vec::new());
         }
 
-        if cfg.ai.enable_deepseek {
-            match DeepSeekAiService::analyze_batch(
-                client,
-                &cfg.ai.deepseek_url,
-                &cfg.ai.deepseek_model,
-                &cfg.ai.deepseek_api_key,
-                cards,
-            )
-            .await
-            {
-                Ok(results) => return Ok(results),
-                Err(err) => {
-                    eprintln!("  ℹ DeepSeek batch analysis unavailable ({err}); falling back to Gemini API...");
-                }
-            }
-        }
-
         if let Some(ref api_key) = cfg.ai.gemini_api_key {
             if cfg.ai.has_valid_gemini_key() {
                 return GeminiAiService::analyze_batch(
@@ -111,78 +94,7 @@ impl UnifiedAiService {
             }
         }
 
-        anyhow::bail!(
-            "No AI provider available (DeepSeek failed and no valid Gemini API key configured)"
-        )
-    }
-}
-
-pub struct DeepSeekAiService;
-
-impl DeepSeekAiService {
-    pub async fn analyze_batch(
-        client: &reqwest::Client,
-        url: &str,
-        model: &str,
-        api_key: &str,
-        cards: &[CardBatchInput<'_>],
-    ) -> Result<Vec<AiAnalysisResult>> {
-        if cards.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let cards_summary = format_cards_summary(cards);
-        let prompt = build_prompt(&cards_summary);
-
-        let payload = serde_json::json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": 0.1
-        });
-
-        let resp = client
-            .post(url)
-            .header("Authorization", format!("Bearer {api_key}"))
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .timeout(std::time::Duration::from_secs(20))
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let err_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("DeepSeek API error ({status}): {err_text}");
-        }
-
-        let body: serde_json::Value = resp.json().await?;
-        let text = body["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Missing message content in DeepSeek response"))?;
-
-        let cleaned = clean_json_text(text);
-        let value: serde_json::Value = serde_json::from_str(&cleaned)
-            .map_err(|e| anyhow::anyhow!("Failed to parse DeepSeek JSON ({e}): {cleaned}"))?;
-
-        let mut parsed: BatchAiAnalysisResponse = serde_json::from_value(value)?;
-        for res in &mut parsed.results {
-            if let Some(cand_idx) = res.recommended_candidate_index {
-                if cand_idx > 0 {
-                    res.recommended_candidate_index = Some(cand_idx - 1);
-                }
-            }
-            if let Some(sense_idx) = res.recommended_sense_index {
-                if sense_idx > 0 {
-                    res.recommended_sense_index = Some(sense_idx - 1);
-                }
-            }
-        }
-        Ok(parsed.results)
+        anyhow::bail!("No AI provider available (Gemini API key not configured or invalid)")
     }
 }
 

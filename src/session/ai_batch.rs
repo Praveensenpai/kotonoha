@@ -188,12 +188,10 @@ pub async fn collect_ai_results(
 
     match prep.task_handle {
         Some(handle) => {
-            let provider_name = if cfg.ai.enable_deepseek {
-                format!("DeepSeek ({}) [Fallback: Gemini]", cfg.ai.deepseek_model)
-            } else {
-                format!("Gemini ({})", cfg.ai.gemini_model)
-            };
-            println!(" 🤖 [4/4] AI Context Analysis ({}) ...", provider_name);
+            println!(
+                " 🤖 [4/4] AI Context Analysis (Gemini ({})) ...",
+                cfg.ai.gemini_model
+            );
             match handle.await {
                 Ok(Ok(fresh_results)) => {
                     let elapsed = ai_start.elapsed().as_secs_f64();
@@ -204,11 +202,7 @@ pub async fn collect_ai_results(
                         elapsed
                     );
 
-                    let model_tag = if cfg.ai.enable_deepseek {
-                        &cfg.ai.deepseek_model
-                    } else {
-                        &cfg.ai.gemini_model
-                    };
+                    let model_tag = &cfg.ai.gemini_model;
 
                     for res in &fresh_results {
                         let cand = &candidates[res.card_index];
