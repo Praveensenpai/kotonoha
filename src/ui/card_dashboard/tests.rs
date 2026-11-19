@@ -70,15 +70,9 @@ fn test_handle_main_dashboard_keys() {
         audio_playing: false,
     };
 
-    // 'y' -> Mine
+    // Shift+M -> Mine
     assert!(matches!(
-        handle_main_dashboard_key(&mut p, &mut state, KeyCode::Char('y')),
-        Some(DashboardAction::Mine)
-    ));
-
-    // Enter -> Mine
-    assert!(matches!(
-        handle_main_dashboard_key(&mut p, &mut state, KeyCode::Enter),
+        handle_main_dashboard_key(&mut p, &mut state, KeyCode::Char('M')),
         Some(DashboardAction::Mine)
     ));
 
@@ -246,7 +240,7 @@ fn test_render_dashboard_visual_layout() {
     println!("====================================\n");
 
     // Verify footer toolbar
-    assert!(output.contains("[Y/Enter]"), "Toolbar must have Mine key");
+    assert!(output.contains("[M]"), "Toolbar must have Mine key");
     assert!(output.contains("[N/Space]"), "Toolbar must have Skip key");
     assert!(output.contains("[K]"), "Toolbar must have Known key");
     assert!(output.contains("[C]"), "Toolbar must have Candidate key");

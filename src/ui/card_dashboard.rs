@@ -181,7 +181,7 @@ fn handle_main_dashboard_key(
     code: KeyCode,
 ) -> Option<DashboardAction> {
     match code {
-        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => Some(DashboardAction::Mine),
+        KeyCode::Char('M') => Some(DashboardAction::Mine),
         KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char(' ') => Some(DashboardAction::Skip),
         KeyCode::Char('k') | KeyCode::Char('K') => Some(DashboardAction::Known),
         KeyCode::Char('u') | KeyCode::Char('U') => Some(DashboardAction::UnmarkKnown),

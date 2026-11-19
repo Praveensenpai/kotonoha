@@ -297,8 +297,8 @@ struct ToolbarItem {
 
 const TOOLBAR_ITEMS: &[ToolbarItem] = &[
     ToolbarItem {
-        key: " [Y/Enter] ",
-        compact_key: " [Y] ",
+        key: " [M] ",
+        compact_key: " [M] ",
         full_label: "Mine   ",
         compact_label: "Mine  ",
         color: Theme::GREEN,
