@@ -127,7 +127,7 @@ fn handle_key_press(ctrl: &mut ExplorerController<'_>, key: KeyEvent) -> KeyActi
             ctrl.selected = 0;
         }
         KeyCode::Char('/') => ctrl.search_active = true,
-        KeyCode::Enter | KeyCode::Char('m') => return KeyAction::ConfirmReview,
+        KeyCode::Char('M') => return KeyAction::ConfirmReview,
         KeyCode::Char('q') | KeyCode::Esc => return KeyAction::Quit,
         _ => {}
     }
