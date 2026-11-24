@@ -33,8 +33,9 @@ TAG=$(curl -sSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"ta
 if [ -z "$TAG" ]; then
     echo "⚠️  No official release tag found. Building from source via Cargo..."
     if command -v cargo >/dev/null 2>&1; then
-        cargo install --git "https://github.com/$REPO.git"
-        echo "✔ Installed kotonoha via cargo!"
+        cargo install --git "https://github.com/$REPO.git" --root "$HOME/.local"
+        rm -f "$HOME/.cargo/bin/kotonoha"
+        echo "✔ Installed kotonoha to $INSTALL_DIR/kotonoha via cargo!"
         exit 0
     else
         echo "❌ Cargo is not installed. Please install Rust/Cargo or wait for binary release."
@@ -45,6 +46,7 @@ fi
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/kotonoha-x86_64-unknown-linux-gnu.tar.gz"
 
 mkdir -p "$INSTALL_DIR"
+rm -f "$HOME/.cargo/bin/kotonoha"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
