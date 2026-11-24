@@ -56,6 +56,7 @@ impl Database {
     pub async fn get_known_words_sorted_by_source(&self, source: &str) -> Result<Vec<String>> {
         let items = KnownWords::find()
             .filter(known_words::Column::Source.eq(source))
+            .order_by_desc(known_words::Column::AddedAt)
             .order_by_asc(known_words::Column::Word)
             .all(&self.conn)
             .await?;
@@ -106,6 +107,7 @@ impl Database {
 
     pub async fn get_ignored_words_sorted(&self) -> Result<Vec<String>> {
         let items = IgnoredWords::find()
+            .order_by_desc(ignored_words::Column::AddedAt)
             .order_by_asc(ignored_words::Column::Word)
             .all(&self.conn)
             .await?;

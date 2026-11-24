@@ -15,11 +15,11 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 
 ## 3. Module & Interface Skeleton
 
-### `src/ai/tests.rs` (Role: general, Lines: 152)
+### `src/ai/tests.rs` (Role: general, Lines: 291)
 - **Responsibility**: Core general logic in src/ai/tests.rs
-- **Imports**: use super :: build_prompt 
+- **Imports**: use super :: build_prompt , use tokio :: io :: { AsyncReadExt , AsyncWriteExt } 
 
-### `src/ai.rs` (Role: general, Lines: 253)
+### `src/ai.rs` (Role: general, Lines: 295)
 - **Responsibility**: Core general logic in src/ai.rs
 - **Imports**: use anyhow :: Result , use serde :: { Deserialize , Serialize } 
 - **Types & Enums**:
@@ -29,11 +29,13 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   pub struct CardBatchInput
   pub struct GeminiAiService
   pub struct UnifiedAiService
+  pub struct GeminiRequestOptions
   ```
 - **Public Functions & Signatures**:
   ```rust
   async fn analyze_batch (client : & reqwest :: Client , cfg : & crate :: config :: AppConfig , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
   async fn analyze_batch (client : & reqwest :: Client , api_key : & str , model : & str , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
+  async fn analyze_batch_internal (client : & reqwest :: Client , opts : & GeminiRequestOptions < '_ > , cards : & [CardBatchInput < '_ >] ,) -> Result < Vec < AiAnalysisResult > >
   ```
 
 ### `src/anki/client.rs` (Role: cli, Lines: 368)
@@ -378,7 +380,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 - **Responsibility**: Core general logic in src/db/entities.rs
 - **Imports**: pub use ai_analysis_cache :: Entity as AiAnalysisCache , pub use all_candidates_cache :: Entity as AllCandidatesCache , pub use bundled_media :: Entity as BundledMedia , pub use dictionary_cache :: Entity as DictionaryCache , pub use ignored_words :: Entity as IgnoredWords , pub use known_words :: Entity as KnownWords , pub use mined_cards :: Entity as MinedCards , pub use offline_terms :: Entity as OfflineTerms 
 
-### `src/db/words.rs` (Role: general, Lines: 130)
+### `src/db/words.rs` (Role: general, Lines: 132)
 - **Responsibility**: Core general logic in src/db/words.rs
 - **Imports**: use anyhow :: Result , use sea_orm :: { sea_query :: OnConflict , ColumnTrait , EntityTrait , QueryFilter , QueryOrder , Set } , use std :: collections :: HashSet , use super :: entities :: * , use super :: Database 
 - **Public Functions & Signatures**:
@@ -810,7 +812,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn render_dashboard (f : & mut Frame < '_ > , ctx : & DashboardRenderContext < '_ >)
   ```
 
-### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 333)
+### `src/ui/card_dashboard/tests.rs` (Role: tui, Lines: 327)
 - **Responsibility**: Core tui logic in src/ui/card_dashboard/tests.rs
 - **Imports**: use super :: * , use crate :: srt :: SubtitleSentence , use std :: path :: PathBuf 
 
@@ -924,7 +926,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn handle_mark_ignored (& mut self) -> Result < () >
   ```
 
-### `src/ui/explorer/tests.rs` (Role: tui, Lines: 184)
+### `src/ui/explorer/tests.rs` (Role: tui, Lines: 204)
 - **Responsibility**: Core tui logic in src/ui/explorer/tests.rs
 - **Imports**: use std :: collections :: HashSet , use super :: model :: * , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence 
 

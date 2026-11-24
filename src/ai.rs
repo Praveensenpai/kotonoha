@@ -164,11 +164,58 @@ fn format_cards_summary(cards: &[CardBatchInput<'_>]) -> String {
         .join("\n\n--------------------\n\n")
 }
 
+fn parse_gemini_response(body: serde_json::Value) -> Result<Vec<AiAnalysisResult>> {
+    let text = body["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid response structure from Gemini"))?;
+
+    let cleaned = clean_json_text(text);
+    let value: serde_json::Value = serde_json::from_str(&cleaned)?;
+    let mut parsed: BatchAiAnalysisResponse = serde_json::from_value(value)?;
+    for res in &mut parsed.results {
+        if let Some(cand_idx) = res.recommended_candidate_index {
+            if cand_idx > 0 {
+                res.recommended_candidate_index = Some(cand_idx - 1);
+            }
+        }
+        if let Some(sense_idx) = res.recommended_sense_index {
+            if sense_idx > 0 {
+                res.recommended_sense_index = Some(sense_idx - 1);
+            }
+        }
+    }
+    Ok(parsed.results)
+}
+
+pub struct GeminiRequestOptions<'a> {
+    pub base_url: &'a str,
+    pub api_key: &'a str,
+    pub model: &'a str,
+    pub retry_delays: &'a [u64],
+}
+
 impl GeminiAiService {
+    pub const DEFAULT_RETRY_DELAYS: &'static [u64] = &[1, 2, 3, 4, 5];
+    pub const DEFAULT_BASE_URL: &'static str = "https://generativelanguage.googleapis.com";
+
     pub async fn analyze_batch(
         client: &reqwest::Client,
         api_key: &str,
         model: &str,
+        cards: &[CardBatchInput<'_>],
+    ) -> Result<Vec<AiAnalysisResult>> {
+        let opts = GeminiRequestOptions {
+            base_url: Self::DEFAULT_BASE_URL,
+            api_key,
+            model,
+            retry_delays: Self::DEFAULT_RETRY_DELAYS,
+        };
+        Self::analyze_batch_internal(client, &opts, cards).await
+    }
+
+    pub async fn analyze_batch_internal(
+        client: &reqwest::Client,
+        opts: &GeminiRequestOptions<'_>,
         cards: &[CardBatchInput<'_>],
     ) -> Result<Vec<AiAnalysisResult>> {
         if cards.is_empty() {
@@ -176,9 +223,10 @@ impl GeminiAiService {
         }
 
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            urlencoding::encode(model),
-            urlencoding::encode(api_key)
+            "{}/v1beta/models/{}:generateContent?key={}",
+            opts.base_url.trim_end_matches('/'),
+            urlencoding::encode(opts.model),
+            urlencoding::encode(opts.api_key)
         );
 
         let cards_summary = format_cards_summary(cards);
@@ -196,52 +244,46 @@ impl GeminiAiService {
             }
         });
 
-        let max_attempts = 3;
+        let total_attempts = opts.retry_delays.len() + 1;
         let mut last_error = String::new();
 
-        for attempt in 1..=max_attempts {
+        for attempt in 1..=total_attempts {
             let resp = client.post(&url).json(&payload).send().await;
-            match resp {
+            let retry_reason = match resp {
                 Ok(response) if response.status().is_success() => {
                     let body: serde_json::Value = response.json().await?;
-                    let text = body["candidates"][0]["content"]["parts"][0]["text"]
-                        .as_str()
-                        .ok_or_else(|| anyhow::anyhow!("Invalid response structure from Gemini"))?;
-
-                    let cleaned = clean_json_text(text);
-                    let value: serde_json::Value = serde_json::from_str(&cleaned)?;
-                    let mut parsed: BatchAiAnalysisResponse = serde_json::from_value(value)?;
-                    for res in &mut parsed.results {
-                        if let Some(cand_idx) = res.recommended_candidate_index {
-                            if cand_idx > 0 {
-                                res.recommended_candidate_index = Some(cand_idx - 1);
-                            }
-                        }
-                        if let Some(sense_idx) = res.recommended_sense_index {
-                            if sense_idx > 0 {
-                                res.recommended_sense_index = Some(sense_idx - 1);
-                            }
-                        }
-                    }
-                    return Ok(parsed.results);
+                    return parse_gemini_response(body);
                 }
                 Ok(response) => {
                     let status = response.status();
                     let err_text = response.text().await.unwrap_or_default();
-                    last_error = if status.as_u16() == 429 {
+                    let is_rate_limit = status.as_u16() == 429;
+                    last_error = if is_rate_limit {
                         "Gemini API rate limit exceeded (429 Too Many Requests)".to_string()
                     } else {
-                        format!("Gemini API error ({}): {}", status, err_text)
+                        format!("Gemini API error ({status}): {err_text}")
                     };
+
+                    if !is_rate_limit && !status.is_server_error() {
+                        anyhow::bail!("{last_error}");
+                    }
+                    format!("{status}")
                 }
                 Err(e) => {
                     last_error = e.to_string();
+                    "Network error".to_string()
                 }
-            }
+            };
 
-            if attempt < max_attempts {
-                let delay = attempt as u64;
-                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            if attempt <= opts.retry_delays.len() {
+                let delay = opts.retry_delays[attempt - 1];
+                eprintln!(
+                    " ⚠️ Gemini API request failed ({retry_reason}). Retrying in {delay}s (attempt {attempt}/{})...",
+                    opts.retry_delays.len()
+                );
+                if delay > 0 {
+                    tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                }
             }
         }
 

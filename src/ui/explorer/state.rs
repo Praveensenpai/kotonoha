@@ -76,7 +76,8 @@ impl<'a> ExplorerController<'a> {
         let Some(&s_idx) = visible.get(self.selected) else {
             return;
         };
-        let Some(video) = self.p.video_path else {
+        let s = &self.sentences[s_idx].sentence;
+        let Some(video) = s.video_path.as_deref().or(self.p.video_path) else {
             return;
         };
 
@@ -84,7 +85,6 @@ impl<'a> ExplorerController<'a> {
             let _ = child.kill();
         }
 
-        let s = &self.sentences[s_idx].sentence;
         self.audio_child = actions::play_sentence_audio(video, s.start_ms, s.end_ms);
         self.playing_row = self.audio_child.as_ref().map(|_| s_idx);
         self.loading_until = self

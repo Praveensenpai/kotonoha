@@ -182,3 +182,23 @@ fn test_multi_unknown_candidate_generation() {
     assert_eq!(c2.target_word, "蜜柑");
     assert_eq!(c1.sentence.start_ms, c2.sentence.start_ms);
 }
+
+#[test]
+fn test_sentences_retain_distinct_video_paths() {
+    let mut s1 = make_sentence("エピソード2", 1, 1000);
+    s1.video_path = Some(std::path::PathBuf::from("/path/to/S02E02.mkv"));
+    let mut s2 = make_sentence("エピソード4", 2, 2000);
+    s2.video_path = Some(std::path::PathBuf::from("/path/to/S02E04.mkv"));
+
+    let tokenizer = JapaneseTokenizer::new().expect("tokenizer");
+    let known = HashSet::new();
+    let ignored = HashSet::new();
+    let explorer = build_explorer_sentences(&[s1, s2], &tokenizer, &known, &ignored);
+
+    assert_eq!(explorer.len(), 2);
+    let v1 = explorer[0].sentence.video_path.as_deref().unwrap();
+    let v2 = explorer[1].sentence.video_path.as_deref().unwrap();
+    assert_ne!(v1, v2);
+    assert!(v1.ends_with("S02E02.mkv") || v1.ends_with("S02E04.mkv"));
+    assert!(v2.ends_with("S02E02.mkv") || v2.ends_with("S02E04.mkv"));
+}
