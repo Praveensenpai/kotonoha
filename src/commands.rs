@@ -163,18 +163,25 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
                 );
             }
         }
+        if let Some(db) = db {
+            db.close().await?;
+        }
         return Ok(true);
     }
     if arg == "--bundles" || arg == "-B" || arg == "--manage-bundles" || arg == "bundles" {
         let cfg = AppConfig::load().unwrap_or_default();
         let db = Database::open(&cfg.db_path).await?;
-        TerminalUi::manage_bundles_interactive(&db).await?;
+        let res = TerminalUi::manage_bundles_interactive(&db).await;
+        db.close().await?;
+        res?;
         return Ok(true);
     }
     if arg == "--clean-bundled" || arg == "-C" || arg == "--clean-sources" || arg == "--clean" {
         let cfg = AppConfig::load().unwrap_or_default();
         let db = Database::open(&cfg.db_path).await?;
-        TerminalUi::clean_bundled_sources_interactive(&db).await?;
+        let res = TerminalUi::clean_bundled_sources_interactive(&db).await;
+        db.close().await?;
+        res?;
         return Ok(true);
     }
     if arg == "--config" || arg == "-c" {
@@ -190,7 +197,9 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
     if arg == "--sync" || arg == "-s" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
-        anki::sync_to_anki(&cfg, &db).await?;
+        let res = anki::sync_to_anki(&cfg, &db).await;
+        db.close().await?;
+        res?;
         return Ok(true);
     }
     if arg == "--inspect" || arg == "-i" {
@@ -225,13 +234,15 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         let tokenizer = JapaneseTokenizer::new()?;
         let known_words = db.get_known_words().await?;
         let ignored_words = db.get_ignored_words().await?;
-        TerminalUi::inspect_sentences(crate::ui::InspectSentencesParams {
+        let res = TerminalUi::inspect_sentences(crate::ui::InspectSentencesParams {
             sentences: &sentences,
             tokenizer: &tokenizer,
             known_words: &known_words,
             ignored_words: &ignored_words,
             video_path: video_path.as_deref(),
-        })?;
+        });
+        db.close().await?;
+        res?;
         return Ok(true);
     }
     if arg == "--explore" || arg == "-e" || arg == "explore" {
@@ -287,6 +298,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         if !selected.is_empty() {
             crate::session::mining::run_mining_loop(selected, &cfg, &mut db, http_client).await?;
         }
+        db.close().await?;
         return Ok(true);
     }
     if arg == "--manage-ignored" || arg == "-I" || arg == "--ignored" {
@@ -301,6 +313,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             println!(" ℹ No changes made.");
         }
+        db.close().await?;
         return Ok(true);
     }
     if arg == "--manage-known" || arg == "-k" || arg == "--known" {
@@ -318,6 +331,7 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             println!(" ℹ No changes made.");
         }
+        db.close().await?;
         return Ok(true);
     }
     if arg == "--manage-mined" || arg == "-m" || arg == "--mined" {
@@ -335,12 +349,15 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
         } else {
             println!(" ℹ No changes made.");
         }
+        db.close().await?;
         return Ok(true);
     }
     if arg == "--backfill-translations" || arg == "-T" || arg == "backfill-translations" {
         let cfg = AppConfig::load()?;
         let db = Database::open(&cfg.db_path).await?;
-        run_backfill_translations_command(&cfg, &db).await?;
+        let res = run_backfill_translations_command(&cfg, &db).await;
+        db.close().await?;
+        res?;
         return Ok(true);
     }
     if arg == "--queue" || arg == "-q" || arg == "queue" {
@@ -352,7 +369,9 @@ pub async fn handle_cli_flag(arg: &str) -> Result<bool> {
             &mut db,
         )
         .await;
-        queue::run_queue_command(&cfg, &mut db, http_client).await?;
+        let res = queue::run_queue_command(&cfg, &mut db, http_client).await;
+        db.close().await?;
+        res?;
         return Ok(true);
     }
 

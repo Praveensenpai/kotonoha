@@ -39,6 +39,13 @@ impl Database {
         Ok(db)
     }
 
+    pub async fn close(self) -> Result<()> {
+        self.conn
+            .close()
+            .await
+            .context("Failed to close SQLite database connection pool")
+    }
+
     async fn init_schema(&self) -> Result<()> {
         let builder = self.conn.get_database_backend();
         let schema = sea_orm::Schema::new(builder);

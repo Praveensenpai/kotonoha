@@ -15,7 +15,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 
 ## 3. Module & Interface Skeleton
 
-### `src/ai/tests.rs` (Role: general, Lines: 291)
+### `src/ai/tests.rs` (Role: general, Lines: 288)
 - **Responsibility**: Core general logic in src/ai/tests.rs
 - **Imports**: use super :: build_prompt , use tokio :: io :: { AsyncReadExt , AsyncWriteExt } 
 
@@ -221,7 +221,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn run_queue_command (cfg : & AppConfig , db : & mut Database , http_client : reqwest :: Client ,) -> Result < () >
   ```
 
-### `src/commands.rs` (Role: general, Lines: 360)
+### `src/commands.rs` (Role: general, Lines: 379)
 - **Responsibility**: Core general logic in src/commands.rs
 - **Imports**: pub use backfill :: * , pub use pairing :: * , use anyhow :: Result , use console :: style , use std :: path :: PathBuf , use crate :: anki , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: parse_subtitle , use crate :: ui :: TerminalUi 
 - **Public Functions & Signatures**:
@@ -397,7 +397,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn remove_ignored_words (& self , words : & [String]) -> Result < usize >
   ```
 
-### `src/db.rs` (Role: general, Lines: 152)
+### `src/db.rs` (Role: general, Lines: 159)
 - **Responsibility**: Core general logic in src/db.rs
 - **Imports**: use anyhow :: { Context , Result } , use sea_orm :: { ConnectionTrait , Database as SeaDatabase , DatabaseConnection } , use std :: path :: Path , pub use cache :: * , pub use cards :: * , pub use entities :: * 
 - **Types & Enums**:
@@ -407,6 +407,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
 - **Public Functions & Signatures**:
   ```rust
   async fn open (db_path : & Path) -> Result < Self >
+  async fn close (self) -> Result < () >
   ```
 
 ### `src/dict/context.rs` (Role: general, Lines: 257)
@@ -445,7 +446,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   fn format_pitch_accent (reading : & str , pitch_num : usize) -> (String , String , usize)
   ```
 
-### `src/dict/service.rs` (Role: general, Lines: 363)
+### `src/dict/service.rs` (Role: general, Lines: 365)
 - **Responsibility**: Core general logic in src/dict/service.rs
 - **Imports**: use anyhow :: Result , use super :: context :: is_placeholder_definition , use super :: offline , use super :: LookupResult 
 - **Types & Enums**:
@@ -475,7 +476,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   pub struct LookupResult
   ```
 
-### `src/main.rs` (Role: general, Lines: 311)
+### `src/main.rs` (Role: general, Lines: 312)
 - **Responsibility**: Core general logic in src/main.rs
 - **Imports**: use anyhow :: Result , use config :: AppConfig , use console :: style , use db :: Database , use dict :: DictionaryService , use srt :: parse_subtitle , use std :: path :: { Path , PathBuf } , use ui :: TerminalUi 
 
@@ -725,7 +726,7 @@ Entrypoint ──> CLI/Parser ──> Domain Logic ──> Infra/IO
   async fn run_mining_loop (all_candidates : Vec < CandidateSentence > , cfg : & AppConfig , db : & mut Database , http_client : reqwest :: Client ,) -> Result < () >
   ```
 
-### `src/session.rs` (Role: general, Lines: 344)
+### `src/session.rs` (Role: general, Lines: 349)
 - **Responsibility**: Core general logic in src/session.rs
 - **Imports**: use anyhow :: Result , use console :: style , use std :: collections :: { HashMap , HashSet } , use crate :: config :: AppConfig , use crate :: db :: Database , use crate :: miner :: { CandidateSentence , MiningEngine } , use crate :: nlp :: JapaneseTokenizer , use crate :: srt :: SubtitleSentence , use crate :: ui :: { SessionMode , TerminalUi } 
 - **Types & Enums**:

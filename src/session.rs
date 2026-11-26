@@ -300,6 +300,7 @@ pub async fn run_session(
     let all_candidates = match session_mode {
         SessionMode::Exit => {
             println!(" 🚪 Exiting kotonoha.");
+            db.close().await?;
             return Ok(());
         }
         SessionMode::Explore => {
@@ -319,6 +320,7 @@ pub async fn run_session(
             })
             .await?;
             if selected.is_empty() {
+                db.close().await?;
                 return Ok(());
             }
             selected
@@ -337,8 +339,11 @@ pub async fn run_session(
 
     if all_candidates.is_empty() {
         println!(" ℹ No candidate sentences available for this mode.");
+        db.close().await?;
         return Ok(());
     }
 
-    mining::run_mining_loop(all_candidates, cfg, &mut db, http_client).await
+    let res = mining::run_mining_loop(all_candidates, cfg, &mut db, http_client).await;
+    db.close().await?;
+    res
 }

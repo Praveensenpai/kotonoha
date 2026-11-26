@@ -182,7 +182,9 @@ impl DictionaryService {
         let cfg = crate::config::AppConfig::load().ok();
         if let Some(c) = cfg {
             if let Ok(db) = crate::db::Database::open(&c.db_path).await {
-                if let Ok(offline) = db.query_offline_terms(word, exact_only).await {
+                let offline = db.query_offline_terms(word, exact_only).await;
+                let _ = db.close().await;
+                if let Ok(offline) = offline {
                     if let Some(first) = offline.into_iter().next() {
                         return Ok(first);
                     }

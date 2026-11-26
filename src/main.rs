@@ -274,6 +274,7 @@ async fn main() -> Result<()> {
             http_client: &http_client,
         })
         .await?;
+        db.close().await?;
         return Ok(());
     }
 
